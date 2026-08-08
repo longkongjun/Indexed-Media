@@ -1,15 +1,5 @@
 set shell := ["bash", "-cu"]
 
-# 项目结构门禁暂时关闭，等待进入实际开发后重新评估。
-check-structure:
-    @printf '待定：项目结构门禁暂未启用\n' >&2
-    @exit 2
-
-# 结构门禁测试暂时关闭，不进入日常开发流程。
-test-structure:
-    @printf '待定：项目结构门禁测试暂未启用\n' >&2
-    @exit 2
-
 # 检查全部版本化契约、事件和示例。
 check-contracts:
     @just check-openapi
@@ -480,7 +470,6 @@ check-observability:
     @printf '未初始化：infra/observability\n' >&2
     @exit 2
 
-# 完整仓库检查方案待定，待实际模块初始化后再定义。
+# 执行当前已初始化正式能力的完整自动门禁；真实外部系统验收由独立 live 入口负责。
 check:
-    @printf '待定：完整仓库检查暂未启用\n' >&2
-    @exit 2
+    @just check-m4-source-automation

@@ -8,7 +8,6 @@ MediaFlow 是面向家庭 NAS 的本地优先、自托管数字资源中枢。�
 - [项目结构](docs/architecture/project-structure.md)
 - [归档策略与来源记录](docs/architecture/archive-policy.md)
 - [完整路线图](docs/plans/roadmap.md)
-- [基线重建计划](docs/plans/project-baseline-rebuild.md)
 
 ## 仓库地图
 
@@ -40,20 +39,22 @@ MediaFlow/
 |
 |-- infra/                        # 容器、NAS 部署与可观测性配置
 |-- docs/                         # 产品、架构、决策、计划和运维文档
-|-- tools/                        # 仅供仓库开发使用的工具
-`-- archive/                      # 重建前只读历史，不参与正式构建
+|-- tools/                        # 产品构建、测试和运维工具
+`-- archive/                      # 公开归档边界说明，不分发内部历史快照
 ```
 
 正式代码的依赖方向是 `apps -> packages -> contracts`。`labs` 可以使用 `packages` 和 `contracts`，但正式应用与共享包不能依赖 `labs` 或 `archive`。
 
-当前阶段只建立目录边界和文档，应用、共享包、契约与基础设施实现均尚未初始化。
+当前实现以 Rust Core、Vue Web、版本化 OpenAPI/事件契约、TypeScript 客户端、测试夹具和单容器 NAS 部署为主。Android、iOS、TV、KMP、Flutter 与部分实验模块仍保留目录边界，尚未进入正式交付范围。
 
 ## 检查状态
 
-仓库级门禁暂时关闭，避免在业务代码尚未初始化时引入过度工程负担。
+公开仓库的默认自动门禁通过以下命令运行：
 
-- `just check-structure`：报告结构门禁待定，并返回状态 `2`。
-- `just test-structure`：报告结构门禁测试待定，并返回状态 `2`。
-- `just check`：报告完整仓库检查待定，并返回状态 `2`。
+- `just check`：执行 Core 格式、Clippy、全目标测试、契约、客户端、共享夹具、Web 类型/测试/构建/E2E 与差异检查。
+- `just check-m4-source-automation`：与默认检查相同的当前里程碑聚合入口。
+- 真实 NAS、下载器、RSS 与模型验收使用对应 `*-live` 命令，环境缺失时不得冒充通过。
+
+本地项目结构与 AI 工作流门禁由 StudySpace 注入，使用 `./tools/project-layout/check.sh` 和 `./tools/workflow/check.sh`，不属于公开仓库内容。
 
 项目仓库只保存产品、源码、公开文档、构建和测试能力。本地开发辅助能力由外部工作空间按需提供，不属于项目发布内容。
