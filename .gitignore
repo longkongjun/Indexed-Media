@@ -1,0 +1,29 @@
+# OS and IDE
+.DS_Store
+.idea/
+.vscode/
+
+# Rust
+target/
+
+# Kotlin and Gradle
+.gradle/
+.kotlin/
+kotlin-js-store/
+build/
+
+# Node and Vue
+node_modules/
+dist/
+.vite/
+coverage/
+
+# Swift and Xcode
+DerivedData/
+*.xcuserstate
+xcuserdata/
+
+# Flutter
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies

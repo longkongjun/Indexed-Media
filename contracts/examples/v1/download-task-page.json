@@ -1,0 +1,20 @@
+{
+  "items": [
+    {
+      "id": "019f0000-0000-7000-8000-000000000062",
+      "connection_id": "019f0000-0000-7000-8000-000000000061",
+      "connection_display_name": "NAS qBittorrent",
+      "display_name": "Dune 2021",
+      "status": "monitoring",
+      "remote_status": "downloading",
+      "progress_basis_points": 5000,
+      "failure_code": null,
+      "retry_at": null,
+      "linked": true,
+      "projection_version": 3,
+      "created_at": "2026-07-24T04:55:00Z",
+      "updated_at": "2026-07-24T05:00:00Z"
+    }
+  ],
+  "next_cursor": null
+}

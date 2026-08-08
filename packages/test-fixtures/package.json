@@ -1,0 +1,20 @@
+{
+  "name": "@mediaflow/test-fixtures",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "types": "./src/index.ts",
+  "exports": { ".": { "types": "./src/index.ts", "default": "./src/index.ts" } },
+  "dependencies": {
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "js-yaml": "5.2.1"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "id": 46,
+  "type": "download-task.changed",
+  "schema_version": "1",
+  "occurred_at": "2026-07-24T05:00:00Z",
+  "task_id": "019f0000-0000-7000-8000-000000000062",
+  "payload": {
+    "projection_version": 3,
+    "status": "monitoring",
+    "remote_status": "downloading",
+    "progress_basis_points": 5000,
+    "failure_code": null
+  }
+}

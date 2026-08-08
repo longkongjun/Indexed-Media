@@ -1,0 +1,1 @@
+{"id":45,"type":"task-decision.accepted","schema_version":"1","occurred_at":"2026-07-23T09:00:00Z","task_id":"019f0000-0000-7000-8000-000000000043","payload":{"case_id":"019f0000-0000-7000-8000-000000000048","decision_id":"019f0000-0000-7000-8000-000000000049","kind":"select-provider-candidate","case_version":2}}

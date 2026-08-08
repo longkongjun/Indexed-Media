@@ -1,0 +1,27 @@
+{
+  "items": [
+    {
+      "id": "019f0000-0000-7000-8000-000000000071",
+      "kind": "movie",
+      "display_name": "电影库",
+      "root_id": "media",
+      "relative_path": "Movies",
+      "operation": "copy",
+      "naming_pattern": "movie",
+      "nfo_policy": "generate-missing",
+      "automatic": true,
+      "enabled": true,
+      "rules": [
+        {
+          "media_kind": "movie",
+          "inbox_directory_id": "019f0000-0000-7000-8000-000000000002",
+          "explicit_tag": null,
+          "enabled": true
+        }
+      ],
+      "config_version": 3,
+      "updated_at": "2026-07-24T06:00:00Z"
+    }
+  ],
+  "next_cursor": null
+}

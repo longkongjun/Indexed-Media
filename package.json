@@ -1,0 +1,14 @@
+{
+  "name": "mediaflow",
+  "private": true,
+  "packageManager": "pnpm@11.10.0",
+  "scripts": {
+    "generate:api-client": "pnpm --filter @mediaflow/api-client-ts generate"
+  },
+  "devDependencies": {
+    "@redocly/cli": "2.38.0",
+    "openapi-typescript": "7.13.0",
+    "typescript": "5.9.3",
+    "vitest": "4.1.10"
+  }
+}

@@ -1,0 +1,2492 @@
+openapi: 3.1.2
+info:
+  title: MediaFlow API
+  version: v1
+  description: Contract-first API for MediaFlow identity, inbox scanning, continuous discovery, deterministic identification, review administration, formal catalog reads, downloader management, and source automation.
+servers:
+  - url: /
+paths:
+  /api/v1/system/bootstrap-status:
+    get:
+      operationId: getBootstrapStatus
+      summary: Read instance bootstrap status
+      description: Reports whether the local instance still requires its one-time administrator bootstrap without mutating state.
+      responses:
+        '200': { $ref: '#/components/responses/BootstrapStatus' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/system/bootstrap:
+    post:
+      operationId: bootstrapSystem
+      summary: Bootstrap the local instance
+      description: Uses the one-time bootstrap secret to create the sole administrator account for an uninitialized instance.
+      security: []
+      parameters: &public-write-parameters [{ $ref: '#/components/parameters/Origin' }, { $ref: '#/components/parameters/SecFetchSite' }]
+      requestBody: { $ref: '#/components/requestBodies/BootstrapRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/BootstrapResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/sessions:
+    post:
+      operationId: createSession
+      summary: Create an administrator session
+      description: Validates administrator credentials and returns the account and CSRF projection while setting the secure session cookie.
+      security: []
+      parameters: *public-write-parameters
+      requestBody: { $ref: '#/components/requestBodies/LoginRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/SessionResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/session:
+    get:
+      operationId: getSession
+      summary: Read the current session
+      description: Returns the authenticated administrator account and CSRF projection for the current secure session cookie.
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/SessionResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    delete:
+      operationId: deleteSession
+      summary: Delete the current session
+      description: Invalidates the authenticated server session and expires its secure session cookie.
+      security: &write-security [{ cookieAuth: [], csrfHeader: [] }]
+      parameters: &write-parameters [{ $ref: '#/components/parameters/CsrfToken' }, { $ref: '#/components/parameters/Origin' }, { $ref: '#/components/parameters/SecFetchSite' }]
+      responses:
+        '204':
+          description: Session deleted and cookie expired.
+          headers: { Set-Cookie: { description: 'Expired __Host-mediaflow_session cookie: empty value, Max-Age=0, optional Expires, Secure, HttpOnly, SameSite=Strict, and Path=/.', schema: { type: string, pattern: '^__Host-mediaflow_session=;\s*Max-Age=0;(?:\s*Expires=[^;]+;)?\s*Secure;\s*HttpOnly;\s*SameSite=Strict;\s*Path=/$' } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/deployment-roots:
+    get:
+      operationId: listDeploymentRoots
+      summary: List deployment capability roots
+      description: Returns operator-configured roots that bound which local paths may be selected by inbox directories.
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/DeploymentRootList' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/inbox-directories/preflight:
+    post:
+      operationId: preflightInboxDirectory
+      summary: Preflight an inbox directory
+      description: Normalizes and checks a capability-root-relative path for readability and overlap without persisting an inbox directory.
+      security: *write-security
+      parameters: *write-parameters
+      requestBody: { $ref: '#/components/requestBodies/InboxDirectoryPreflightRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/InboxDirectoryPreflight' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/inbox-directories:
+    get:
+      operationId: listInboxDirectories
+      summary: List inbox directories
+      description: Returns a bounded cursor page of persisted inbox directories and their last observed health.
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' }]
+      responses:
+        '200': { $ref: '#/components/responses/InboxDirectoryPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    post:
+      operationId: createInboxDirectory
+      summary: Create an inbox directory
+      description: Persists a validated capability-root-relative path as a scan source after authoritative containment and overlap checks.
+      security: *write-security
+      parameters: *write-parameters
+      requestBody: { $ref: '#/components/requestBodies/CreateInboxDirectoryRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/InboxDirectory' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/inbox-directories/{inboxDirectoryId}:
+    parameters: [{ $ref: '#/components/parameters/InboxDirectoryId' }]
+    get:
+      operationId: getInboxDirectory
+      summary: Read an inbox directory
+      description: Returns one persisted inbox directory and its last observed availability projection.
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/InboxDirectory' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/inbox-directories/{inboxDirectoryId}/scan-tasks:
+    parameters: [{ $ref: '#/components/parameters/InboxDirectoryId' }]
+    post:
+      operationId: createScanTask
+      summary: Create a scan task
+      description: Idempotently accepts a durable background scan for an available inbox directory and returns its initial task projection.
+      security: *write-security
+      parameters:
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/Origin' }
+        - { $ref: '#/components/parameters/SecFetchSite' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      responses:
+        '202': { $ref: '#/components/responses/ScanTask' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/scan-tasks:
+    get:
+      operationId: listScanTasks
+      summary: List scan tasks
+      description: Returns a bounded cursor page of durable scan-task status, recovery, and aggregate-count projections.
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' }]
+      responses:
+        '200': { $ref: '#/components/responses/ScanTaskPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/scan-tasks/{scanTaskId}:
+    parameters: [{ $ref: '#/components/parameters/ScanTaskId' }]
+    get:
+      operationId: getScanTask
+      summary: Read a scan task
+      description: Returns the latest durable projection for one scan task, including recovery state and committed aggregate counts.
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/ScanTask' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/scan-tasks/{scanTaskId}/attempts:
+    parameters: [{ $ref: '#/components/parameters/ScanTaskId' }]
+    post:
+      operationId: retryScanTask
+      summary: Retry a scan task
+      description: Idempotently accepts a new attempt for a failed or partially successful task while retaining already committed facts.
+      security: *write-security
+      parameters:
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/Origin' }
+        - { $ref: '#/components/parameters/SecFetchSite' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      responses:
+        '202': { $ref: '#/components/responses/ScanTask' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/scan-tasks/{scanTaskId}/cancel:
+    parameters: [{ $ref: '#/components/parameters/ScanTaskId' }]
+    post:
+      operationId: cancelScanTask
+      summary: Cancel a scan task
+      description: Idempotently requests cancellation of a queued or running task without deleting facts committed before cancellation.
+      security: *write-security
+      parameters:
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/Origin' }
+        - { $ref: '#/components/parameters/SecFetchSite' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      responses:
+        '202': { $ref: '#/components/responses/ScanTask' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/scan-tasks/{scanTaskId}/files:
+    parameters: [{ $ref: '#/components/parameters/ScanTaskId' }]
+    get:
+      operationId: listScanTaskFiles
+      summary: List discovered files
+      description: Returns a bounded cursor page of file facts committed by the selected scan task.
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' }]
+      responses:
+        '200': { $ref: '#/components/responses/DiscoveredFilePage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/scan-tasks/{scanTaskId}/errors:
+    parameters: [{ $ref: '#/components/parameters/ScanTaskId' }]
+    get:
+      operationId: listScanTaskErrors
+      summary: List scan errors
+      description: Returns a bounded cursor page of durable per-path error aggregates for the selected scan task.
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' }]
+      responses:
+        '200': { $ref: '#/components/responses/ScanErrorPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/integrations/tmdb:
+    get:
+      operationId: getTmdbIntegration
+      summary: Read TMDB integration configuration and health
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/TmdbIntegration' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    put:
+      operationId: putTmdbIntegration
+      summary: Replace TMDB integration configuration
+      security: *write-security
+      parameters:
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/Origin' }
+        - { $ref: '#/components/parameters/SecFetchSite' }
+        - { $ref: '#/components/parameters/IfMatch' }
+      requestBody: { $ref: '#/components/requestBodies/PutTmdbIntegrationRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/TmdbIntegration' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    delete:
+      operationId: deleteTmdbIntegration
+      summary: Delete TMDB integration credentials
+      security: *write-security
+      parameters:
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/Origin' }
+        - { $ref: '#/components/parameters/SecFetchSite' }
+        - { $ref: '#/components/parameters/IfMatch' }
+      responses:
+        '204': { description: TMDB integration deleted. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/integrations/tmdb/connection-tests:
+    post:
+      operationId: testTmdbConnection
+      summary: Test TMDB credentials without saving them
+      security: *write-security
+      parameters: *write-parameters
+      requestBody: { $ref: '#/components/requestBodies/TmdbConnectionTestRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/TmdbConnectionTestResult' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/inbox-directories/{inboxDirectoryId}/discovery-policy:
+    parameters: [{ $ref: '#/components/parameters/InboxDirectoryId' }]
+    get:
+      operationId: getDiscoveryPolicy
+      summary: Read an inbox discovery policy
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/DiscoveryPolicy' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    put:
+      operationId: putDiscoveryPolicy
+      summary: Replace an inbox discovery policy
+      security: *write-security
+      parameters:
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/Origin' }
+        - { $ref: '#/components/parameters/SecFetchSite' }
+        - { $ref: '#/components/parameters/IfMatch' }
+      requestBody: { $ref: '#/components/requestBodies/PutDiscoveryPolicyRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/DiscoveryPolicy' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/processing-tasks:
+    get:
+      operationId: listProcessingTasks
+      summary: List durable per-file processing tasks
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Limit' }
+        - { name: view, in: query, schema: { enum: [pending, running, all, completed], default: pending } }
+        - { name: stage, in: query, schema: { enum: [identification, planning, file-operation, nfo, completion] } }
+        - { name: status, in: query, schema: { enum: [queued, running, waiting-confirmation, paused, partial-success, completed, failed, cancelled] } }
+        - { name: inbox_directory_id, in: query, schema: { type: string, format: uuid } }
+        - { name: q, in: query, schema: { type: string, minLength: 1, maxLength: 200 } }
+      responses:
+        '200': { $ref: '#/components/responses/ProcessingTaskPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/processing-tasks/{processingTaskId}:
+    parameters: [{ $ref: '#/components/parameters/ProcessingTaskId' }]
+    get:
+      operationId: getProcessingTask
+      summary: Read a durable per-file processing task
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/ProcessingTask' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/processing-tasks/{processingTaskId}/identification:
+    parameters: [{ $ref: '#/components/parameters/ProcessingTaskId' }]
+    get:
+      operationId: getProcessingTaskIdentification
+      summary: Read identification evidence, candidates, and decision
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/IdentificationDetail' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/processing-tasks/{processingTaskId}/attempts:
+    parameters: [{ $ref: '#/components/parameters/ProcessingTaskId' }]
+    post:
+      operationId: retryProcessingTask
+      summary: Retry a recoverable processing task
+      security: *write-security
+      parameters:
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/Origin' }
+        - { $ref: '#/components/parameters/SecFetchSite' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      responses:
+        '202': { $ref: '#/components/responses/ProcessingTask' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/processing-tasks/{processingTaskId}/cancel:
+    parameters: [{ $ref: '#/components/parameters/ProcessingTaskId' }]
+    post:
+      operationId: cancelProcessingTask
+      summary: Cancel a queued, running, or paused processing task
+      security: *write-security
+      parameters:
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/Origin' }
+        - { $ref: '#/components/parameters/SecFetchSite' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      responses:
+        '202': { $ref: '#/components/responses/ProcessingTask' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/review-cases:
+    get:
+      operationId: listReviewCases
+      summary: List active identification review cases
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Limit' }
+        - { name: decision_level, in: query, schema: { enum: [probable, ambiguous, unidentified] } }
+        - { name: inbox_directory_id, in: query, schema: { type: string, format: uuid } }
+        - { name: updated_before, in: query, schema: { type: string, format: date-time } }
+      responses:
+        '200': { $ref: '#/components/responses/ReviewCasePage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/review-cases/{reviewCaseId}:
+    parameters: [{ $ref: '#/components/parameters/ReviewCaseId' }]
+    get:
+      operationId: getReviewCase
+      summary: Read one active identification review case
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/ReviewCase' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/review-cases/{reviewCaseId}/candidates:
+    parameters: [{ $ref: '#/components/parameters/ReviewCaseId' }]
+    get:
+      operationId: searchReviewCandidates
+      summary: Search bounded provider candidates for an active review case
+      description: Returns ephemeral safe candidate summaries; reading this endpoint never changes identification history or the active case.
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string, minLength: 1, maxLength: 200 } }
+        - { name: media_type, in: query, required: true, schema: { enum: [movie, tv] } }
+        - { name: locale, in: query, required: true, schema: { type: string, pattern: '^[a-z]{2}-[A-Z]{2}$' } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 20, default: 20 } }
+      responses:
+        '200': { $ref: '#/components/responses/ReviewCandidatePage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/review-cases/{reviewCaseId}/decisions:
+    parameters: [{ $ref: '#/components/parameters/ReviewCaseId' }]
+    post:
+      operationId: submitReviewDecision
+      summary: Submit one immutable manual identification decision
+      description: Accepts a version-bound command and returns a durable receipt before asynchronous re-identification or planning proceeds.
+      security: *write-security
+      parameters:
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/Origin' }
+        - { $ref: '#/components/parameters/SecFetchSite' }
+        - { $ref: '#/components/parameters/ReviewDecisionIdempotencyKey' }
+        - { $ref: '#/components/parameters/ReviewCaseIfMatch' }
+      requestBody: { $ref: '#/components/requestBodies/ReviewDecisionRequest' }
+      responses:
+        '202': { $ref: '#/components/responses/TaskDecisionReceipt' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/media-items:
+    get:
+      operationId: listMediaItems
+      summary: List formal local media records
+      description: Returns only Catalog records established from verified local results; identification candidates and review cases are excluded.
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Limit' }
+        - { name: type, in: query, schema: { enum: [movie, series, generic-video] } }
+        - { name: library_id, in: query, schema: { type: string, format: uuid } }
+        - { name: local_status, in: query, schema: { enum: [complete, partial] } }
+        - { name: q, in: query, schema: { type: string, minLength: 1, maxLength: 200 } }
+      responses:
+        '200': { $ref: '#/components/responses/MediaItemPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/media-items/{mediaItemId}:
+    parameters: [{ $ref: '#/components/parameters/MediaItemId' }]
+    get:
+      operationId: getMediaItem
+      summary: Read one formal local media record
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/MediaItemDetail' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/organization-targets:
+    get:
+      operationId: listOrganizationTargets
+      summary: List versioned organization targets
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' }]
+      responses:
+        '200': { $ref: '#/components/responses/OrganizationTargetPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    post:
+      operationId: createOrganizationTarget
+      summary: Create one versioned organization target and profile
+      security: *write-security
+      parameters: *write-parameters
+      requestBody: { $ref: '#/components/requestBodies/OrganizationTargetInput' }
+      responses:
+        '201': { $ref: '#/components/responses/OrganizationTarget' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/organization-targets/preflights:
+    post:
+      operationId: preflightOrganizationTarget
+      summary: Check one candidate target without persisting or creating it
+      security: *write-security
+      parameters: *write-parameters
+      requestBody: { $ref: '#/components/requestBodies/OrganizationTargetPreflightRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/OrganizationTargetPreflight' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/organization-targets/{organizationTargetId}:
+    parameters: [{ $ref: '#/components/parameters/OrganizationTargetId' }]
+    get:
+      operationId: getOrganizationTarget
+      summary: Read one versioned organization target
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/OrganizationTarget' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    put:
+      operationId: updateOrganizationTarget
+      summary: Replace one organization target, profile, and rule set
+      security: *write-security
+      parameters:
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/Origin' }
+        - { $ref: '#/components/parameters/SecFetchSite' }
+        - { $ref: '#/components/parameters/IfMatch' }
+      requestBody: { $ref: '#/components/requestBodies/OrganizationTargetInput' }
+      responses:
+        '200': { $ref: '#/components/responses/OrganizationTarget' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    delete:
+      operationId: deleteOrganizationTarget
+      summary: Delete an unused local organization target
+      security: *write-security
+      parameters:
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/Origin' }
+        - { $ref: '#/components/parameters/SecFetchSite' }
+        - { $ref: '#/components/parameters/IfMatch' }
+      responses:
+        '204': { description: Organization target deleted without changing media files. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/processing-tasks/{processingTaskId}/organization:
+    parameters: [{ $ref: '#/components/parameters/ProcessingTaskId' }]
+    get:
+      operationId: getProcessingTaskOrganization
+      summary: Read one processing task's organization plan, journal, and local result
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/ProcessingTaskOrganization' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/processing-tasks/{processingTaskId}/organization/recalculations:
+    parameters: [{ $ref: '#/components/parameters/ProcessingTaskId' }]
+    post:
+      operationId: recalculateProcessingTaskOrganization
+      summary: Recalculate one processing task's immutable organization plan
+      security: *write-security
+      parameters:
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/Origin' }
+        - { $ref: '#/components/parameters/SecFetchSite' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      responses:
+        '202': { $ref: '#/components/responses/ProcessingTaskOrganization' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/processing-tasks/{processingTaskId}/organization/executions:
+    parameters: [{ $ref: '#/components/parameters/ProcessingTaskId' }]
+    post:
+      operationId: executeProcessingTaskOrganization
+      summary: Authorize execution of one current safe organization plan
+      security: *write-security
+      parameters:
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/Origin' }
+        - { $ref: '#/components/parameters/SecFetchSite' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody: { $ref: '#/components/requestBodies/OrganizationCommandVersion' }
+      responses:
+        '202': { $ref: '#/components/responses/ProcessingTaskOrganization' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/processing-tasks/{processingTaskId}/organization/rollbacks:
+    parameters: [{ $ref: '#/components/parameters/ProcessingTaskId' }]
+    post:
+      operationId: rollbackProcessingTaskOrganization
+      summary: Roll back only a server-confirmed safe organization result
+      security: *write-security
+      parameters:
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/Origin' }
+        - { $ref: '#/components/parameters/SecFetchSite' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody: { $ref: '#/components/requestBodies/OrganizationCommandVersion' }
+      responses:
+        '202': { $ref: '#/components/responses/ProcessingTaskOrganization' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/downloader-connections:
+    get:
+      operationId: listDownloaderConnections
+      summary: List redacted downloader connections
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' }]
+      responses:
+        '200': { $ref: '#/components/responses/DownloaderConnectionPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    post:
+      operationId: createDownloaderConnection
+      summary: Create an encrypted downloader connection
+      security: *write-security
+      parameters: *write-parameters
+      requestBody: { $ref: '#/components/requestBodies/DownloaderConnectionInput' }
+      responses:
+        '201': { $ref: '#/components/responses/DownloaderConnection' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/downloader-connections/connection-tests:
+    post:
+      operationId: testDownloaderConnection
+      summary: Test candidate downloader credentials without saving them
+      security: *write-security
+      parameters: *write-parameters
+      requestBody: { $ref: '#/components/requestBodies/DownloaderConnectionInput' }
+      responses:
+        '200': { $ref: '#/components/responses/DownloaderConnectionTestResult' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/downloader-connections/{downloaderConnectionId}:
+    parameters: [{ $ref: '#/components/parameters/DownloaderConnectionId' }]
+    get:
+      operationId: getDownloaderConnection
+      summary: Read one redacted downloader connection
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/DownloaderConnection' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    put:
+      operationId: updateDownloaderConnection
+      summary: Replace one encrypted downloader connection
+      security: *write-security
+      parameters:
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/Origin' }
+        - { $ref: '#/components/parameters/SecFetchSite' }
+        - { $ref: '#/components/parameters/IfMatch' }
+      requestBody: { $ref: '#/components/requestBodies/DownloaderConnectionInput' }
+      responses:
+        '200': { $ref: '#/components/responses/DownloaderConnection' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    delete:
+      operationId: deleteDownloaderConnection
+      summary: Delete local downloader credentials without changing remote tasks
+      security: *write-security
+      parameters:
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/Origin' }
+        - { $ref: '#/components/parameters/SecFetchSite' }
+        - { $ref: '#/components/parameters/IfMatch' }
+      responses:
+        '204': { description: Downloader connection deleted locally. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/download-tasks:
+    get:
+      operationId: listDownloadTasks
+      summary: List MediaFlow-owned download tasks
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Limit' }
+        - { name: connection_id, in: query, schema: { type: string, format: uuid } }
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/DownloadTaskStatus' } }
+        - { name: q, in: query, schema: { type: string, minLength: 1, maxLength: 200 } }
+      responses:
+        '200': { $ref: '#/components/responses/DownloadTaskPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    post:
+      operationId: createDownloadTask
+      summary: Accept one replay-safe manual download task
+      security: *write-security
+      parameters:
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/Origin' }
+        - { $ref: '#/components/parameters/SecFetchSite' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      requestBody: { $ref: '#/components/requestBodies/CreateDownloadTaskRequest' }
+      responses:
+        '202': { $ref: '#/components/responses/DownloadTask' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/download-tasks/{downloadTaskId}:
+    parameters: [{ $ref: '#/components/parameters/DownloadTaskId' }]
+    get:
+      operationId: getDownloadTask
+      summary: Read one MediaFlow-owned download task
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/DownloadTask' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/automation-sources:
+    get:
+      operationId: listAutomationSources
+      summary: List redacted automation sources
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/Cursor' }, { $ref: '#/components/parameters/Limit' }]
+      responses:
+        '200': { $ref: '#/components/responses/AutomationSourcePage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    post:
+      operationId: createAutomationSource
+      summary: Create a versioned automation source
+      description: Returns a secret receipt only when a webhook is created; feed URLs and download sources are never returned.
+      security: *write-security
+      parameters: *write-parameters
+      requestBody: { $ref: '#/components/requestBodies/AutomationSourceInput' }
+      responses:
+        '201': { $ref: '#/components/responses/AutomationSourceCreateResult' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/automation-sources/connection-tests:
+    post:
+      operationId: testAutomationSource
+      summary: Test one candidate automation source without saving it
+      security: *write-security
+      parameters: *write-parameters
+      requestBody: { $ref: '#/components/requestBodies/AutomationSourceInput' }
+      responses:
+        '200': { $ref: '#/components/responses/AutomationSourceConnectionTestResult' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/automation-sources/{automationSourceId}:
+    parameters: [{ $ref: '#/components/parameters/AutomationSourceId' }]
+    get:
+      operationId: getAutomationSource
+      summary: Read one redacted automation source
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/AutomationSource' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    put:
+      operationId: updateAutomationSource
+      summary: Replace one versioned automation source
+      security: *write-security
+      parameters:
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/Origin' }
+        - { $ref: '#/components/parameters/SecFetchSite' }
+        - { $ref: '#/components/parameters/IfMatch' }
+      requestBody: { $ref: '#/components/requestBodies/AutomationSourceInput' }
+      responses:
+        '200': { $ref: '#/components/responses/AutomationSource' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    delete:
+      operationId: deleteAutomationSource
+      summary: Delete a disabled source without deleting its history or downstream facts
+      security: *write-security
+      parameters:
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/Origin' }
+        - { $ref: '#/components/parameters/SecFetchSite' }
+        - { $ref: '#/components/parameters/IfMatch' }
+      responses:
+        '204': { description: Automation source deleted; history and downstream facts retained. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/automation-sources/{automationSourceId}/secret-rotations:
+    parameters: [{ $ref: '#/components/parameters/AutomationSourceId' }]
+    post:
+      operationId: rotateAutomationWebhookSecret
+      summary: Rotate and return a webhook secret exactly once
+      security: *write-security
+      parameters:
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/Origin' }
+        - { $ref: '#/components/parameters/SecFetchSite' }
+        - { $ref: '#/components/parameters/IfMatch' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      responses:
+        '200': { $ref: '#/components/responses/WebhookSecretReceipt' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/automation-events:
+    get:
+      operationId: listAutomationEvents
+      summary: List redacted automation events
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Limit' }
+        - { name: source_id, in: query, schema: { type: string, format: uuid } }
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/AutomationEventStatus' } }
+        - { name: action, in: query, schema: { $ref: '#/components/schemas/AutomationAction' } }
+      responses:
+        '200': { $ref: '#/components/responses/AutomationEventPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/automation-events/{automationEventId}:
+    parameters: [{ $ref: '#/components/parameters/AutomationEventId' }]
+    get:
+      operationId: getAutomationEvent
+      summary: Read one redacted automation event
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/AutomationEvent' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/automation-events/{automationEventId}/retries:
+    parameters: [{ $ref: '#/components/parameters/AutomationEventId' }]
+    post:
+      operationId: retryAutomationEvent
+      summary: Idempotently retry a recoverable automation event
+      security: *write-security
+      parameters:
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/Origin' }
+        - { $ref: '#/components/parameters/SecFetchSite' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      responses:
+        '202': { $ref: '#/components/responses/AutomationEvent' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/automation-events/{automationEventId}/cancellations:
+    parameters: [{ $ref: '#/components/parameters/AutomationEventId' }]
+    post:
+      operationId: cancelAutomationEvent
+      summary: Idempotently cancel an event before a downstream action is accepted
+      security: *write-security
+      parameters:
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/Origin' }
+        - { $ref: '#/components/parameters/SecFetchSite' }
+        - { $ref: '#/components/parameters/IdempotencyKey' }
+      responses:
+        '202': { $ref: '#/components/responses/AutomationEvent' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/identification-enhancer:
+    get:
+      operationId: getIdentificationEnhancer
+      summary: Read the redacted local identification enhancer configuration
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/IdentificationEnhancer' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    put:
+      operationId: putIdentificationEnhancer
+      summary: Replace the local identification enhancer configuration
+      security: *write-security
+      parameters:
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/Origin' }
+        - { $ref: '#/components/parameters/SecFetchSite' }
+        - { $ref: '#/components/parameters/IfMatch' }
+      requestBody: { $ref: '#/components/requestBodies/IdentificationEnhancerInput' }
+      responses:
+        '200': { $ref: '#/components/responses/IdentificationEnhancer' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/identification-enhancer/connection-tests:
+    post:
+      operationId: testIdentificationEnhancer
+      summary: Test a candidate local Ollama endpoint without saving it
+      security: *write-security
+      parameters: *write-parameters
+      requestBody: { $ref: '#/components/requestBodies/IdentificationEnhancerInput' }
+      responses:
+        '200': { $ref: '#/components/responses/IdentificationEnhancerConnectionTestResult' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/source-webhooks/{automationSourceId}/events:
+    parameters:
+      - { $ref: '#/components/parameters/AutomationSourceId' }
+      - { name: X-MediaFlow-Timestamp, in: header, required: true, schema: { type: string, pattern: '^[0-9]{10,16}$' } }
+      - { name: X-MediaFlow-Nonce, in: header, required: true, schema: { type: string, minLength: 16, maxLength: 128, pattern: '^[\x21-\x7e]+$' } }
+      - { name: X-MediaFlow-Signature, in: header, required: true, schema: { type: string, pattern: '^sha256=[0-9a-f]{64}$' } }
+    post:
+      operationId: acceptSourceWebhookEvent
+      summary: Accept one signed fixed-shape automation event
+      security: []
+      requestBody: { $ref: '#/components/requestBodies/SourceWebhookEventRequest' }
+      responses:
+        '202': { $ref: '#/components/responses/AutomationEventAccepted' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '413': { description: Signed body exceeds the fixed byte limit. }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/events:
+    get:
+      operationId: streamEvents
+      summary: Stream durable task and health events
+      description: Streams version-one scan, processing, organization, identification, review, catalog, discovery-health, and integration-health events, resuming after Last-Event-ID or reporting a gap when replay is unavailable.
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: Last-Event-ID, in: header, description: Positive event ID no greater than JavaScript MAX_SAFE_INTEGER, schema: { type: integer, minimum: 1, maximum: 9007199254740991 } }
+        - { $ref: '#/components/parameters/Origin' }
+        - { $ref: '#/components/parameters/SecFetchSite' }
+      responses:
+        '200': { description: Task events, content: { text/event-stream: { schema: { type: string } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+components:
+  securitySchemes:
+    cookieAuth: { type: apiKey, in: cookie, name: __Host-mediaflow_session }
+    csrfHeader: { type: apiKey, in: header, name: X-CSRF-Token }
+  parameters:
+    Cursor: { name: cursor, in: query, schema: { type: string, minLength: 1, maxLength: 512 } }
+    Limit: { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+    InboxDirectoryId: { name: inboxDirectoryId, in: path, required: true, schema: { type: string, format: uuid } }
+    ScanTaskId: { name: scanTaskId, in: path, required: true, schema: { type: string, format: uuid } }
+    ProcessingTaskId: { name: processingTaskId, in: path, required: true, schema: { type: string, format: uuid } }
+    ReviewCaseId: { name: reviewCaseId, in: path, required: true, schema: { type: string, format: uuid } }
+    MediaItemId: { name: mediaItemId, in: path, required: true, schema: { type: string, format: uuid } }
+    DownloaderConnectionId: { name: downloaderConnectionId, in: path, required: true, schema: { type: string, format: uuid } }
+    DownloadTaskId: { name: downloadTaskId, in: path, required: true, schema: { type: string, format: uuid } }
+    AutomationSourceId: { name: automationSourceId, in: path, required: true, schema: { type: string, format: uuid } }
+    AutomationEventId: { name: automationEventId, in: path, required: true, schema: { type: string, format: uuid } }
+    OrganizationTargetId: { name: organizationTargetId, in: path, required: true, schema: { type: string, format: uuid } }
+    CsrfToken: { name: X-CSRF-Token, in: header, required: true, schema: { type: string, minLength: 1 } }
+    Origin: { name: Origin, in: header, required: false, description: Exact public origin proof used when Fetch Metadata is absent and checked whenever supplied., schema: { type: string, format: uri } }
+    SecFetchSite: { name: Sec-Fetch-Site, in: header, required: false, description: Browser Fetch Metadata primary same-origin proof; cross-site and malformed values fail closed., schema: { type: string, enum: [same-origin, same-site, cross-site, none] } }
+    IdempotencyKey: { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 255 } }
+    IfMatch: { name: If-Match, in: header, required: true, description: Decimal configuration version expected by the caller., schema: { type: string, pattern: '^[0-9]{1,19}$' } }
+    ReviewDecisionIdempotencyKey: { name: Idempotency-Key, in: header, required: true, description: Bounded key for replaying one exact manual decision request., schema: { type: string, minLength: 8, maxLength: 128 } }
+    ReviewCaseIfMatch: { name: If-Match, in: header, required: true, description: Positive decimal active ReviewCase version expected by the caller., schema: { type: string, pattern: '^[1-9][0-9]{0,18}$' } }
+  requestBodies:
+    BootstrapRequest: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/BootstrapRequest' } } } }
+    LoginRequest: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/LoginRequest' } } } }
+    InboxDirectoryPreflightRequest: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/InboxDirectoryPreflightRequest' } } } }
+    CreateInboxDirectoryRequest: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CreateInboxDirectoryRequest' } } } }
+    PutTmdbIntegrationRequest: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/PutTmdbIntegrationRequest' } } } }
+    TmdbConnectionTestRequest: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/TmdbConnectionTestRequest' } } } }
+    PutDiscoveryPolicyRequest: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/PutDiscoveryPolicyRequest' } } } }
+    ReviewDecisionRequest: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ReviewDecisionRequest' } } } }
+    DownloaderConnectionInput: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/DownloaderConnectionInput' } } } }
+    CreateDownloadTaskRequest: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CreateDownloadTaskRequest' } } } }
+    AutomationSourceInput: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/AutomationSourceInput' } } } }
+    SourceWebhookEventRequest: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/SourceWebhookEventRequest' } } } }
+    IdentificationEnhancerInput: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/IdentificationEnhancerInput' } } } }
+    OrganizationTargetInput: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/OrganizationTargetInput' } } } }
+    OrganizationTargetPreflightRequest: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/OrganizationTargetPreflightRequest' } } } }
+    OrganizationCommandVersion: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/OrganizationCommandVersion' } } } }
+  responses:
+    BootstrapStatus: { description: Bootstrap state, content: { application/json: { schema: { $ref: '#/components/schemas/BootstrapStatusResponse' } } } }
+    BootstrapResponse: { description: Administrator created, content: { application/json: { schema: { $ref: '#/components/schemas/BootstrapResponse' } } } }
+    SessionResponse: { description: Session projection, headers: { Set-Cookie: { description: '__Host-mediaflow_session; Secure; HttpOnly; SameSite=Strict; Path=/', schema: { type: string, pattern: '^__Host-mediaflow_session=[^;]+;\s*Secure;\s*HttpOnly;\s*SameSite=Strict;\s*Path=/$' } } }, content: { application/json: { schema: { $ref: '#/components/schemas/SessionResponse' } } } }
+    DeploymentRootList: { description: Deployment roots, content: { application/json: { schema: { $ref: '#/components/schemas/DeploymentRootList' } } } }
+    InboxDirectoryPreflight: { description: Inbox preflight, content: { application/json: { schema: { $ref: '#/components/schemas/InboxDirectoryPreflight' } } } }
+    InboxDirectoryPage: { description: Inbox directories, content: { application/json: { schema: { $ref: '#/components/schemas/InboxDirectoryPage' } } } }
+    InboxDirectory: { description: Inbox directory, content: { application/json: { schema: { $ref: '#/components/schemas/InboxDirectory' } } } }
+    ScanTaskPage: { description: Scan tasks, content: { application/json: { schema: { $ref: '#/components/schemas/ScanTaskPage' } } } }
+    ScanTask: { description: Scan task, content: { application/json: { schema: { $ref: '#/components/schemas/ScanTask' } } } }
+    DiscoveredFilePage: { description: Discovered files, content: { application/json: { schema: { $ref: '#/components/schemas/DiscoveredFilePage' } } } }
+    ScanErrorPage: { description: Scan errors, content: { application/json: { schema: { $ref: '#/components/schemas/ScanErrorPage' } } } }
+    TmdbIntegration: { description: Redacted TMDB configuration and health, content: { application/json: { schema: { $ref: '#/components/schemas/TmdbIntegration' } } } }
+    TmdbConnectionTestResult: { description: Non-persistent TMDB connection test result, content: { application/json: { schema: { $ref: '#/components/schemas/TmdbConnectionTestResult' } } } }
+    DiscoveryPolicy: { description: Versioned inbox discovery policy, content: { application/json: { schema: { $ref: '#/components/schemas/DiscoveryPolicy' } } } }
+    ProcessingTaskPage: { description: Per-file processing tasks, content: { application/json: { schema: { $ref: '#/components/schemas/ProcessingTaskPage' } } } }
+    ProcessingTask: { description: Per-file processing task, content: { application/json: { schema: { $ref: '#/components/schemas/ProcessingTask' } } } }
+    IdentificationDetail: { description: Bounded identification detail, content: { application/json: { schema: { $ref: '#/components/schemas/IdentificationDetail' } } } }
+    ReviewCasePage: { description: Active identification review cases, content: { application/json: { schema: { $ref: '#/components/schemas/ReviewCasePage' } } } }
+    ReviewCase: { description: Active identification review case, content: { application/json: { schema: { $ref: '#/components/schemas/ReviewCase' } } } }
+    ReviewCandidatePage: { description: Ephemeral bounded provider candidates, content: { application/json: { schema: { $ref: '#/components/schemas/ReviewCandidatePage' } } } }
+    TaskDecisionReceipt: { description: Durable accepted manual decision receipt, content: { application/json: { schema: { $ref: '#/components/schemas/TaskDecisionReceipt' } } } }
+    MediaItemPage: { description: Formal local media records, content: { application/json: { schema: { $ref: '#/components/schemas/MediaItemPage' } } } }
+    MediaItemDetail: { description: Formal local media detail, content: { application/json: { schema: { $ref: '#/components/schemas/MediaItemDetail' } } } }
+    DownloaderConnectionPage: { description: Redacted downloader connections, content: { application/json: { schema: { $ref: '#/components/schemas/DownloaderConnectionPage' } } } }
+    DownloaderConnection: { description: One redacted downloader connection, content: { application/json: { schema: { $ref: '#/components/schemas/DownloaderConnection' } } } }
+    DownloaderConnectionTestResult: { description: Non-persistent downloader connection test result, content: { application/json: { schema: { $ref: '#/components/schemas/DownloaderConnectionTestResult' } } } }
+    DownloadTaskPage: { description: MediaFlow-owned download tasks, content: { application/json: { schema: { $ref: '#/components/schemas/DownloadTaskPage' } } } }
+    DownloadTask: { description: One redacted MediaFlow-owned download task, content: { application/json: { schema: { $ref: '#/components/schemas/DownloadTask' } } } }
+    AutomationSourcePage: { description: Redacted automation sources, content: { application/json: { schema: { $ref: '#/components/schemas/AutomationSourcePage' } } } }
+    AutomationSource: { description: One redacted automation source, content: { application/json: { schema: { $ref: '#/components/schemas/AutomationSource' } } } }
+    AutomationSourceCreateResult: { description: Redacted source or one-time webhook secret receipt, content: { application/json: { schema: { $ref: '#/components/schemas/AutomationSourceCreateResult' } } } }
+    AutomationSourceConnectionTestResult: { description: Non-persistent source health result, content: { application/json: { schema: { $ref: '#/components/schemas/AutomationSourceConnectionTestResult' } } } }
+    WebhookSecretReceipt: { description: One-time webhook secret receipt, content: { application/json: { schema: { $ref: '#/components/schemas/WebhookSecretReceipt' } } } }
+    AutomationEventPage: { description: Redacted automation events, content: { application/json: { schema: { $ref: '#/components/schemas/AutomationEventPage' } } } }
+    AutomationEvent: { description: One redacted automation event, content: { application/json: { schema: { $ref: '#/components/schemas/AutomationEvent' } } } }
+    AutomationEventAccepted: { description: Accepted automation event identity, content: { application/json: { schema: { $ref: '#/components/schemas/AutomationEventAccepted' } } } }
+    IdentificationEnhancer: { description: Redacted local enhancer configuration, content: { application/json: { schema: { $ref: '#/components/schemas/IdentificationEnhancer' } } } }
+    IdentificationEnhancerConnectionTestResult: { description: Non-persistent local enhancer test result, content: { application/json: { schema: { $ref: '#/components/schemas/IdentificationEnhancerConnectionTestResult' } } } }
+    OrganizationTargetPage: { description: Versioned organization targets, content: { application/json: { schema: { $ref: '#/components/schemas/OrganizationTargetPage' } } } }
+    OrganizationTarget: { description: One safe organization target projection, content: { application/json: { schema: { $ref: '#/components/schemas/OrganizationTarget' } } } }
+    OrganizationTargetPreflight: { description: Non-persistent organization target preflight, content: { application/json: { schema: { $ref: '#/components/schemas/OrganizationTargetPreflight' } } } }
+    ProcessingTaskOrganization: { description: "One task's safe plan, journals, and local result", content: { application/json: { schema: { $ref: '#/components/schemas/ProcessingTaskOrganization' } } } }
+    Unauthorized: { description: Authentication required, content: { application/json: { schema: { $ref: '#/components/schemas/ApiErrorBody' } } } }
+    Forbidden: { description: CSRF or Origin rejected, content: { application/json: { schema: { $ref: '#/components/schemas/ApiErrorBody' } } } }
+    NotFound: { description: Resource not found, content: { application/json: { schema: { $ref: '#/components/schemas/ApiErrorBody' } } } }
+    Conflict: { description: Request conflicts with current state, content: { application/json: { schema: { $ref: '#/components/schemas/ApiErrorBody' } } } }
+    ValidationFailed: { description: Request validation failed, content: { application/json: { schema: { $ref: '#/components/schemas/ApiErrorBody' } } } }
+    RateLimited: { description: Request rate limited, content: { application/json: { schema: { $ref: '#/components/schemas/ApiErrorBody' } } } }
+    ServiceUnavailable: { description: Service is not ready, content: { application/json: { schema: { $ref: '#/components/schemas/ApiErrorBody' } } } }
+    InternalError: { description: Internal error, content: { application/json: { schema: { $ref: '#/components/schemas/ApiErrorBody' } } } }
+  schemas:
+    ApiErrorBody:
+      description: Allow-listed API failure envelope with a correlation request ID and optional safe structured details.
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message, request_id]
+          properties:
+            code: { type: string, enum: [bootstrap.already_completed, bootstrap.invalid_secret, auth.invalid_credentials, auth.rate_limited, session.expired, csrf.invalid, origin.untrusted, root.not_found, root.unavailable, path.invalid, path.escape, path.symlink_forbidden, inbox.overlap, inbox.not_found, task.not_found, task.invalid_state, task.lease_lost, integration.not_configured, integration.unauthorized, integration.rate_limited, integration.unsupported-version, provider.unavailable, provider.timeout, provider.response-too-large, provider.invalid-response, download.correlation-ambiguous, download.remote-missing, automation.source-disabled, automation.signature-invalid, automation.replay, automation.action-invalid, automation.payload-invalid, automation.downstream-conflict, organization.root-read-only, organization.target-overlap, organization.target-unavailable, organization.path-outside-root, organization.target-exists, organization.source-changed, organization.hardlink-cross-device, organization.operation-unsupported, organization.journal-ambiguous, revision.changed, event.cursor_expired, request.conflict, validation.failed, internal.error] }
+            message: { type: string }
+            request_id: { type: string, format: uuid }
+            details: { type: object, additionalProperties: { type: [string, number, boolean, 'null'] } }
+    BootstrapStatusResponse:
+      description: Public instance readiness projection indicating whether one-time bootstrap remains required.
+      type: object
+      additionalProperties: false
+      required: [requires_initialization, version]
+      properties: { requires_initialization: { type: boolean }, version: { const: v1 } }
+    BootstrapRequest:
+      description: One-time bootstrap secret and credentials used to create the sole administrator account.
+      type: object
+      additionalProperties: false
+      required: [bootstrap_secret, administrator_name, password]
+      properties: { bootstrap_secret: { type: string, minLength: 1, writeOnly: true }, administrator_name: { type: string, minLength: 1 }, password: { type: string, minLength: 12, writeOnly: true } }
+    BootstrapResponse:
+      description: Administrator account projection returned after the instance is successfully bootstrapped.
+      type: object
+      additionalProperties: false
+      required: [account, version]
+      properties: { account: { $ref: '#/components/schemas/AccountSummary' }, version: { const: v1 } }
+    LoginRequest:
+      description: Administrator credentials submitted to create a secure browser session.
+      type: object
+      additionalProperties: false
+      required: [administrator_name, password]
+      properties: { administrator_name: { type: string, minLength: 1 }, password: { type: string, minLength: 1, writeOnly: true } }
+    AccountSummary:
+      description: Public identity projection for the sole local administrator account.
+      type: object
+      additionalProperties: false
+      required: [id, administrator_name]
+      properties: { id: { type: string, format: uuid }, administrator_name: { type: string } }
+    SessionResponse:
+      description: Authenticated administrator projection and CSRF token associated with the secure session cookie.
+      type: object
+      additionalProperties: false
+      required: [account, csrf_token, version]
+      properties: { account: { $ref: '#/components/schemas/AccountSummary' }, csrf_token: { type: string, minLength: 43 }, version: { const: v1 } }
+    DeploymentRootList:
+      description: Bounded collection of operator-configured filesystem capability roots.
+      type: object
+      additionalProperties: false
+      required: [items, next_cursor]
+      properties: { items: { type: array, maxItems: 100, items: { $ref: '#/components/schemas/DeploymentRoot' } }, next_cursor: { type: [string, 'null'] } }
+    DeploymentRoot:
+      description: Opaque capability-root identity, display label, and permitted access mode without a host absolute path.
+      type: object
+      additionalProperties: false
+      required: [id, label, access]
+      properties: { id: { type: string }, label: { type: string }, access: { enum: [read-only, read-write] } }
+    InboxDirectoryPreflightRequest:
+      description: Capability-root identity and root-relative path to check without persisting state.
+      type: object
+      additionalProperties: false
+      required: [root_id, relative_path]
+      properties: { root_id: { type: string }, relative_path: { type: string, minLength: 1 } }
+    InboxDirectoryPreflight:
+      description: Normalized root-relative path together with authoritative readability and overlap observations.
+      type: object
+      additionalProperties: false
+      required: [root_id, relative_path, readable, overlaps_existing]
+      properties: { root_id: { type: string }, relative_path: { type: string }, readable: { type: boolean }, overlaps_existing: { type: boolean } }
+    CreateInboxDirectoryRequest:
+      description: Capability-root identity and root-relative path submitted for authoritative validation and persistence.
+      type: object
+      additionalProperties: false
+      required: [root_id, relative_path]
+      properties: { root_id: { type: string }, relative_path: { type: string, minLength: 1 } }
+    InboxDirectory:
+      description: Persisted scan-source identity, normalized root-relative path, and last observed availability.
+      type: object
+      additionalProperties: false
+      required: [id, root_id, relative_path, health, last_checked_at]
+      properties: { id: { type: string, format: uuid }, root_id: { type: string }, relative_path: { type: string }, health: { enum: [available, unavailable] }, last_checked_at: { type: string, format: date-time } }
+    InboxDirectoryPage:
+      description: Bounded cursor page of persisted inbox-directory projections.
+      type: object
+      additionalProperties: false
+      required: [items, next_cursor]
+      properties: { items: { type: array, maxItems: 200, items: { $ref: '#/components/schemas/InboxDirectory' } }, next_cursor: { type: [string, 'null'] } }
+    ScanCounts:
+      description: Nonnegative aggregate counts; persisted scan-task projections reflect committed state, while TaskProgressEvent payloads are the latest observed aggregate and must not be treated as persisted facts.
+      type: object
+      additionalProperties: false
+      required: [visited_directories, observed_files, skipped_entries, errors]
+      properties: { visited_directories: { type: integer, minimum: 0, maximum: 9007199254740991 }, observed_files: { type: integer, minimum: 0, maximum: 9007199254740991 }, skipped_entries: { type: integer, minimum: 0, maximum: 9007199254740991 }, errors: { type: integer, minimum: 0, maximum: 9007199254740991 } }
+    ScanTask:
+      description: Durable scan-task identity, lifecycle status, recovery flag, and committed aggregate counts.
+      type: object
+      additionalProperties: false
+      required: [id, inbox_directory_id, status, recovering, counts]
+      properties: { id: { type: string, format: uuid }, inbox_directory_id: { type: string, format: uuid }, status: { enum: [queued, running, partial-success, completed, failed, cancelled] }, recovering: { type: boolean }, counts: { $ref: '#/components/schemas/ScanCounts' } }
+    ScanTaskPage:
+      description: Bounded cursor page of durable scan-task projections.
+      type: object
+      additionalProperties: false
+      required: [items, next_cursor]
+      properties: { items: { type: array, maxItems: 200, items: { $ref: '#/components/schemas/ScanTask' } }, next_cursor: { type: [string, 'null'] } }
+    DiscoveredFile:
+      description: File fact committed by a scan, expressed relative to its inbox directory rather than as a host path.
+      type: object
+      additionalProperties: false
+      required: [id, relative_path, size_bytes, modified_at]
+      properties: { id: { type: string, format: uuid }, relative_path: { type: string }, size_bytes: { type: integer, minimum: 0 }, modified_at: { type: string, format: date-time } }
+    DiscoveredFilePage:
+      description: Bounded cursor page of file facts committed by one scan task.
+      type: object
+      additionalProperties: false
+      required: [items, next_cursor]
+      properties: { items: { type: array, maxItems: 200, items: { $ref: '#/components/schemas/DiscoveredFile' } }, next_cursor: { type: [string, 'null'] } }
+    ScanError:
+      description: Durable per-path scan failure aggregate with its stable code and occurrence count.
+      type: object
+      additionalProperties: false
+      required: [id, code, relative_path, occurrences]
+      properties: { id: { type: string, format: uuid }, code: { type: string }, relative_path: { type: string }, occurrences: { type: integer, minimum: 1 } }
+    ScanErrorPage:
+      description: Bounded cursor page of error aggregates committed by one scan task.
+      type: object
+      additionalProperties: false
+      required: [items, next_cursor]
+      properties: { items: { type: array, maxItems: 200, items: { $ref: '#/components/schemas/ScanError' } }, next_cursor: { type: [string, 'null'] } }
+    TmdbIntegration:
+      description: Redacted TMDB configuration and health projection; credentials and ciphertext are never returned.
+      type: object
+      additionalProperties: false
+      required: [kind, configured, locale, region, config_version, health, checked_at, failure_code]
+      properties:
+        kind: { const: tmdb }
+        configured: { type: boolean }
+        locale: { type: string, pattern: '^[a-z]{2}-[A-Z]{2}$', default: zh-CN }
+        region: { type: [string, 'null'], pattern: '^[A-Z]{2}$' }
+        config_version: { type: integer, minimum: 0, maximum: 9007199254740991 }
+        health: { enum: [unconfigured, healthy, degraded, unavailable, unauthorized, rate-limited] }
+        checked_at: { type: [string, 'null'], format: date-time }
+        failure_code: { oneOf: [{ $ref: '#/components/schemas/IntegrationFailureCode' }, { type: 'null' }] }
+    PutTmdbIntegrationRequest:
+      description: TMDB API Read Access Token and non-sensitive locale preferences.
+      type: object
+      additionalProperties: false
+      required: [api_read_access_token, locale, region]
+      properties:
+        api_read_access_token: { type: string, minLength: 16, maxLength: 4096, writeOnly: true }
+        locale: { type: string, pattern: '^[a-z]{2}-[A-Z]{2}$', default: zh-CN }
+        region: { type: [string, 'null'], pattern: '^[A-Z]{2}$' }
+    TmdbConnectionTestRequest:
+      description: Candidate TMDB credentials used only for a non-persistent connection test.
+      type: object
+      additionalProperties: false
+      required: [api_read_access_token, locale, region]
+      properties:
+        api_read_access_token: { type: string, minLength: 16, maxLength: 4096, writeOnly: true }
+        locale: { type: string, pattern: '^[a-z]{2}-[A-Z]{2}$', default: zh-CN }
+        region: { type: [string, 'null'], pattern: '^[A-Z]{2}$' }
+    TmdbConnectionTestResult:
+      description: Stable, redacted outcome of a non-persistent TMDB connection test.
+      type: object
+      additionalProperties: false
+      required: [reachable, health, failure_code, checked_at]
+      properties:
+        reachable: { type: boolean }
+        health: { enum: [healthy, degraded, unavailable, unauthorized, rate-limited] }
+        failure_code: { oneOf: [{ $ref: '#/components/schemas/IntegrationFailureCode' }, { type: 'null' }] }
+        checked_at: { type: string, format: date-time }
+    DiscoveryPolicy:
+      description: Versioned stability and reconciliation policy for one inbox directory.
+      type: object
+      additionalProperties: false
+      required: [inbox_directory_id, minimum_age_seconds, stable_observation_interval_seconds, reconcile_interval_seconds, watcher_enabled, config_version]
+      properties:
+        inbox_directory_id: { type: string, format: uuid }
+        minimum_age_seconds: { type: integer, minimum: 0, maximum: 86400, default: 60 }
+        stable_observation_interval_seconds: { type: integer, minimum: 1, maximum: 86400, default: 30 }
+        reconcile_interval_seconds: { type: integer, minimum: 60, maximum: 604800, default: 900 }
+        watcher_enabled: { type: boolean, default: true }
+        config_version: { type: integer, minimum: 1, maximum: 9007199254740991 }
+    PutDiscoveryPolicyRequest:
+      description: Replacement stability and reconciliation settings for one inbox directory.
+      type: object
+      additionalProperties: false
+      required: [minimum_age_seconds, stable_observation_interval_seconds, reconcile_interval_seconds, watcher_enabled]
+      properties:
+        minimum_age_seconds: { type: integer, minimum: 0, maximum: 86400, default: 60 }
+        stable_observation_interval_seconds: { type: integer, minimum: 1, maximum: 86400, default: 30 }
+        reconcile_interval_seconds: { type: integer, minimum: 60, maximum: 604800, default: 900 }
+        watcher_enabled: { type: boolean, default: true }
+    IntegrationHealth:
+      description: Stable redacted health classification shared by built-in integrations.
+      type: string
+      enum: [unconfigured, healthy, degraded, unavailable, unauthorized, rate-limited]
+    IntegrationFailureCode:
+      description: Stable redacted failure classification for TMDB connection and health projections.
+      type: string
+      enum: [integration.not-configured, integration.unauthorized, integration.rate-limited, integration.unavailable, provider.timeout, provider.response-too-large, provider.invalid-response]
+    StableReason:
+      description: Stable explainable reason shared by processing, identification, review, and health projections.
+      type: string
+      enum: [identification.ambiguous, identification.confirmed-external-id, identification.confirmed-title-year, identification.multiple-strong-candidates, identification.no-candidate, identification.probable-title, identification.provider-unavailable, identification.provider-unauthorized, identification.revision-changed, auxiliary.sample, auxiliary.trailer, auxiliary.extra, watcher.unavailable, reconcile.failed, integration.unconfigured, integration.healthy, integration.unauthorized, integration.rate-limited, integration.unavailable, organization.plan-paused, organization.io-temporary, organization.manual-review, organization.nfo-failed, organization.catalog-unavailable]
+    EvidenceReason:
+      description: Stable provenance rule that produced one normalized evidence item.
+      type: string
+      enum: [filename.title, filename.year, filename.episode, filename.media-type, nfo.external-id, nfo.title, nfo.year, nfo.episode, tmdb.external-id-verified, tmdb.title-match, tmdb.alias-match, tmdb.year-match, tmdb.episode-exists, system.conflict, system.provider-unavailable]
+    ProcessingTask:
+      description: Durable processing lifecycle bound to one immutable file revision.
+      type: object
+      additionalProperties: false
+      required: [id, inbox_directory_id, file_revision_id, relative_path, status, stage, checkpoint, decision_checkpoint, current_task_decision_id, reason, recovering, attempt_count, next_retry_at, allowed_actions, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        inbox_directory_id: { type: string, format: uuid }
+        file_revision_id: { type: string, format: uuid }
+        relative_path: { type: string, minLength: 1, maxLength: 4096 }
+        status: { enum: [queued, running, waiting-confirmation, paused, cancelled, partial-success, completed, failed] }
+        stage: { enum: [identification, planning, file-operation, nfo, completion] }
+        checkpoint: { enum: [pending, identification-complete, planning-requested, plan-prepared, execution-authorized, planning-paused, file-operation-prepared, file-operation-executing, file-operation-verified, file-operation-manual-review, nfo-pending, nfo-verified, nfo-failed, local-result-prepared, catalog-committed, waiting-confirmation, dependency-blocked, skipped-auxiliary, cancelled] }
+        decision_checkpoint: { type: [string, 'null'], enum: [manual-decision-pending, rematch-pending, generic-video-selected, planning-requested, null] }
+        current_task_decision_id: { type: [string, 'null'], format: uuid }
+        reason: { oneOf: [{ $ref: '#/components/schemas/StableReason' }, { type: 'null' }] }
+        recovering: { type: boolean }
+        attempt_count: { type: integer, minimum: 0, maximum: 9007199254740991 }
+        next_retry_at: { type: [string, 'null'], format: date-time }
+        allowed_actions: { type: array, maxItems: 8, uniqueItems: true, items: { enum: [review, retry, cancel] } }
+        updated_at: { type: string, format: date-time }
+    TaskCenterSummary:
+      description: Counts evaluated with the same task-center snapshot semantics as the page.
+      type: object
+      additionalProperties: false
+      required: [pending, running, all, completed, snapshot_version]
+      properties:
+        pending: { type: integer, minimum: 0, maximum: 9007199254740991 }
+        running: { type: integer, minimum: 0, maximum: 9007199254740991 }
+        all: { type: integer, minimum: 0, maximum: 9007199254740991 }
+        completed: { type: integer, minimum: 0, maximum: 9007199254740991 }
+        snapshot_version: { type: integer, minimum: 0, maximum: 9007199254740991 }
+    ProcessingTaskPage:
+      description: Bounded stable cursor page of per-file processing tasks.
+      type: object
+      additionalProperties: false
+      required: [items, next_cursor, summary]
+      properties: { items: { type: array, maxItems: 200, items: { $ref: '#/components/schemas/ProcessingTask' } }, next_cursor: { type: [string, 'null'], maxLength: 512 }, summary: { $ref: '#/components/schemas/TaskCenterSummary' } }
+    FileRevisionSummary:
+      description: Safe immutable file revision summary without a host absolute path.
+      type: object
+      additionalProperties: false
+      required: [id, inbox_directory_id, relative_path, size_bytes, modified_at, stability]
+      properties:
+        id: { type: string, format: uuid }
+        inbox_directory_id: { type: string, format: uuid }
+        relative_path: { type: string, minLength: 1, maxLength: 4096 }
+        size_bytes: { type: integer, minimum: 0, maximum: 9007199254740991 }
+        modified_at: { type: string, format: date-time }
+        stability: { enum: [observing, stable, missing, superseded, skipped-auxiliary] }
+    IdentificationEvidence:
+      description: Bounded normalized evidence item; source payloads and NFO source text are excluded.
+      type: object
+      additionalProperties: false
+      required: [id, source, kind, value, strength, reason]
+      properties:
+        id: { type: string, format: uuid }
+        source: { enum: [filename, nfo, tmdb, cache, system] }
+        kind: { enum: [external-id, title, alias, year, episode, media-type, conflict, availability] }
+        value: { type: string, maxLength: 1024 }
+        strength: { enum: [strong, supporting, conflicting] }
+        reason: { $ref: '#/components/schemas/EvidenceReason' }
+    CandidateEpisode:
+      description: Episode identity associated with a TV candidate.
+      type: object
+      additionalProperties: false
+      required: [season_number, episode_number]
+      properties:
+        season_number: { type: integer, minimum: 0, maximum: 9999 }
+        episode_number: { type: integer, minimum: 0, maximum: 99999 }
+    IdentificationCandidate:
+      description: Bounded provider candidate and explainable ranking projection.
+      type: object
+      additionalProperties: false
+      required: [id, provider, media_type, provider_id, title, original_title, year, locale, ranking_score, episodes]
+      properties:
+        id: { type: string, format: uuid }
+        provider: { enum: [tmdb] }
+        media_type: { enum: [movie, tv] }
+        provider_id: { type: string, minLength: 1, maxLength: 128 }
+        title: { type: string, minLength: 1, maxLength: 512 }
+        original_title: { type: [string, 'null'], maxLength: 512 }
+        year: { type: [integer, 'null'], minimum: 1870, maximum: 9999 }
+        locale: { type: string, pattern: '^[a-z]{2}-[A-Z]{2}$' }
+        ranking_score: { type: integer, minimum: 0, maximum: 100 }
+        episodes: { type: array, maxItems: 100, items: { $ref: '#/components/schemas/CandidateEpisode' } }
+    IdentificationDecision:
+      description: Immutable explainable identification outcome for one attempt.
+      type: object
+      additionalProperties: false
+      required: [id, level, reason, candidate_id, retry_at, decided_at]
+      properties:
+        id: { type: string, format: uuid }
+        level: { enum: [confirmed, probable, ambiguous, unidentified, blocked] }
+        reason: { $ref: '#/components/schemas/StableReason' }
+        candidate_id: { type: [string, 'null'], format: uuid }
+        retry_at: { type: [string, 'null'], format: date-time }
+        decided_at: { type: string, format: date-time }
+    IdentificationDetail:
+      description: Bounded evidence, candidate, and decision history projection for one processing task.
+      type: object
+      additionalProperties: false
+      required: [review_case_id, task, revision, decision, evidence, candidates, evidence_truncated, candidates_truncated]
+      properties:
+        review_case_id: { type: [string, 'null'], format: uuid }
+        task: { $ref: '#/components/schemas/ProcessingTask' }
+        revision: { $ref: '#/components/schemas/FileRevisionSummary' }
+        decision: { oneOf: [{ $ref: '#/components/schemas/IdentificationDecision' }, { type: 'null' }] }
+        evidence: { type: array, maxItems: 200, items: { $ref: '#/components/schemas/IdentificationEvidence' } }
+        candidates: { type: array, maxItems: 100, items: { $ref: '#/components/schemas/IdentificationCandidate' } }
+        evidence_truncated: { type: boolean }
+        candidates_truncated: { type: boolean }
+    ReviewCase:
+      description: Rebuildable read model for one probable, ambiguous, or unidentified decision.
+      type: object
+      additionalProperties: false
+      required: [id, task_id, file_revision_id, inbox_directory_id, relative_path, level, reason, title_hint, version, allowed_actions, latest_task_decision, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        task_id: { type: string, format: uuid }
+        file_revision_id: { type: string, format: uuid }
+        inbox_directory_id: { type: string, format: uuid }
+        relative_path: { type: string, minLength: 1, maxLength: 4096 }
+        level: { enum: [probable, ambiguous, unidentified] }
+        reason: { $ref: '#/components/schemas/StableReason' }
+        title_hint: { type: [string, 'null'], maxLength: 512 }
+        version: { type: integer, minimum: 1, maximum: 9007199254740991 }
+        allowed_actions: { type: array, maxItems: 3, uniqueItems: true, items: { enum: [select-provider-candidate, rematch-with-hints, select-generic-video] } }
+        latest_task_decision: { oneOf: [{ $ref: '#/components/schemas/TaskDecisionSummary' }, { type: 'null' }] }
+        updated_at: { type: string, format: date-time }
+    ReviewCasePage:
+      description: Bounded stable cursor page of active identification review cases.
+      type: object
+      additionalProperties: false
+      required: [items, next_cursor]
+      properties: { items: { type: array, maxItems: 200, items: { $ref: '#/components/schemas/ReviewCase' } }, next_cursor: { type: [string, 'null'], maxLength: 512 } }
+    TaskDecisionSummary:
+      description: Safe immutable decision identity plus its separately projected application state.
+      type: object
+      additionalProperties: false
+      required: [id, kind, state, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { enum: [select-provider-candidate, rematch-with-hints, select-generic-video] }
+        state: { enum: [accepted, applied, failed] }
+        created_at: { type: string, format: date-time }
+    SelectProviderCandidateCommand:
+      type: object
+      additionalProperties: false
+      required: [kind, provider, media_type, provider_id, save_feedback]
+      properties:
+        kind: { const: select-provider-candidate }
+        provider: { const: tmdb }
+        media_type: { enum: [movie, tv] }
+        provider_id: { type: string, minLength: 1, maxLength: 64 }
+        save_feedback: { type: boolean, default: false }
+    RematchWithHintsCommand:
+      type: object
+      additionalProperties: false
+      required: [kind, media_type, title, year, season, episodes, save_feedback]
+      properties:
+        kind: { const: rematch-with-hints }
+        media_type: { enum: [movie, tv] }
+        title: { type: string, minLength: 1, maxLength: 200 }
+        year: { type: [integer, 'null'], minimum: 1870, maximum: 2200 }
+        season: { type: [integer, 'null'], minimum: 0, maximum: 999 }
+        episodes: { type: array, maxItems: 32, uniqueItems: true, items: { type: integer, minimum: 0, maximum: 9999 } }
+        save_feedback: { type: boolean, default: false }
+    SelectGenericVideoCommand:
+      type: object
+      additionalProperties: false
+      required: [kind, display_title, group_hint, save_grouping_feedback]
+      properties:
+        kind: { const: select-generic-video }
+        display_title: { type: string, minLength: 1, maxLength: 200 }
+        group_hint: { type: [string, 'null'], maxLength: 200 }
+        save_grouping_feedback: { type: boolean, default: false }
+    ReviewDecisionRequest:
+      discriminator: { propertyName: kind }
+      oneOf:
+        - { $ref: '#/components/schemas/SelectProviderCandidateCommand' }
+        - { $ref: '#/components/schemas/RematchWithHintsCommand' }
+        - { $ref: '#/components/schemas/SelectGenericVideoCommand' }
+    TaskDecisionReceipt:
+      description: Accepted immutable decision and its current asynchronous application state.
+      type: object
+      additionalProperties: false
+      required: [id, task_id, review_case_id, case_version, kind, state, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        task_id: { type: string, format: uuid }
+        review_case_id: { type: string, format: uuid }
+        case_version: { type: integer, minimum: 1, maximum: 9007199254740991 }
+        kind: { enum: [select-provider-candidate, rematch-with-hints, select-generic-video] }
+        state: { enum: [accepted, applied] }
+        created_at: { type: string, format: date-time }
+    ReviewCandidate:
+      description: Ephemeral safe provider summary; remote artwork URLs and raw payloads are excluded.
+      type: object
+      additionalProperties: false
+      required: [provider, media_type, provider_id, title, original_title, year, locale]
+      properties:
+        provider: { const: tmdb }
+        media_type: { enum: [movie, tv] }
+        provider_id: { type: string, minLength: 1, maxLength: 64 }
+        title: { type: string, minLength: 1, maxLength: 512 }
+        original_title: { type: [string, 'null'], maxLength: 512 }
+        year: { type: [integer, 'null'], minimum: 1870, maximum: 9999 }
+        locale: { type: string, pattern: '^[a-z]{2}-[A-Z]{2}$' }
+    ReviewCandidatePage:
+      description: Bounded ephemeral candidate search results.
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties: { items: { type: array, maxItems: 20, items: { $ref: '#/components/schemas/ReviewCandidate' } } }
+    ArtworkRef:
+      description: Opaque local artwork identity; no remote provider URL is exposed to the browser.
+      type: object
+      additionalProperties: false
+      required: [id, kind, state]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { enum: [poster, backdrop] }
+        state: { enum: [available, missing] }
+    MediaItemSummary:
+      description: Formal local media summary created only from a verified local result.
+      type: object
+      additionalProperties: false
+      required: [id, type, library_id, title, year, local_status, artwork_ref, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        type: { enum: [movie, series, generic-video] }
+        library_id: { type: string, format: uuid }
+        title: { type: string, minLength: 1, maxLength: 512 }
+        year: { type: [integer, 'null'], minimum: 1870, maximum: 9999 }
+        local_status: { enum: [complete, partial] }
+        artwork_ref: { oneOf: [{ $ref: '#/components/schemas/ArtworkRef' }, { type: 'null' }] }
+        updated_at: { type: string, format: date-time }
+    MediaMetadataValue:
+      type: object
+      additionalProperties: false
+      required: [field, value, state, source_type, source_id, source_version]
+      properties:
+        field: { type: string, minLength: 1, maxLength: 64 }
+        value: { type: [string, 'null'], maxLength: 4096 }
+        state: { enum: [present, missing] }
+        source_type: { type: [string, 'null'], enum: [tmdb, nfo, manual, system, null] }
+        source_id: { type: [string, 'null'], maxLength: 128 }
+        source_version: { type: [string, 'null'], maxLength: 64 }
+    MediaFileAsset:
+      type: object
+      additionalProperties: false
+      required: [id, source_relative_path, current_relative_path, size_bytes]
+      properties:
+        id: { type: string, format: uuid }
+        source_relative_path: { type: string, minLength: 1, maxLength: 4096 }
+        current_relative_path: { type: string, minLength: 1, maxLength: 4096 }
+        size_bytes: { type: integer, minimum: 0, maximum: 9007199254740991 }
+    MediaVersion:
+      type: object
+      additionalProperties: false
+      required: [id, label, files]
+      properties:
+        id: { type: string, format: uuid }
+        label: { type: [string, 'null'], maxLength: 128 }
+        files: { type: array, maxItems: 32, items: { $ref: '#/components/schemas/MediaFileAsset' } }
+    MediaChild:
+      description: Bounded season, episode, generic-video member, or other Catalog hierarchy child.
+      type: object
+      additionalProperties: false
+      required: [id, parent_id, type, title, ordinal, versions]
+      properties:
+        id: { type: string, format: uuid }
+        parent_id: { type: [string, 'null'], format: uuid }
+        type: { enum: [season, episode, generic-video-item] }
+        title: { type: string, minLength: 1, maxLength: 512 }
+        ordinal: { type: integer, minimum: 0, maximum: 99999 }
+        versions: { type: array, maxItems: 32, items: { $ref: '#/components/schemas/MediaVersion' } }
+    MediaItemPage:
+      description: Bounded cursor page containing only formal local media records.
+      type: object
+      additionalProperties: false
+      required: [items, next_cursor]
+      properties: { items: { type: array, maxItems: 200, items: { $ref: '#/components/schemas/MediaItemSummary' } }, next_cursor: { type: [string, 'null'], maxLength: 512 } }
+    MediaItemDetail:
+      description: Bounded formal media hierarchy and verified local result state without Jellyfin fields.
+      type: object
+      additionalProperties: false
+      required: [item, metadata, versions, children, nfo_status, related_task_ids]
+      properties:
+        item: { $ref: '#/components/schemas/MediaItemSummary' }
+        metadata: { type: array, maxItems: 64, items: { $ref: '#/components/schemas/MediaMetadataValue' } }
+        versions: { type: array, maxItems: 32, items: { $ref: '#/components/schemas/MediaVersion' } }
+        children: { type: array, maxItems: 200, items: { $ref: '#/components/schemas/MediaChild' } }
+        nfo_status: { enum: [not-requested, complete, partial, failed] }
+        related_task_ids: { type: array, maxItems: 32, uniqueItems: true, items: { type: string, format: uuid } }
+    OrganizationTargetKind:
+      description: Fixed target content kind supported by the M3 organization slice.
+      type: string
+      enum: [movie, series, generic-video]
+    OrganizationOperation:
+      description: Fixed file operation selected by one target profile; execution never silently substitutes another value.
+      type: string
+      enum: [move, copy, hardlink]
+    OrganizationNfoPolicy:
+      description: Existing NFO is always preserved; generate-missing may create only an absent bounded NFO.
+      type: string
+      enum: [preserve-only, generate-missing]
+    OrganizationRule:
+      description: Bounded structured rule without scripts, regular expressions, or external commands.
+      type: object
+      additionalProperties: false
+      required: [media_kind, inbox_directory_id, explicit_tag, enabled]
+      properties:
+        media_kind: { $ref: '#/components/schemas/OrganizationTargetKind' }
+        inbox_directory_id: { type: [string, 'null'], format: uuid }
+        explicit_tag: { type: [string, 'null'], minLength: 1, maxLength: 100, pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$' }
+        enabled: { type: boolean }
+    OrganizationTargetInput:
+      description: One target, fixed profile, and bounded rule set expressed only by deployment root ID and safe relative path.
+      type: object
+      additionalProperties: false
+      required: [kind, display_name, root_id, relative_path, operation, naming_pattern, nfo_policy, automatic, enabled, rules]
+      properties:
+        kind: { $ref: '#/components/schemas/OrganizationTargetKind' }
+        display_name: { type: string, minLength: 1, maxLength: 100 }
+        root_id: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$' }
+        relative_path: { type: string, minLength: 1, maxLength: 4096 }
+        operation: { $ref: '#/components/schemas/OrganizationOperation' }
+        naming_pattern: { enum: [movie, series, generic-numbered] }
+        nfo_policy: { $ref: '#/components/schemas/OrganizationNfoPolicy' }
+        automatic: { type: boolean }
+        enabled: { type: boolean }
+        rules: { type: array, maxItems: 100, items: { $ref: '#/components/schemas/OrganizationRule' } }
+    OrganizationTarget:
+      description: Versioned target and profile projection without deployment-private locations.
+      type: object
+      additionalProperties: false
+      required: [id, kind, display_name, root_id, relative_path, operation, naming_pattern, nfo_policy, automatic, enabled, rules, config_version, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { $ref: '#/components/schemas/OrganizationTargetKind' }
+        display_name: { type: string, minLength: 1, maxLength: 100 }
+        root_id: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$' }
+        relative_path: { type: string, minLength: 1, maxLength: 4096 }
+        operation: { $ref: '#/components/schemas/OrganizationOperation' }
+        naming_pattern: { enum: [movie, series, generic-numbered] }
+        nfo_policy: { $ref: '#/components/schemas/OrganizationNfoPolicy' }
+        automatic: { type: boolean }
+        enabled: { type: boolean }
+        rules: { type: array, maxItems: 100, items: { $ref: '#/components/schemas/OrganizationRule' } }
+        config_version: { type: integer, minimum: 1, maximum: 9007199254740991 }
+        updated_at: { type: string, format: date-time }
+    OrganizationTargetPage:
+      description: Stable cursor page of safe organization target projections.
+      type: object
+      additionalProperties: false
+      required: [items, next_cursor]
+      properties:
+        items: { type: array, maxItems: 200, items: { $ref: '#/components/schemas/OrganizationTarget' } }
+        next_cursor: { type: [string, 'null'], maxLength: 512 }
+    OrganizationTargetPreflightRequest:
+      description: Candidate root and relative path checked without persistence or directory creation.
+      type: object
+      additionalProperties: false
+      required: [root_id, relative_path]
+      properties:
+        root_id: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$' }
+        relative_path: { type: string, minLength: 1, maxLength: 4096 }
+    OrganizationTargetPreflight:
+      description: Safe non-persistent target capability and overlap result.
+      type: object
+      additionalProperties: false
+      required: [root_id, relative_path, writable, overlaps_existing, same_filesystem_hint, failure_code]
+      properties:
+        root_id: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$' }
+        relative_path: { type: string, minLength: 1, maxLength: 4096 }
+        writable: { type: boolean }
+        overlaps_existing: { type: boolean }
+        same_filesystem_hint: { type: [boolean, 'null'] }
+        failure_code: { type: [string, 'null'], enum: [organization.root-read-only, organization.target-overlap, organization.target-unavailable, null] }
+    OrganizationAuthorization:
+      description: Persisted plan authorization conclusion.
+      type: string
+      enum: [automatic, one-time, paused]
+    OrganizationLocation:
+      description: Capability-root-relative location safe for authenticated task display.
+      type: object
+      additionalProperties: false
+      required: [root_id, relative_path]
+      properties:
+        root_id: { type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$' }
+        relative_path: { type: string, minLength: 1, maxLength: 4096 }
+    OrganizationPlan:
+      description: Immutable organization plan projection with safe locations and bounded risk reasons.
+      type: object
+      additionalProperties: false
+      required: [id, version, target_id, source, destination, operation, naming, authorization, risk_codes, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        version: { type: integer, minimum: 1, maximum: 9007199254740991 }
+        target_id: { type: string, format: uuid }
+        source: { $ref: '#/components/schemas/OrganizationLocation' }
+        destination: { $ref: '#/components/schemas/OrganizationLocation' }
+        operation: { $ref: '#/components/schemas/OrganizationOperation' }
+        naming: { type: string, minLength: 1, maxLength: 512 }
+        authorization: { $ref: '#/components/schemas/OrganizationAuthorization' }
+        risk_codes: { type: array, maxItems: 32, uniqueItems: true, items: { type: string, minLength: 1, maxLength: 100 } }
+        created_at: { type: string, format: date-time }
+    OrganizationJournalStatus:
+      description: Durable state of one file or NFO operation.
+      type: string
+      enum: [prepared, executing, applied, verified, compensated, manual-review]
+    OrganizationJournal:
+      description: Safe projection of one stable planned operation and its latest journal state.
+      type: object
+      additionalProperties: false
+      required: [id, operation_id, kind, status, source, destination, projection_version, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        operation_id: { type: string, format: uuid }
+        kind: { enum: [copy, move, hardlink, source-removal, nfo] }
+        status: { $ref: '#/components/schemas/OrganizationJournalStatus' }
+        source: { oneOf: [{ $ref: '#/components/schemas/OrganizationLocation' }, { type: 'null' }] }
+        destination: { $ref: '#/components/schemas/OrganizationLocation' }
+        projection_version: { type: integer, minimum: 1, maximum: 9007199254740991 }
+        updated_at: { type: string, format: date-time }
+    OrganizationResultStatus:
+      description: User-visible local organization result state.
+      type: string
+      enum: [partial-success, completed, compensated, manual-review]
+    OrganizationLocalResult:
+      description: Actual verified local effects, NFO conclusion, and optional Catalog association.
+      type: object
+      additionalProperties: false
+      required: [id, version, status, nfo_status, catalog_media_item_id, remaining_actions, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        version: { type: integer, minimum: 1, maximum: 9007199254740991 }
+        status: { $ref: '#/components/schemas/OrganizationResultStatus' }
+        nfo_status: { enum: [not-requested, preserved, generated, failed] }
+        catalog_media_item_id: { type: [string, 'null'], format: uuid }
+        remaining_actions: { type: array, maxItems: 32, uniqueItems: true, items: { type: string, minLength: 1, maxLength: 100 } }
+        updated_at: { type: string, format: date-time }
+    OrganizationTaskState:
+      description: Safe aggregate state for the organization section of one ProcessingTask.
+      type: string
+      enum: [not-planned, planned, paused, recovery-pending, partial-success, completed, manual-review]
+    OrganizationTaskAction:
+      description: Server-computed action currently safe for the organization task projection.
+      type: string
+      enum: [recalculate, execute, retry, cancel, rollback]
+    ProcessingTaskOrganization:
+      description: Bounded organization projection without private configuration snapshots, host locations, or file contents.
+      type: object
+      additionalProperties: false
+      required: [task_id, state, plan, journals, local_result, allowed_actions]
+      properties:
+        task_id: { type: string, format: uuid }
+        state: { $ref: '#/components/schemas/OrganizationTaskState' }
+        plan: { oneOf: [{ $ref: '#/components/schemas/OrganizationPlan' }, { type: 'null' }] }
+        journals: { type: array, maxItems: 100, items: { $ref: '#/components/schemas/OrganizationJournal' } }
+        local_result: { oneOf: [{ $ref: '#/components/schemas/OrganizationLocalResult' }, { type: 'null' }] }
+        allowed_actions: { type: array, maxItems: 5, uniqueItems: true, items: { $ref: '#/components/schemas/OrganizationTaskAction' } }
+    OrganizationCommandVersion:
+      description: Exact current plan or local-result version bound to one replay-safe command.
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [plan_version]
+          properties: { plan_version: { type: integer, minimum: 1, maximum: 9007199254740991 } }
+        - type: object
+          additionalProperties: false
+          required: [result_version]
+          properties: { result_version: { type: integer, minimum: 1, maximum: 9007199254740991 } }
+    DownloaderKind:
+      description: Built-in downloader product selected for one connection.
+      type: string
+      enum: [qbittorrent, transmission]
+    DownloaderFailureCode:
+      description: Stable redacted failure classification for downloader connections and MediaFlow-owned download tasks.
+      type: string
+      enum: [integration.not-configured, integration.unauthorized, integration.rate-limited, integration.unavailable, integration.unsupported-version, provider.timeout, provider.response-too-large, provider.invalid-response, download.correlation-ambiguous, download.remote-missing]
+    DownloaderCapabilities:
+      description: Negotiated product and protocol capabilities required by the downloader management slice.
+      type: object
+      additionalProperties: false
+      required: [manual_add, task_monitoring, product_version, api_version]
+      properties:
+        manual_add: { type: boolean }
+        task_monitoring: { type: boolean }
+        product_version: { type: string, minLength: 1, maxLength: 64 }
+        api_version: { type: string, minLength: 1, maxLength: 64 }
+    DownloaderConnectionInput:
+      description: Candidate downloader configuration whose credentials are write-only and never returned.
+      type: object
+      additionalProperties: false
+      required: [kind, display_name, base_url, username, password, enabled]
+      properties:
+        kind: { $ref: '#/components/schemas/DownloaderKind' }
+        display_name: { type: string, minLength: 1, maxLength: 120 }
+        base_url: { type: string, format: uri, minLength: 1, maxLength: 2048 }
+        username: { type: string, maxLength: 256, writeOnly: true }
+        password: { type: string, maxLength: 4096, writeOnly: true }
+        enabled: { type: boolean }
+    DownloaderConnection:
+      description: Redacted versioned downloader connection, capability, and health projection.
+      type: object
+      additionalProperties: false
+      required: [id, kind, display_name, base_url, enabled, config_version, capabilities, health, checked_at, failure_code, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { $ref: '#/components/schemas/DownloaderKind' }
+        display_name: { type: string, minLength: 1, maxLength: 120 }
+        base_url: { type: string, format: uri, maxLength: 2048 }
+        enabled: { type: boolean }
+        config_version: { type: integer, minimum: 1, maximum: 9007199254740991 }
+        capabilities: { oneOf: [{ $ref: '#/components/schemas/DownloaderCapabilities' }, { type: 'null' }] }
+        health: { $ref: '#/components/schemas/IntegrationHealth' }
+        checked_at: { type: [string, 'null'], format: date-time }
+        failure_code: { oneOf: [{ $ref: '#/components/schemas/DownloaderFailureCode' }, { type: 'null' }] }
+        updated_at: { type: string, format: date-time }
+    DownloaderConnectionPage:
+      description: Stable cursor page of redacted downloader connections.
+      type: object
+      additionalProperties: false
+      required: [items, next_cursor]
+      properties:
+        items: { type: array, maxItems: 200, items: { $ref: '#/components/schemas/DownloaderConnection' } }
+        next_cursor: { type: [string, 'null'], maxLength: 512 }
+    DownloaderConnectionTestResult:
+      description: Non-persistent product, protocol, capability, and redacted health result for candidate credentials.
+      type: object
+      additionalProperties: false
+      required: [reachable, health, capabilities, failure_code, checked_at]
+      properties:
+        reachable: { type: boolean }
+        health: { $ref: '#/components/schemas/IntegrationHealth' }
+        capabilities: { oneOf: [{ $ref: '#/components/schemas/DownloaderCapabilities' }, { type: 'null' }] }
+        failure_code: { oneOf: [{ $ref: '#/components/schemas/DownloaderFailureCode' }, { type: 'null' }] }
+        checked_at: { type: string, format: date-time }
+    DownloadTaskStatus:
+      description: Durable local submission and monitoring lifecycle.
+      type: string
+      enum: [queued, submitting, monitoring, retry-wait, completed, failed]
+    RemoteDownloadStatus:
+      description: Product-neutral remote torrent state.
+      type: string
+      enum: [queued, downloading, paused, completed, failed, unknown]
+    CreateDownloadTaskRequest:
+      description: One encrypted manual magnet or HTTPS torrent source associated with a downloader connection.
+      type: object
+      additionalProperties: false
+      required: [connection_id, source, display_name]
+      properties:
+        connection_id: { type: string, format: uuid }
+        source: { type: string, format: uri, minLength: 1, maxLength: 8192, writeOnly: true }
+        display_name: { type: string, minLength: 1, maxLength: 512 }
+    DownloadTask:
+      description: Redacted MediaFlow-owned download task without source, tracker, credential, or remote path fields.
+      type: object
+      additionalProperties: false
+      required: [id, connection_id, connection_display_name, display_name, status, remote_status, progress_basis_points, failure_code, retry_at, linked, projection_version, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        connection_id: { type: string, format: uuid }
+        connection_display_name: { type: string, minLength: 1, maxLength: 120 }
+        display_name: { type: string, minLength: 1, maxLength: 512 }
+        status: { $ref: '#/components/schemas/DownloadTaskStatus' }
+        remote_status: { oneOf: [{ $ref: '#/components/schemas/RemoteDownloadStatus' }, { type: 'null' }] }
+        progress_basis_points: { type: integer, minimum: 0, maximum: 10000 }
+        failure_code: { oneOf: [{ $ref: '#/components/schemas/DownloaderFailureCode' }, { type: 'null' }] }
+        retry_at: { type: [string, 'null'], format: date-time }
+        linked: { type: boolean }
+        projection_version: { type: integer, minimum: 1, maximum: 9007199254740991 }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    DownloadTaskPage:
+      description: Stable cursor page of MediaFlow-owned download tasks.
+      type: object
+      additionalProperties: false
+      required: [items, next_cursor]
+      properties:
+        items: { type: array, maxItems: 200, items: { $ref: '#/components/schemas/DownloadTask' } }
+        next_cursor: { type: [string, 'null'], maxLength: 512 }
+    AutomationSourceKind:
+      description: Fixed built-in source entry; it does not identify an extensible plugin type.
+      type: string
+      enum: [rss, webhook, download-completion]
+    AutomationAction:
+      description: Closed action set accepted by durable automation events.
+      type: string
+      enum: [create-download, reconcile-inbox]
+    AutomationEventStatus:
+      description: Durable automation event lifecycle.
+      type: string
+      enum: [pending, running, retry-wait, completed, failed, cancelled]
+    AutomationFailureCode:
+      description: Stable redacted source, action, and local-enhancer failure category.
+      type: string
+      enum: [automation.source-disabled, automation.signature-invalid, automation.replay, automation.action-invalid, automation.payload-invalid, automation.downstream-conflict, integration.not-configured, integration.unauthorized, integration.rate-limited, integration.unavailable, provider.timeout, provider.response-too-large, provider.invalid-response]
+    RssAutomationSourceInput:
+      description: Candidate RSS or Atom configuration; the feed URL is encrypted and never returned.
+      type: object
+      additionalProperties: false
+      required: [kind, display_name, enabled, feed_url, downloader_connection_id, poll_interval_seconds]
+      properties:
+        kind: { const: rss }
+        display_name: { type: string, minLength: 1, maxLength: 120 }
+        enabled: { type: boolean }
+        feed_url: { type: string, format: uri, minLength: 1, maxLength: 4096, writeOnly: true }
+        downloader_connection_id: { type: string, format: uuid }
+        poll_interval_seconds: { type: integer, minimum: 60, maximum: 86400 }
+    WebhookAutomationSourceInput:
+      description: Signed inbound webhook configuration; its secret is generated by Core.
+      type: object
+      additionalProperties: false
+      required: [kind, display_name, enabled, allowed_actions]
+      properties:
+        kind: { const: webhook }
+        display_name: { type: string, minLength: 1, maxLength: 120 }
+        enabled: { type: boolean }
+        allowed_actions: { type: array, minItems: 1, maxItems: 2, uniqueItems: true, items: { enum: [download.create, inbox.reconcile] } }
+    DownloadCompletionAutomationSourceInput:
+      description: Explicit mapping from one downloader connection to one registered inbox; no remote path is accepted.
+      type: object
+      additionalProperties: false
+      required: [kind, display_name, enabled, downloader_connection_id, inbox_directory_id]
+      properties:
+        kind: { const: download-completion }
+        display_name: { type: string, minLength: 1, maxLength: 120 }
+        enabled: { type: boolean }
+        downloader_connection_id: { type: string, format: uuid }
+        inbox_directory_id: { type: string, format: uuid }
+    AutomationSourceInput:
+      description: Strict built-in automation source input union.
+      discriminator: { propertyName: kind }
+      oneOf:
+        - { $ref: '#/components/schemas/RssAutomationSourceInput' }
+        - { $ref: '#/components/schemas/WebhookAutomationSourceInput' }
+        - { $ref: '#/components/schemas/DownloadCompletionAutomationSourceInput' }
+    AutomationSource:
+      description: Redacted versioned source projection without feed URL, secret, payload, download source, or paths.
+      type: object
+      additionalProperties: false
+      required: [id, kind, display_name, enabled, downloader_connection_id, inbox_directory_id, endpoint_summary, poll_interval_seconds, allowed_actions, secret_fingerprint, config_version, health, checked_at, failure_code, projection_version, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { $ref: '#/components/schemas/AutomationSourceKind' }
+        display_name: { type: string, minLength: 1, maxLength: 120 }
+        enabled: { type: boolean }
+        downloader_connection_id: { type: [string, 'null'], format: uuid }
+        inbox_directory_id: { type: [string, 'null'], format: uuid }
+        endpoint_summary: { type: [string, 'null'], minLength: 1, maxLength: 255 }
+        poll_interval_seconds: { type: [integer, 'null'], minimum: 60, maximum: 86400 }
+        allowed_actions: { type: array, maxItems: 2, uniqueItems: true, items: { enum: [download.create, inbox.reconcile] } }
+        secret_fingerprint: { type: [string, 'null'], pattern: '^[0-9a-f]{8}$' }
+        config_version: { type: integer, minimum: 1, maximum: 9007199254740991 }
+        health: { $ref: '#/components/schemas/IntegrationHealth' }
+        checked_at: { type: [string, 'null'], format: date-time }
+        failure_code: { oneOf: [{ $ref: '#/components/schemas/AutomationFailureCode' }, { type: 'null' }] }
+        projection_version: { type: integer, minimum: 1, maximum: 9007199254740991 }
+        updated_at: { type: string, format: date-time }
+    AutomationSourcePage:
+      description: Stable cursor page of redacted automation sources.
+      type: object
+      additionalProperties: false
+      required: [items, next_cursor]
+      properties:
+        items: { type: array, maxItems: 200, items: { $ref: '#/components/schemas/AutomationSource' } }
+        next_cursor: { type: [string, 'null'], maxLength: 512 }
+    WebhookSecretReceipt:
+      description: One-time secret response; clients must discard the secret after the current interaction.
+      type: object
+      additionalProperties: false
+      required: [source, secret]
+      properties:
+        source: { $ref: '#/components/schemas/AutomationSource' }
+        secret: { type: string, minLength: 43, maxLength: 128, writeOnly: true }
+    AutomationSourceCreateResult:
+      description: Non-webhook sources return a redacted projection; webhook creation returns the one-time secret receipt.
+      oneOf:
+        - { $ref: '#/components/schemas/AutomationSource' }
+        - { $ref: '#/components/schemas/WebhookSecretReceipt' }
+    AutomationSourceConnectionTestResult:
+      description: Bounded non-persistent test result without the candidate endpoint or response body.
+      type: object
+      additionalProperties: false
+      required: [reachable, health, detected_format, item_count, ignored_item_count, failure_code, checked_at]
+      properties:
+        reachable: { type: boolean }
+        health: { $ref: '#/components/schemas/IntegrationHealth' }
+        detected_format: { type: [string, 'null'], enum: [rss-2.0, atom, null] }
+        item_count: { type: integer, minimum: 0, maximum: 500 }
+        ignored_item_count: { type: integer, minimum: 0, maximum: 500 }
+        failure_code: { oneOf: [{ $ref: '#/components/schemas/AutomationFailureCode' }, { type: 'null' }] }
+        checked_at: { type: string, format: date-time }
+    AutomationEvent:
+      description: Redacted event projection without encrypted payload, source material, signature, model text, or paths.
+      type: object
+      additionalProperties: false
+      required: [id, source_id, source_display_name, action, status, downstream_kind, downstream_id, result_count, failure_code, attempt_count, retry_at, allowed_actions, projection_version, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        source_id: { type: string, format: uuid }
+        source_display_name: { type: string, minLength: 1, maxLength: 120 }
+        action: { $ref: '#/components/schemas/AutomationAction' }
+        status: { $ref: '#/components/schemas/AutomationEventStatus' }
+        downstream_kind: { type: [string, 'null'], enum: [download-task, reconcile-request, null] }
+        downstream_id: { type: [string, 'null'], format: uuid }
+        result_count: { type: [integer, 'null'], minimum: 0, maximum: 9007199254740991 }
+        failure_code: { oneOf: [{ $ref: '#/components/schemas/AutomationFailureCode' }, { type: 'null' }] }
+        attempt_count: { type: integer, minimum: 0, maximum: 10 }
+        retry_at: { type: [string, 'null'], format: date-time }
+        allowed_actions: { type: array, maxItems: 2, uniqueItems: true, items: { enum: [retry, cancel] } }
+        projection_version: { type: integer, minimum: 1, maximum: 9007199254740991 }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    AutomationEventPage:
+      description: Stable cursor page of redacted automation events.
+      type: object
+      additionalProperties: false
+      required: [items, next_cursor]
+      properties:
+        items: { type: array, maxItems: 200, items: { $ref: '#/components/schemas/AutomationEvent' } }
+        next_cursor: { type: [string, 'null'], maxLength: 512 }
+    AutomationEventAccepted:
+      description: Minimal receipt returned by the signed inbound Webhook.
+      type: object
+      additionalProperties: false
+      required: [id, status]
+      properties:
+        id: { type: string, format: uuid }
+        status: { enum: [pending, completed] }
+    WebhookCreateDownloadRequest:
+      type: object
+      additionalProperties: false
+      required: [kind, downloader_connection_id, source, display_name]
+      properties:
+        kind: { const: download.create }
+        downloader_connection_id: { type: string, format: uuid }
+        source: { type: string, format: uri, minLength: 1, maxLength: 8192, writeOnly: true }
+        display_name: { type: string, minLength: 1, maxLength: 512 }
+    WebhookReconcileInboxRequest:
+      type: object
+      additionalProperties: false
+      required: [kind, inbox_directory_id]
+      properties:
+        kind: { const: inbox.reconcile }
+        inbox_directory_id: { type: string, format: uuid }
+    SourceWebhookEventRequest:
+      description: Closed signed action union; paths and arbitrary action names are not accepted.
+      discriminator: { propertyName: kind }
+      oneOf:
+        - { $ref: '#/components/schemas/WebhookCreateDownloadRequest' }
+        - { $ref: '#/components/schemas/WebhookReconcileInboxRequest' }
+    IdentificationEnhancerInput:
+      description: Candidate built-in Ollama configuration; only local-network endpoints are accepted by Core.
+      type: object
+      additionalProperties: false
+      required: [enabled, base_url, model, timeout_ms]
+      properties:
+        enabled: { type: boolean }
+        base_url: { type: string, format: uri, minLength: 1, maxLength: 2048 }
+        model: { type: string, minLength: 1, maxLength: 128 }
+        timeout_ms: { type: integer, minimum: 100, maximum: 30000 }
+    IdentificationEnhancer:
+      description: Redacted local enhancer configuration and health without prompts or responses.
+      type: object
+      additionalProperties: false
+      required: [kind, enabled, endpoint_summary, model, timeout_ms, config_version, health, checked_at, fallback_code, projection_version, updated_at]
+      properties:
+        kind: { const: ollama }
+        enabled: { type: boolean }
+        endpoint_summary: { type: string, minLength: 1, maxLength: 255 }
+        model: { type: string, minLength: 1, maxLength: 128 }
+        timeout_ms: { type: integer, minimum: 100, maximum: 30000 }
+        config_version: { type: integer, minimum: 1, maximum: 9007199254740991 }
+        health: { $ref: '#/components/schemas/IntegrationHealth' }
+        checked_at: { type: [string, 'null'], format: date-time }
+        fallback_code: { oneOf: [{ $ref: '#/components/schemas/AutomationFailureCode' }, { type: 'null' }] }
+        projection_version: { type: integer, minimum: 1, maximum: 9007199254740991 }
+        updated_at: { type: string, format: date-time }
+    IdentificationEnhancerConnectionTestResult:
+      description: Non-persistent Ollama capability and health result without raw protocol bodies.
+      type: object
+      additionalProperties: false
+      required: [reachable, health, adapter_version, model_available, fallback_code, checked_at]
+      properties:
+        reachable: { type: boolean }
+        health: { $ref: '#/components/schemas/IntegrationHealth' }
+        adapter_version: { type: string, minLength: 1, maxLength: 64 }
+        model_available: { type: boolean }
+        fallback_code: { oneOf: [{ $ref: '#/components/schemas/AutomationFailureCode' }, { type: 'null' }] }
+        checked_at: { type: string, format: date-time }
+    TaskEventEnvelope:
+      description: Version-one union of scan, processing, organization, download, automation, identification, review, catalog, health, and stream-gap event envelopes.
+      oneOf:
+        - { $ref: '#/components/schemas/TaskProgressEvent' }
+        - { $ref: '#/components/schemas/TaskStateChangedEvent' }
+        - { $ref: '#/components/schemas/ProcessingTaskStateChangedEvent' }
+        - { $ref: '#/components/schemas/ProcessingTaskIdentificationDecidedEvent' }
+        - { $ref: '#/components/schemas/InboxDiscoveryHealthChangedEvent' }
+        - { $ref: '#/components/schemas/IntegrationHealthChangedEvent' }
+        - { $ref: '#/components/schemas/TaskDecisionAcceptedEvent' }
+        - { $ref: '#/components/schemas/ReviewCaseUpdatedEvent' }
+        - { $ref: '#/components/schemas/CatalogMediaChangedEvent' }
+        - { $ref: '#/components/schemas/DownloadTaskChangedEvent' }
+        - { $ref: '#/components/schemas/OrganizationTargetChangedEvent' }
+        - { $ref: '#/components/schemas/OrganizationResultChangedEvent' }
+        - { $ref: '#/components/schemas/AutomationSourceChangedEvent' }
+        - { $ref: '#/components/schemas/AutomationEventChangedEvent' }
+        - { $ref: '#/components/schemas/IdentificationEnhancerChangedEvent' }
+        - { $ref: '#/components/schemas/StreamGapEvent' }
+    TaskProgressEvent:
+      description: Monotonic event carrying the latest aggregate counts observed for one scan task.
+      type: object
+      additionalProperties: false
+      required: [id, type, schema_version, occurred_at, task_id, payload]
+      properties: { id: { type: integer, minimum: 1, maximum: 9007199254740991 }, type: { const: task.progress }, schema_version: { const: '1' }, occurred_at: { type: string, format: date-time }, task_id: { type: string, format: uuid }, payload: { $ref: '#/components/schemas/ScanCounts' } }
+    TaskStateChangedEvent:
+      description: Monotonic event carrying a scan task's durable lifecycle status and recovery flag.
+      type: object
+      additionalProperties: false
+      required: [id, type, schema_version, occurred_at, task_id, payload]
+      properties: { id: { type: integer, minimum: 1, maximum: 9007199254740991 }, type: { const: task.state-changed }, schema_version: { const: '1' }, occurred_at: { type: string, format: date-time }, task_id: { type: string, format: uuid }, payload: { type: object, additionalProperties: false, required: [status, recovering], properties: { status: { enum: [queued, running, partial-success, completed, failed, cancelled] }, recovering: { type: boolean } } } }
+    ProcessingTaskStateChangedEvent:
+      description: Monotonic event carrying a per-file processing task state and stage change.
+      type: object
+      additionalProperties: false
+      required: [id, type, schema_version, occurred_at, task_id, payload]
+      properties:
+        id: { type: integer, minimum: 1, maximum: 9007199254740991 }
+        type: { const: processing-task.state-changed }
+        schema_version: { const: '1' }
+        occurred_at: { type: string, format: date-time }
+        task_id: { type: string, format: uuid }
+        payload:
+          type: object
+          additionalProperties: false
+          required: [status, stage, recovering, reason]
+          properties:
+            status: { enum: [queued, running, waiting-confirmation, paused, cancelled, partial-success, completed, failed] }
+            stage: { enum: [identification, planning, file-operation, nfo, completion] }
+            recovering: { type: boolean }
+            reason: { oneOf: [{ $ref: '#/components/schemas/StableReason' }, { type: 'null' }] }
+    ProcessingTaskIdentificationDecidedEvent:
+      description: Monotonic minimal refresh event for a committed identification decision.
+      type: object
+      additionalProperties: false
+      required: [id, type, schema_version, occurred_at, task_id, payload]
+      properties:
+        id: { type: integer, minimum: 1, maximum: 9007199254740991 }
+        type: { const: processing-task.identification-decided }
+        schema_version: { const: '1' }
+        occurred_at: { type: string, format: date-time }
+        task_id: { type: string, format: uuid }
+        payload:
+          type: object
+          additionalProperties: false
+          required: [decision_id, level, reason]
+          properties:
+            decision_id: { type: string, format: uuid }
+            level: { enum: [confirmed, probable, ambiguous, unidentified, blocked] }
+            reason: { $ref: '#/components/schemas/StableReason' }
+    InboxDiscoveryHealthChangedEvent:
+      description: Monotonic refresh event for one inbox watcher and reconciliation health projection.
+      type: object
+      additionalProperties: false
+      required: [id, type, schema_version, occurred_at, task_id, payload]
+      properties:
+        id: { type: integer, minimum: 1, maximum: 9007199254740991 }
+        type: { const: inbox.discovery-health-changed }
+        schema_version: { const: '1' }
+        occurred_at: { type: string, format: date-time }
+        task_id: { type: 'null' }
+        payload:
+          type: object
+          additionalProperties: false
+          required: [inbox_directory_id, health, watcher_active, reason]
+          properties:
+            inbox_directory_id: { type: string, format: uuid }
+            health: { enum: [healthy, degraded, unavailable] }
+            watcher_active: { type: boolean }
+            reason: { oneOf: [{ $ref: '#/components/schemas/StableReason' }, { type: 'null' }] }
+    IntegrationHealthChangedEvent:
+      description: Monotonic refresh event for a redacted integration health projection.
+      type: object
+      additionalProperties: false
+      required: [id, type, schema_version, occurred_at, task_id, payload]
+      properties:
+        id: { type: integer, minimum: 1, maximum: 9007199254740991 }
+        type: { const: integration.health-changed }
+        schema_version: { const: '1' }
+        occurred_at: { type: string, format: date-time }
+        task_id: { type: 'null' }
+        payload:
+          type: object
+          additionalProperties: false
+          required: [kind, health, failure_code]
+          properties:
+            kind: { const: tmdb }
+            health: { enum: [unconfigured, healthy, degraded, unavailable, unauthorized, rate-limited] }
+            failure_code: { oneOf: [{ $ref: '#/components/schemas/IntegrationFailureCode' }, { type: 'null' }] }
+    TaskDecisionAcceptedEvent:
+      description: Minimal refresh event for one committed immutable manual decision.
+      type: object
+      additionalProperties: false
+      required: [id, type, schema_version, occurred_at, task_id, payload]
+      properties:
+        id: { type: integer, minimum: 1, maximum: 9007199254740991 }
+        type: { const: task-decision.accepted }
+        schema_version: { const: '1' }
+        occurred_at: { type: string, format: date-time }
+        task_id: { type: string, format: uuid }
+        payload:
+          type: object
+          additionalProperties: false
+          required: [case_id, decision_id, kind, case_version]
+          properties:
+            case_id: { type: string, format: uuid }
+            decision_id: { type: string, format: uuid }
+            kind: { enum: [select-provider-candidate, rematch-with-hints, select-generic-video] }
+            case_version: { type: integer, minimum: 1, maximum: 9007199254740991 }
+    ReviewCaseUpdatedEvent:
+      description: Minimal refresh event for one active or closed ReviewCase projection.
+      type: object
+      additionalProperties: false
+      required: [id, type, schema_version, occurred_at, task_id, payload]
+      properties:
+        id: { type: integer, minimum: 1, maximum: 9007199254740991 }
+        type: { const: review-case.updated }
+        schema_version: { const: '1' }
+        occurred_at: { type: string, format: date-time }
+        task_id: { type: string, format: uuid }
+        payload:
+          type: object
+          additionalProperties: false
+          required: [case_id, case_version, status]
+          properties:
+            case_id: { type: string, format: uuid }
+            case_version: { type: integer, minimum: 1, maximum: 9007199254740991 }
+            status: { enum: [active, closed] }
+    CatalogMediaChangedEvent:
+      description: Minimal refresh event for a formal media projection.
+      type: object
+      additionalProperties: false
+      required: [id, type, schema_version, occurred_at, task_id, payload]
+      properties:
+        id: { type: integer, minimum: 1, maximum: 9007199254740991 }
+        type: { const: catalog.media-changed }
+        schema_version: { const: '1' }
+        occurred_at: { type: string, format: date-time }
+        task_id: { type: 'null' }
+        payload:
+          type: object
+          additionalProperties: false
+          required: [media_item_id, projection_version, change]
+          properties:
+            media_item_id: { type: string, format: uuid }
+            projection_version: { type: integer, minimum: 1, maximum: 9007199254740991 }
+            change: { enum: [created, updated] }
+    DownloadTaskChangedEvent:
+      description: Minimal redacted refresh event for one MediaFlow-owned download task projection.
+      type: object
+      additionalProperties: false
+      required: [id, type, schema_version, occurred_at, task_id, payload]
+      properties:
+        id: { type: integer, minimum: 1, maximum: 9007199254740991 }
+        type: { const: download-task.changed }
+        schema_version: { const: '1' }
+        occurred_at: { type: string, format: date-time }
+        task_id: { type: string, format: uuid }
+        payload:
+          type: object
+          additionalProperties: false
+          required: [projection_version, status, remote_status, progress_basis_points, failure_code]
+          properties:
+            projection_version: { type: integer, minimum: 1, maximum: 9007199254740991 }
+            status: { $ref: '#/components/schemas/DownloadTaskStatus' }
+            remote_status: { oneOf: [{ $ref: '#/components/schemas/RemoteDownloadStatus' }, { type: 'null' }] }
+            progress_basis_points: { type: integer, minimum: 0, maximum: 10000 }
+            failure_code: { oneOf: [{ $ref: '#/components/schemas/DownloaderFailureCode' }, { type: 'null' }] }
+    OrganizationTargetChangedEvent:
+      description: Minimal refresh event for one versioned organization target projection.
+      type: object
+      additionalProperties: false
+      required: [id, type, schema_version, occurred_at, task_id, payload]
+      properties:
+        id: { type: integer, minimum: 1, maximum: 9007199254740991 }
+        type: { const: organization-target.changed }
+        schema_version: { const: '1' }
+        occurred_at: { type: string, format: date-time }
+        task_id: { type: 'null' }
+        payload:
+          type: object
+          additionalProperties: false
+          required: [organization_target_id, projection_version, change]
+          properties:
+            organization_target_id: { type: string, format: uuid }
+            projection_version: { type: integer, minimum: 1, maximum: 9007199254740991 }
+            change: { enum: [created, updated, deleted] }
+    OrganizationResultChangedEvent:
+      description: Minimal refresh event for one task's verified or partial local organization result.
+      type: object
+      additionalProperties: false
+      required: [id, type, schema_version, occurred_at, task_id, payload]
+      properties:
+        id: { type: integer, minimum: 1, maximum: 9007199254740991 }
+        type: { const: organization-result.changed }
+        schema_version: { const: '1' }
+        occurred_at: { type: string, format: date-time }
+        task_id: { type: string, format: uuid }
+        payload:
+          type: object
+          additionalProperties: false
+          required: [result_id, projection_version, status]
+          properties:
+            result_id: { type: string, format: uuid }
+            projection_version: { type: integer, minimum: 1, maximum: 9007199254740991 }
+            status: { $ref: '#/components/schemas/OrganizationResultStatus' }
+    AutomationSourceChangedEvent:
+      description: Minimal refresh event for one redacted automation source projection.
+      type: object
+      additionalProperties: false
+      required: [id, type, schema_version, occurred_at, task_id, payload]
+      properties:
+        id: { type: integer, minimum: 1, maximum: 9007199254740991 }
+        type: { const: automation-source.changed }
+        schema_version: { const: '1' }
+        occurred_at: { type: string, format: date-time }
+        task_id: { type: 'null' }
+        payload:
+          type: object
+          additionalProperties: false
+          required: [automation_source_id, projection_version, change]
+          properties:
+            automation_source_id: { type: string, format: uuid }
+            projection_version: { type: integer, minimum: 1, maximum: 9007199254740991 }
+            change: { enum: [created, updated, deleted] }
+    AutomationEventChangedEvent:
+      description: Minimal refresh event for one durable automation event.
+      type: object
+      additionalProperties: false
+      required: [id, type, schema_version, occurred_at, task_id, payload]
+      properties:
+        id: { type: integer, minimum: 1, maximum: 9007199254740991 }
+        type: { const: automation-event.changed }
+        schema_version: { const: '1' }
+        occurred_at: { type: string, format: date-time }
+        task_id: { type: 'null' }
+        payload:
+          type: object
+          additionalProperties: false
+          required: [automation_event_id, projection_version, status, action, failure_code]
+          properties:
+            automation_event_id: { type: string, format: uuid }
+            projection_version: { type: integer, minimum: 1, maximum: 9007199254740991 }
+            status: { $ref: '#/components/schemas/AutomationEventStatus' }
+            action: { $ref: '#/components/schemas/AutomationAction' }
+            failure_code: { oneOf: [{ $ref: '#/components/schemas/AutomationFailureCode' }, { type: 'null' }] }
+    IdentificationEnhancerChangedEvent:
+      description: Minimal refresh event for local enhancer configuration and fallback health.
+      type: object
+      additionalProperties: false
+      required: [id, type, schema_version, occurred_at, task_id, payload]
+      properties:
+        id: { type: integer, minimum: 1, maximum: 9007199254740991 }
+        type: { const: identification-enhancer.changed }
+        schema_version: { const: '1' }
+        occurred_at: { type: string, format: date-time }
+        task_id: { type: 'null' }
+        payload:
+          type: object
+          additionalProperties: false
+          required: [projection_version, enabled, health, fallback_code]
+          properties:
+            projection_version: { type: integer, minimum: 1, maximum: 9007199254740991 }
+            enabled: { type: boolean }
+            health: { $ref: '#/components/schemas/IntegrationHealth' }
+            fallback_code: { oneOf: [{ $ref: '#/components/schemas/AutomationFailureCode' }, { type: 'null' }] }
+    StreamGapEvent:
+      description: Monotonic stream control event indicating that authoritative refresh is required before resuming incremental updates.
+      type: object
+      additionalProperties: false
+      required: [id, type, schema_version, occurred_at, task_id, payload]
+      properties: { id: { type: integer, minimum: 1, maximum: 9007199254740991 }, type: { const: stream.gap }, schema_version: { const: '1' }, occurred_at: { type: string, format: date-time }, task_id: { type: 'null' }, payload: { type: object, additionalProperties: false, required: [minimum_available_id], properties: { minimum_available_id: { type: integer, minimum: 1, maximum: 9007199254740991 } } } }

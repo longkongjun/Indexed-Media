@@ -1,0 +1,10 @@
+{
+  "roots": [
+    {
+      "id": "incoming",
+      "label": "下载完成",
+      "container_path": "/data/incoming",
+      "access": "read-only"
+    }
+  ]
+}

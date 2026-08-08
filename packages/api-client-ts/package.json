@@ -1,0 +1,15 @@
+{
+  "name": "@mediaflow/api-client-ts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "types": "./src/index.ts",
+  "exports": { ".": { "types": "./src/index.ts", "default": "./src/index.ts" } },
+  "devDependencies": { "@types/node": "24.13.3" },
+  "scripts": {
+    "generate": "openapi-typescript ../../contracts/openapi/mediaflow.v1.yaml -o src/generated/mediaflow.d.ts",
+    "check-generated": "node scripts/check-generated.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest"
+  }
+}

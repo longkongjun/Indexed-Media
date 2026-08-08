@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Private releases</title>
+    <item>
+      <guid>release-001</guid>
+      <title>Movie.One.2026</title>
+      <enclosure url="magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567" type="application/x-bittorrent" />
+    </item>
+    <item>
+      <title>Movie.Two.2025</title>
+      <link>https://downloads.example.test/movie-two.torrent?token=private</link>
+    </item>
+    <item>
+      <guid>unsafe-local-path</guid>
+      <title>Unsafe</title>
+      <enclosure url="/mnt/downloads/unsafe.torrent" />
+    </item>
+  </channel>
+</rss>

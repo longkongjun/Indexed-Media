@@ -1,0 +1,6 @@
+:root {
+  color-scheme: light;
+  --color-ink: #12231c; --color-muted: #50655c; --color-surface: #ffffff; --color-canvas: #f4f7f5;
+  --color-brand: #10251d; --color-accent: #08744b; --color-focus: #0b7a50; --color-danger: #8b2a2a;
+  --border: #b9c9c1; --radius: .75rem; --shadow: 0 .35rem 1.25rem rgb(16 37 29 / .08);
+}

@@ -1,0 +1,8 @@
+{
+  "root_id": "media",
+  "relative_path": "Movies",
+  "writable": true,
+  "overlaps_existing": false,
+  "same_filesystem_hint": null,
+  "failure_code": null
+}

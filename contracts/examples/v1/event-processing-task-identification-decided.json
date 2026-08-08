@@ -1,0 +1,1 @@
+{"id":44,"type":"processing-task.identification-decided","schema_version":"1","occurred_at":"2026-07-23T08:00:01Z","task_id":"019f0000-0000-7000-8000-000000000043","payload":{"decision_id":"019f0000-0000-7000-8000-000000000047","level":"ambiguous","reason":"identification.multiple-strong-candidates"}}

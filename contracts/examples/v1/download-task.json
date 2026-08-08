@@ -1,0 +1,15 @@
+{
+  "id": "019f0000-0000-7000-8000-000000000063",
+  "connection_id": "019f0000-0000-7000-8000-000000000064",
+  "connection_display_name": "NAS Transmission",
+  "display_name": "Arrival 2016",
+  "status": "completed",
+  "remote_status": "completed",
+  "progress_basis_points": 10000,
+  "failure_code": null,
+  "retry_at": null,
+  "linked": true,
+  "projection_version": 7,
+  "created_at": "2026-07-24T04:00:00Z",
+  "updated_at": "2026-07-24T04:30:00Z"
+}

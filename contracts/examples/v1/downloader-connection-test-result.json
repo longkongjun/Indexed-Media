@@ -1,0 +1,12 @@
+{
+  "reachable": true,
+  "health": "healthy",
+  "capabilities": {
+    "manual_add": true,
+    "task_monitoring": true,
+    "product_version": "4.2.0",
+    "api_version": "6.1.0"
+  },
+  "failure_code": null,
+  "checked_at": "2026-07-24T05:01:00Z"
+}

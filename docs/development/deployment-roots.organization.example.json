@@ -1,0 +1,16 @@
+{
+  "roots": [
+    {
+      "id": "incoming",
+      "label": "隔离收件区",
+      "container_path": "/absolute/path/to/isolated/incoming",
+      "access": "read-write"
+    },
+    {
+      "id": "library",
+      "label": "隔离媒体库",
+      "container_path": "/absolute/path/to/isolated/library",
+      "access": "read-write"
+    }
+  ]
+}

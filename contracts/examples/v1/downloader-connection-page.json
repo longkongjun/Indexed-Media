@@ -1,0 +1,23 @@
+{
+  "items": [
+    {
+      "id": "019f0000-0000-7000-8000-000000000061",
+      "kind": "qbittorrent",
+      "display_name": "NAS qBittorrent",
+      "base_url": "http://nas.local:8080",
+      "enabled": true,
+      "config_version": 2,
+      "capabilities": {
+        "manual_add": true,
+        "task_monitoring": true,
+        "product_version": "5.2.0",
+        "api_version": "2.11.4"
+      },
+      "health": "healthy",
+      "checked_at": "2026-07-24T05:00:00Z",
+      "failure_code": null,
+      "updated_at": "2026-07-24T05:00:00Z"
+    }
+  ],
+  "next_cursor": null
+}

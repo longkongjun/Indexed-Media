@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Atom releases</title>
+  <entry>
+    <id>tag:example.test,2026:episode-1</id>
+    <title>Series.S01E01</title>
+    <link rel="enclosure" href="https://downloads.example.test/episode-1.torrent?token=private" />
+  </entry>
+  <entry>
+    <id>tag:example.test,2026:unsafe-http</id>
+    <title>Unsafe HTTP</title>
+    <link rel="enclosure" href="http://downloads.example.test/unsafe.torrent" />
+  </entry>
+</feed>

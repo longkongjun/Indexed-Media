@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<movie>
+  <title>Blade Runner 2049</title>
+  <originaltitle>Blade Runner 2049</originaltitle>
+  <year>2017</year>
+  <premiered>2017-10-06</premiered>
+  <uniqueid type="tmdb" default="true">335984</uniqueid>
+  <uniqueid type="imdb">tt1856101</uniqueid>
+  <ignored>not imported</ignored>
+</movie>

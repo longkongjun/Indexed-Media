@@ -1,0 +1,24 @@
+@media (max-width: 48rem) {
+  .page-header, .resource-card, .detail-heading, .state-notice { align-items: stretch; flex-direction: column; }
+  .count-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  dl > div { grid-template-columns: 1fr; gap: .25rem; }
+  [data-wide-results] { display: none; }
+  .mobile-result-list { display: grid; gap: .75rem; padding: 0; list-style: none; }
+  .mobile-result-list li { display: grid; gap: .35rem; padding: 1rem; border: 1px solid var(--border); border-radius: var(--radius); background: white; }
+  .detail-actions > *, .cursor-pager > *, .filter-bar > * { min-height: 2.75rem; }
+  [data-task-center], .task-card-list, .task-card-list .resource-card, .compact-facts { min-width: 0; max-width: 100%; }
+  .task-filter, .compact-facts { grid-template-columns: 1fr; }
+  .view-tabs { max-width: 100%; }
+  .candidate-search { grid-template-columns: 1fr; }
+  .review-case-view, .review-decision-form, .candidate-list, .evidence-list { min-width: 0; max-width: 100%; }
+  [data-media-list], [data-media-detail], .media-card-list, .media-card-list .resource-card { min-width: 0; max-width: 100%; }
+  .media-filter, .media-detail-heading { grid-template-columns: 1fr; }
+  .media-artwork { width: 100%; min-height: 5rem; }
+  [data-downloader-connections], [data-downloader-connection-detail], [data-download-task-list], [data-download-task-detail] { min-width: 0; max-width: 100%; }
+  [data-download-task-list] .form-card, [data-download-task-list] input, [data-download-task-list] select { min-width: 0; max-width: 100%; box-sizing: border-box; }
+  [data-organization-targets], [data-organization-target-detail], [data-organization-task], .organization-target-form, .organization-task-grid, .organization-journal { min-width: 0; max-width: 100%; }
+  .organization-target-form input, .organization-target-form select, .safe-path { min-width: 0; max-width: 100%; box-sizing: border-box; overflow-wrap: anywhere; }
+  [data-automation-sources], [data-automation-source-detail], [data-automation-event-detail], .automation-entry-grid, .automation-card-list, .secret-once { min-width: 0; max-width: 100%; }
+  .automation-entry-grid { grid-template-columns: 1fr; }
+  [data-automation-sources] input, [data-automation-sources] select, [data-automation-source-detail] input, [data-automation-source-detail] select { box-sizing: border-box; min-width: 0; max-width: 100%; }
+}

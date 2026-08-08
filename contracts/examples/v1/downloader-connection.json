@@ -1,0 +1,18 @@
+{
+  "id": "019f0000-0000-7000-8000-000000000064",
+  "kind": "transmission",
+  "display_name": "NAS Transmission",
+  "base_url": "http://nas.local:9091",
+  "enabled": true,
+  "config_version": 1,
+  "capabilities": {
+    "manual_add": true,
+    "task_monitoring": true,
+    "product_version": "4.2.0",
+    "api_version": "6.1.0"
+  },
+  "health": "healthy",
+  "checked_at": "2026-07-24T05:01:00Z",
+  "failure_code": null,
+  "updated_at": "2026-07-24T05:01:00Z"
+}

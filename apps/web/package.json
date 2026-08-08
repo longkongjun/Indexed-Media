@@ -1,0 +1,28 @@
+{
+  "name": "@mediaflow/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vue-tsc --noEmit && vite build",
+    "test": "vitest --exclude e2e/**",
+    "typecheck": "vue-tsc --noEmit"
+  },
+  "dependencies": {
+    "@mediaflow/api-client-ts": "workspace:*",
+    "pinia": "3.0.4",
+    "vue": "3.5.39",
+    "vue-router": "5.2.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.61.1",
+    "@vitejs/plugin-vue": "6.0.8",
+    "@vue/test-utils": "2.4.11",
+    "axe-core": "4.12.1",
+    "jsdom": "29.1.1",
+    "typescript": "5.9.3",
+    "vite": "8.1.4",
+    "vitest": "4.1.10",
+    "vue-tsc": "3.3.7"
+  }
+}

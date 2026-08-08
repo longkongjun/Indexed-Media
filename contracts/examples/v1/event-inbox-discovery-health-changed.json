@@ -1,0 +1,1 @@
+{"id":45,"type":"inbox.discovery-health-changed","schema_version":"1","occurred_at":"2026-07-23T08:00:02Z","task_id":null,"payload":{"inbox_directory_id":"019f0000-0000-7000-8000-000000000002","health":"degraded","watcher_active":false,"reason":"watcher.unavailable"}}

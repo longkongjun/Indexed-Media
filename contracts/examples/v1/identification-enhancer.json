@@ -1,0 +1,1 @@
+{"kind":"ollama","enabled":true,"endpoint_summary":"http://127.0.0.1:11434","model":"qwen3:4b","timeout_ms":3000,"config_version":1,"health":"degraded","checked_at":"2026-07-24T07:00:00Z","fallback_code":"provider.timeout","projection_version":4,"updated_at":"2026-07-24T07:00:00Z"}

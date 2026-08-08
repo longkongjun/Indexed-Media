@@ -1,0 +1,1 @@
+{"id":52,"type":"identification-enhancer.changed","schema_version":"1","occurred_at":"2026-07-24T07:00:02Z","task_id":null,"payload":{"projection_version":4,"enabled":true,"health":"degraded","fallback_code":"provider.timeout"}}

@@ -1,0 +1,38 @@
+name: mediaflow
+
+services:
+  mediaflow:
+    image: "${MEDIAFLOW_IMAGE:-mediaflow:0.2.0-m2}"
+    user: "${PUID:-1000}:${PGID:-1000}"
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    ports:
+      - "${MEDIAFLOW_BIND_ADDRESS:-0.0.0.0}:${MEDIAFLOW_PORT:-3000}:3000"
+    environment:
+      MEDIAFLOW_MODE: production
+      MEDIAFLOW_LISTEN: 0.0.0.0:3000
+      MEDIAFLOW_CONFIG_DIR: /config
+      MEDIAFLOW_WEB_DIST: /app/web
+      MEDIAFLOW_DEPLOYMENT_ROOTS_FILE: /run/mediaflow/deployment-roots.json
+      MEDIAFLOW_BOOTSTRAP_SECRET_FILE: /run/secrets/mediaflow-bootstrap
+      MEDIAFLOW_PUBLIC_ORIGIN: "${MEDIAFLOW_PUBLIC_ORIGIN:?Set the trusted public HTTPS origin}"
+      MEDIAFLOW_TRUSTED_PROXY_CIDRS: "${MEDIAFLOW_TRUSTED_PROXY_CIDRS:?Set the reverse proxy source CIDR}"
+      TZ: "${TZ:-Asia/Shanghai}"
+    volumes:
+      - "${MEDIAFLOW_CONFIG_PATH:-./data/config}:/config"
+      - "${MEDIAFLOW_INCOMING_PATH:?Set the host incoming directory}:/data/incoming:ro"
+      - "${MEDIAFLOW_ROOTS_CONFIG_PATH:-./deployment-roots.json}:/run/mediaflow/deployment-roots.json:ro"
+      - "${MEDIAFLOW_BOOTSTRAP_SECRET_PATH:-./secrets/bootstrap.secret}:/run/secrets/mediaflow-bootstrap:ro"
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/healthcheck.sh"]
+      interval: 30s
+      timeout: 6s
+      start_period: 15s
+      retries: 3
+    stop_grace_period: 30s
