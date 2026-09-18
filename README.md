@@ -2,12 +2,14 @@
 
 MediaFlow 是面向家庭 NAS 的本地优先、自托管数字资源中枢。它负责资源发现、识别、整理、编目和分发，播放与转码由外部产品承担。
 
-## 活跃规格
+## 文档边界
 
-- [产品定义](docs/product/product-definition.md)
+产品、方案、调研、架构基线、决策和路线图位于 [Indexed-wiki](https://github.com/longkongjun/Indexed-wiki)。本仓库只保留代码实现、跨语言契约、开发说明、代码级架构说明和部署实现文档。
+
 - [项目结构](docs/architecture/project-structure.md)
 - [归档策略与来源记录](docs/architecture/archive-policy.md)
-- [完整路线图](docs/plans/roadmap.md)
+- [开发文档](docs/development/README.md)
+- [运维实现文档](docs/operations/README.md)
 
 ## 仓库地图
 
@@ -38,8 +40,7 @@ MediaFlow/
 |   `-- flutter/                  # Flutter 垂直切片
 |
 |-- infra/                        # 容器、NAS 部署与可观测性配置
-|-- docs/                         # 产品、架构、决策、计划和运维文档
-|-- tools/                        # 产品构建、测试和运维工具
+|-- docs/                         # 代码实现、开发和部署相关文档
 `-- archive/                      # 公开归档边界说明，不分发内部历史快照
 ```
 
@@ -55,6 +56,6 @@ MediaFlow/
 - `just check-m4-source-automation`：与默认检查相同的当前里程碑聚合入口。
 - 真实 NAS、下载器、RSS 与模型验收使用对应 `*-live` 命令，环境缺失时不得冒充通过。
 
-本地项目结构与 AI 工作流门禁由 StudySpace 注入，使用 `./tools/project-layout/check.sh` 和 `./tools/workflow/check.sh`，不属于公开仓库内容。
+本地项目结构与 AI 工作流门禁由 StudySpace 的 `workflow-packs/mediaflow/` 提供；从 StudySpace 根目录调用对应检查脚本，不向本仓库注入入口或脚本副本。项目仓库的构建与测试入口以根 `justfile` 和各模块文档为准。
 
 项目仓库只保存产品、源码、公开文档、构建和测试能力。本地开发辅助能力由外部工作空间按需提供，不属于项目发布内容。

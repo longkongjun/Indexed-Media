@@ -7,6 +7,6 @@
 - `archive/` 只保存公开归档边界说明，不存放内部源码、配置、数据库或工作流历史。
 - 活跃构建、测试、workspace 和依赖解析不得引用内部归档。
 - 需要复用旧行为时，必须依据当前契约在活跃代码中重新实现并提供测试，不能直接恢复旧目录。
-- 稳定产品事实必须进入当前 `docs/product/`、`docs/architecture/`、`docs/decisions/` 或 `contracts/`。
+- 稳定代码事实必须进入当前实现文档或 `contracts/`；产品和业务事实进入 Indexed-wiki。
 
 内部快照由外部工作空间的受控历史保留。公开贡献者不需要、也不应获得该快照；当前仓库中的 [Archive 说明](../../archive/README.md) 是唯一公开入口。

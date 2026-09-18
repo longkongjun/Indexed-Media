@@ -11,8 +11,7 @@ MediaFlow/
 ├── contracts/     REST、事件和场景契约
 ├── infra/         部署与可观测性配置
 ├── labs/          与正式产品隔离的实验
-├── docs/          产品、架构、决策和开发文档
-├── tools/         项目构建与验证工具
+├── docs/          代码实现、开发和部署相关文档
 └── archive/       公开归档边界说明；不分发内部历史快照
 ```
 
@@ -27,8 +26,8 @@ MediaFlow/
 
 ## 模块边界
 
-每个已初始化模块通过自身 README 说明职责、公共接口、依赖和验证命令。跨语言行为以 `contracts/` 为事实来源；产品定义、系统架构和架构决策分别位于 `docs/product/`、`docs/architecture/` 和 `docs/decisions/`。
+每个已初始化模块通过自身 README 说明职责、公共接口、依赖和验证命令。跨语言行为以 `contracts/` 为事实来源；产品定义、业务架构和长期决策位于 Indexed-wiki，代码仓库只维护实现边界和代码级说明。
 
 ## 本地开发辅助
 
-个人编辑器配置和本地任务状态不属于项目发布内容。初始化任何本地辅助配置前后，`git status` 都必须保持干净。
+个人编辑器配置、本地任务状态以及工作流门禁不属于项目发布内容。工作流门禁由 StudySpace 的 `workflow-packs/mediaflow/tools/` 提供；初始化任何本地辅助配置前后，`git status` 都必须保持干净。
