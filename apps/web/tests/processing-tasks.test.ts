@@ -133,10 +133,13 @@ describe("ProcessingTask center", () => {
     });
     expect(wrapper.get(`a[href^="/tasks/${taskId}"]`).attributes("href")).toContain("cursor=cursor-a");
 
-    await wrapper.findAll("select")[0]!.setValue("planning");
-    await wrapper.findAll("select")[1]!.setValue("failed");
-    await wrapper.findAll("input")[0]!.setValue("inbox-b");
-    await wrapper.findAll("input")[1]!.setValue("Arrival");
+    const selects = wrapper.findAll("select");
+    const inputs = wrapper.findAll("input");
+    if (selects.length < 2 || inputs.length < 2) throw new Error("task center form must expose two selects and two inputs");
+    await selects[0]!.setValue("planning");
+    await selects[1]!.setValue("failed");
+    await inputs[0]!.setValue("inbox-b");
+    await inputs[1]!.setValue("Arrival");
     await wrapper.get("form").trigger("submit");
     await flushPromises();
     expect(router.currentRoute.value.query).toEqual({

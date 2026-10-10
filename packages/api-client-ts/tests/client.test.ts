@@ -4,7 +4,15 @@ import { createMediaFlowClient as createPublicClient } from "@mediaflow/api-clie
 import { MediaFlowApiError, createMediaFlowClient } from "../src/client.js";
 
 describe("MediaFlowClient", () => {
-  it("adds same-origin credentials, request id and csrf for mutations", async () => {
+
+/** 提取第 N 次 fetch 调用的 RequestInit；noUncheckedIndexedAccess 下索引访问必须显式证明存在。 */
+const callInit = (calls: Array<[RequestInfo | URL, RequestInit?]>, index: number): RequestInit => {
+  const call = calls[index];
+  if (!call || !call[1]) throw new Error(`expected fetch call ${index} with request init`);
+  return call[1];
+};
+
+it("adds same-origin credentials, request id and csrf for mutations", async () => {
     const fetch = vi.fn<typeof globalThis.fetch>()
       .mockResolvedValueOnce(
         new Response(JSON.stringify({ requires_initialization: false, version: "v1" }), {
@@ -69,7 +77,7 @@ describe("MediaFlowClient", () => {
       `/api/v1/inbox-directories/${inboxId}`, `/api/v1/inbox-directories/${inboxId}/scan-tasks`, "/api/v1/scan-tasks?cursor=task-cursor", `/api/v1/scan-tasks/${taskId}`,
       `/api/v1/scan-tasks/${taskId}/attempts`, `/api/v1/scan-tasks/${taskId}/cancel`, `/api/v1/scan-tasks/${taskId}/files?cursor=files-cursor`, `/api/v1/scan-tasks/${taskId}/errors?cursor=errors-cursor`,
     ]);
-    for (const [call, key] of [[9, "create-key"], [12, "retry-key"], [13, "cancel-key"]] as const) expect((fetch.mock.calls[call][1] as RequestInit).headers).toEqual(expect.objectContaining({ "Idempotency-Key": key }));
+    for (const [call, key] of [[9, "create-key"], [12, "retry-key"], [13, "cancel-key"]] as const) expect(callInit(fetch.mock.calls, call).headers).toEqual(expect.objectContaining({ "Idempotency-Key": key }));
   });
 
   it("maps M3 integration, discovery, processing, and review operations", async () => {
@@ -109,11 +117,11 @@ describe("MediaFlowClient", () => {
       `/api/v1/review-cases?cursor=review-cursor&decision_level=ambiguous&inbox_directory_id=${inboxId}&updated_before=2026-07-23T08%3A00%3A00Z`,
       `/api/v1/review-cases/${reviewCaseId}`,
     ]);
-    expect((fetch.mock.calls[2][1] as RequestInit).headers).toEqual(expect.objectContaining({ "If-Match": "3" }));
-    expect((fetch.mock.calls[3][1] as RequestInit).headers).toEqual(expect.objectContaining({ "If-Match": "4" }));
-    expect((fetch.mock.calls[5][1] as RequestInit).headers).toEqual(expect.objectContaining({ "If-Match": "2" }));
-    expect((fetch.mock.calls[9][1] as RequestInit).headers).toEqual(expect.objectContaining({ "Idempotency-Key": "processing-retry" }));
-    expect((fetch.mock.calls[10][1] as RequestInit).headers).toEqual(expect.objectContaining({ "Idempotency-Key": "processing-cancel" }));
+    expect(callInit(fetch.mock.calls, 2).headers).toEqual(expect.objectContaining({ "If-Match": "3" }));
+    expect(callInit(fetch.mock.calls, 3).headers).toEqual(expect.objectContaining({ "If-Match": "4" }));
+    expect(callInit(fetch.mock.calls, 5).headers).toEqual(expect.objectContaining({ "If-Match": "2" }));
+    expect(callInit(fetch.mock.calls, 9).headers).toEqual(expect.objectContaining({ "Idempotency-Key": "processing-retry" }));
+    expect(callInit(fetch.mock.calls, 10).headers).toEqual(expect.objectContaining({ "Idempotency-Key": "processing-cancel" }));
   });
 
   it("maps M4 downloader operations, filters, versions, and idempotency keys", async () => {
@@ -165,9 +173,9 @@ describe("MediaFlowClient", () => {
       "/api/v1/download-tasks",
       `/api/v1/download-tasks/${taskId}`,
     ]);
-    expect((fetch.mock.calls[3][1] as RequestInit).headers).toEqual(expect.objectContaining({ "If-Match": "3" }));
-    expect((fetch.mock.calls[4][1] as RequestInit).headers).toEqual(expect.objectContaining({ "If-Match": "4" }));
-    expect((fetch.mock.calls[7][1] as RequestInit).headers).toEqual(expect.objectContaining({ "Idempotency-Key": "download-create-key" }));
+    expect(callInit(fetch.mock.calls, 3).headers).toEqual(expect.objectContaining({ "If-Match": "3" }));
+    expect(callInit(fetch.mock.calls, 4).headers).toEqual(expect.objectContaining({ "If-Match": "4" }));
+    expect(callInit(fetch.mock.calls, 7).headers).toEqual(expect.objectContaining({ "Idempotency-Key": "download-create-key" }));
   });
 
   it("maps M4 source automation, event recovery, and enhancer operations", async () => {
@@ -242,10 +250,10 @@ describe("MediaFlowClient", () => {
       "/api/v1/identification-enhancer",
     ]);
     for (const call of [3, 4, 6, 13]) {
-      expect((fetch.mock.calls[call][1] as RequestInit).headers).toEqual(expect.objectContaining({ "If-Match": String([2, 3, 4, 5][[3, 4, 6, 13].indexOf(call)]) }));
+      expect(callInit(fetch.mock.calls, call).headers).toEqual(expect.objectContaining({ "If-Match": String([2, 3, 4, 5][[3, 4, 6, 13].indexOf(call)]) }));
     }
     for (const [call, key] of [[6, "rotate-key"], [9, "retry-key"], [10, "cancel-key"]] as const) {
-      expect((fetch.mock.calls[call][1] as RequestInit).headers).toEqual(expect.objectContaining({ "Idempotency-Key": key }));
+      expect(callInit(fetch.mock.calls, call).headers).toEqual(expect.objectContaining({ "Idempotency-Key": key }));
     }
   });
 
@@ -303,13 +311,13 @@ describe("MediaFlowClient", () => {
       `/api/v1/processing-tasks/${taskId}/organization/executions`,
       `/api/v1/processing-tasks/${taskId}/organization/rollbacks`,
     ]);
-    expect((fetch.mock.calls[4][1] as RequestInit).headers).toEqual(expect.objectContaining({ "If-Match": "3" }));
-    expect((fetch.mock.calls[5][1] as RequestInit).headers).toEqual(expect.objectContaining({ "If-Match": "4" }));
+    expect(callInit(fetch.mock.calls, 4).headers).toEqual(expect.objectContaining({ "If-Match": "3" }));
+    expect(callInit(fetch.mock.calls, 5).headers).toEqual(expect.objectContaining({ "If-Match": "4" }));
     for (const [call, key] of [[7, "recalculate-key"], [8, "execute-key"], [9, "rollback-key"]] as const) {
-      expect((fetch.mock.calls[call][1] as RequestInit).headers).toEqual(expect.objectContaining({ "Idempotency-Key": key }));
+      expect(callInit(fetch.mock.calls, call).headers).toEqual(expect.objectContaining({ "Idempotency-Key": key }));
     }
-    expect(JSON.parse((fetch.mock.calls[8][1] as RequestInit).body as string)).toEqual({ plan_version: 2 });
-    expect(JSON.parse((fetch.mock.calls[9][1] as RequestInit).body as string)).toEqual({ result_version: 5 });
+    expect(JSON.parse(callInit(fetch.mock.calls, 8).body as string)).toEqual({ plan_version: 2 });
+    expect(JSON.parse(callInit(fetch.mock.calls, 9).body as string)).toEqual({ result_version: 5 });
   });
 
   it("normalizes malformed and non-envelope error responses", async () => {

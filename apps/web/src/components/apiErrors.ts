@@ -83,7 +83,7 @@ export function safeApiError(error: unknown, fallback = "请求暂时失败，�
 }
 
 /** 已认证请求失败后、功能更新其展示状态前调用的回调。 */
-export type AuthenticatedFailureHandler = (error: unknown) => unknown | Promise<unknown>;
+export type AuthenticatedFailureHandler = (error: unknown) => unknown;
 
 /**
  * 对已认证请求失败应用共享的会话过期恢复流程。

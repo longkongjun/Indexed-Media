@@ -113,8 +113,14 @@ export function useOrganizationTask(
     setActionError("");
     const request = () => {
       if (kind === "recalculate") return client.recalculateProcessingTaskOrganization(id, key);
-      if (kind === "execute") return client.executeProcessingTaskOrganization(id, before.plan!.version, key);
-      return client.rollbackProcessingTaskOrganization(id, before.local_result!.version, key);
+      if (kind === "execute") {
+        const plan = before.plan;
+        if (!plan) throw new Error("execute requires a persisted plan");
+        return client.executeProcessingTaskOrganization(id, plan.version, key);
+      }
+      const localResult = before.local_result;
+      if (!localResult) throw new Error("rollback requires a persisted local result");
+      return client.rollbackProcessingTaskOrganization(id, localResult.version, key);
     };
     try {
       projection.value = await request();

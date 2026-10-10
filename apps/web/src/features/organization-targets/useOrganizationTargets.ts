@@ -248,7 +248,7 @@ export function useOrganizationTargets(
         try {
           conflictLatest.value = await client.getOrganizationTarget(current.id);
           setFormError({
-            message: `配置已由其他页面更新到版本 ${conflictLatest.value.config_version}；草稿已保留，请重新检查后保存`,
+            message: `配置已由其他页面更新到版本 ${String(conflictLatest.value.config_version)}；草稿已保留，请重新检查后保存`,
             field: "organization-conflict",
           });
         } catch (refreshError) {

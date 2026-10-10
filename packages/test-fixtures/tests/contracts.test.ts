@@ -33,6 +33,19 @@ function expectSafeRelativeFixturePath(field: { key: string; value: string }): v
   expect(field.value.split("/"), field.key).not.toContain("..");
 }
 
+/** OpenAPI 操作索引的最小形状：按路径与方法取操作，响应头模式受 noUncheckedIndexedAccess 保护。 */
+interface OpenApiOperationIndex {
+  paths: Record<string, Record<string, OpenApiOperation>>;
+}
+
+interface OpenApiOperation {
+  responses?: Record<string, OpenApiResponse>;
+}
+
+interface OpenApiResponse {
+  headers?: Record<string, { schema?: { pattern?: string } }>;
+}
+
 const openApi = load(readFileSync(new URL("contracts/openapi/mediaflow.v1.yaml", root), "utf8")) as { components: { schemas: Record<string, unknown> } };
 const apiAjv = new Ajv2020({ allErrors: true, strict: false });
 addFormats(apiAjv);
@@ -121,8 +134,10 @@ describe("M2 contract fixtures", () => {
       paths: Record<string, { get: { responses: Record<string, unknown>; parameters: Array<{ name?: string; schema?: { maximum?: number } }> } }>;
       components: { schemas: Record<string, unknown> };
     };
-    expect(contract.paths["/api/v1/events"].get.responses).toHaveProperty("422");
-    const cursor = contract.paths["/api/v1/events"].get.parameters.find((parameter) => parameter.name === "Last-Event-ID");
+    const eventsOperation = contract.paths["/api/v1/events"]?.get;
+    if (!eventsOperation) throw new Error("OpenAPI must define GET /api/v1/events");
+    expect(eventsOperation.responses).toHaveProperty("422");
+    const cursor = eventsOperation.parameters.find((parameter) => parameter.name === "Last-Event-ID");
     expect(cursor?.schema?.maximum).toBe(Number.MAX_SAFE_INTEGER);
     const serialized = JSON.stringify([
       contract.components.schemas.TaskProgressEvent,
@@ -141,7 +156,8 @@ describe("M2 contract fixtures", () => {
     const roots = openApi.components.schemas.DeploymentRootList as { properties?: Record<string, unknown>; required?: string[] };
     expect(roots.required).toContain("next_cursor");
     expect(roots.properties?.next_cursor).toBeDefined();
-    const rootOperation = (openApi as unknown as { paths: Record<string, { get: { parameters?: Array<{ $ref?: string }> } }> }).paths["/api/v1/deployment-roots"].get;
+    const rootOperation = (openApi as unknown as { paths: Record<string, { get?: { parameters?: Array<{ $ref?: string }> } }> }).paths["/api/v1/deployment-roots"]?.get;
+    if (!rootOperation) throw new Error("OpenAPI must define GET /api/v1/deployment-roots");
     expect(rootOperation.parameters ?? []).not.toContainEqual({ $ref: "#/components/parameters/Cursor" });
     const contract = openApi as unknown as {
       components: { parameters: { Cursor: { schema: { maxLength?: number } } } };
@@ -154,14 +170,23 @@ describe("M2 contract fixtures", () => {
       ["/api/v1/inbox-directories", "get"],
       ["/api/v1/inbox-directories", "post"],
       ["/api/v1/inbox-directories/{inboxDirectoryId}", "get"],
-    ]) {
-      expect(contract.paths[path][method].responses).toHaveProperty("503");
+    ] as const) {
+      const operation = contract.paths[path]?.[method];
+      if (!operation) throw new Error(`OpenAPI must define ${method.toUpperCase()} ${path}`);
+      expect(operation.responses).toHaveProperty("503");
     }
-    expect(contract.paths["/api/v1/inbox-directories"].post.responses).toHaveProperty("404");
-    const sessionResponse = (openApi as unknown as { components: { responses: { SessionResponse: { headers: { "Set-Cookie": { schema: { pattern?: string } } } } } } }).components.responses.SessionResponse;
-    expect(new RegExp(sessionResponse.headers["Set-Cookie"].schema.pattern!).test("__Host-mediaflow_session=session; Secure; HttpOnly; SameSite=Strict; Path=/")).toBe(true);
-    const deleteCookie = (openApi as unknown as { paths: Record<string, { delete: { responses: Record<string, { headers: { "Set-Cookie": { schema: { pattern?: string } } } }> } }> }).paths["/api/v1/session"].delete.responses["204"].headers["Set-Cookie"].schema.pattern;
-    expect(new RegExp(deleteCookie!).test("__Host-mediaflow_session=; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Secure; HttpOnly; SameSite=Strict; Path=/")).toBe(true);
+    const inboxCreate = contract.paths["/api/v1/inbox-directories"]?.post;
+    if (!inboxCreate) throw new Error("OpenAPI must define POST /api/v1/inbox-directories");
+    expect(inboxCreate.responses).toHaveProperty("404");
+    const sessionResponse = (openApi as unknown as { components: { responses: { SessionResponse: { headers: Record<string, { schema: { pattern?: string } }> } } } }).components.responses.SessionResponse;
+    const sessionCookie = sessionResponse.headers["Set-Cookie"]?.schema.pattern;
+    if (!sessionCookie) throw new Error("SessionResponse must define a Set-Cookie pattern");
+    expect(new RegExp(sessionCookie).test("__Host-mediaflow_session=session; Secure; HttpOnly; SameSite=Strict; Path=/")).toBe(true);
+    const sessionDeleteOperation = (openApi as unknown as OpenApiOperationIndex)
+      .paths["/api/v1/session"]?.delete;
+    const deleteCookie = sessionDeleteOperation?.responses?.["204"]?.headers?.["Set-Cookie"]?.schema?.pattern;
+    if (!deleteCookie) throw new Error("session delete must define a Set-Cookie clear pattern");
+    expect(new RegExp(deleteCookie).test("__Host-mediaflow_session=; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Secure; HttpOnly; SameSite=Strict; Path=/")).toBe(true);
   });
 
   it("bounds inbox pages and exposes health check time without container paths", () => {
@@ -183,7 +208,9 @@ describe("M2 contract fixtures", () => {
       "/api/v1/scan-tasks/{scanTaskId}/files",
       "/api/v1/scan-tasks/{scanTaskId}/errors",
     ]) {
-      expect(contract.paths[path].get.responses).toHaveProperty("422");
+      const operation = contract.paths[path]?.get;
+      if (!operation) throw new Error(`OpenAPI must define GET ${path}`);
+      expect(operation.responses).toHaveProperty("422");
     }
     expect(publicFixtures.task.counts.skipped_entries).toBeGreaterThan(0);
     expect(publicFixtures.errors.items[0]?.code).toBe("entry.unavailable");

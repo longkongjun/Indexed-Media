@@ -6,7 +6,8 @@
   "scripts": {
     "build": "vue-tsc --noEmit && vite build",
     "test": "vitest --exclude e2e/**",
-    "typecheck": "vue-tsc --noEmit"
+    "typecheck": "vue-tsc --noEmit",
+    "lint": "eslint ."
   },
   "dependencies": {
     "@mediaflow/api-client-ts": "workspace:*",
@@ -19,10 +20,14 @@
     "@vitejs/plugin-vue": "6.0.8",
     "@vue/test-utils": "2.4.11",
     "axe-core": "4.12.1",
+    "eslint": "10.12.0",
+    "eslint-plugin-vue": "10.11.1",
     "jsdom": "29.1.1",
     "typescript": "5.9.3",
+    "typescript-eslint": "8.71.1",
     "vite": "8.1.4",
     "vitest": "4.1.10",
+    "vue-eslint-parser": "10.4.1",
     "vue-tsc": "3.3.7"
   }
 }

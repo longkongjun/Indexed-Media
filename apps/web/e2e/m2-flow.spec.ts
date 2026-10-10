@@ -23,7 +23,7 @@ async function installDeterministicEventSource(page: import("@playwright/test").
   });
 }
 
-test("adds an inbox, scans live, keeps partial results, pages safely, and disables offline writes", async ({ page, context }, testInfo) => {
+test("adds an inbox, scans live, keeps partial results, pages safely, and disables offline writes", async ({ page }, testInfo) => {
   await installDeterministicEventSource(page);
   let created = false;
   let offline = false;

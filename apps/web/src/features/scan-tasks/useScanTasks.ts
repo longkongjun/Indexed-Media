@@ -25,22 +25,29 @@ export function useScanTasks(client: MediaFlowClient, context: TaskListContext =
   const nextCursor = ref<string | null>(null);
   const errorMessage = ref("");
   const currentContext = ref<TaskListContext>({ ...context });
+  let loadEpoch = 0;
   const returnQuery = computed(() => ({
     ...(currentContext.value.status ? { status: currentContext.value.status } : {}),
     ...(currentContext.value.cursor ? { cursor: currentContext.value.cursor } : {}),
     ...(currentContext.value.scrollKey ? { context: currentContext.value.scrollKey } : {}),
   }));
   async function load(nextContext: TaskListContext = currentContext.value): Promise<void> {
+    // epoch 守卫：连续触发多个 load 时，只有最新请求的结果可以写入状态；
+    // 乱序晚到的旧响应（成功或失败）一律丢弃，避免旧数据覆盖新筛选上下文。
+    const epoch = ++loadEpoch;
     currentContext.value = { ...nextContext };
     const stale = tasks.value.length > 0;
     state.value = { kind: "loading", stale };
     try {
-      const page = await client.listScanTasks(currentContext.value.cursor);
-      tasks.value = currentContext.value.status ? page.items.filter((item) => item.status === currentContext.value.status) : page.items;
+      const page = await client.listScanTasks(nextContext.cursor);
+      if (epoch !== loadEpoch) return;
+      // 过滤条件取发起请求时的上下文，保证数据与上下文始终同源。
+      tasks.value = nextContext.status ? page.items.filter((item) => item.status === nextContext.status) : page.items;
       nextCursor.value = page.next_cursor;
       state.value = { kind: tasks.value.length ? "content" : "empty" };
       errorMessage.value = "";
     } catch (error) {
+      if (epoch !== loadEpoch) return;
       await onFailure?.(error);
       state.value = isOffline(error) ? { kind: "offline", stale } : { kind: "error", stale };
       errorMessage.value = safeApiError(error, "无法加载扫描任务，请重试").message;
@@ -68,8 +75,8 @@ export function useScanTask(client: MediaFlowClient, id: string, onFailure?: Aut
   const pendingAction = ref<"retry" | "cancel" | null>(null);
   const showRetry = computed(() => Boolean(task.value && ["failed", "partial-success"].includes(task.value.status)));
   const showCancel = computed(() => Boolean(task.value && ["queued", "running"].includes(task.value.status)));
-  const canRetry = computed(() => Boolean(showRetry.value && state.value.kind !== "offline" && !pendingAction.value));
-  const canCancel = computed(() => Boolean(showCancel.value && state.value.kind !== "offline" && !pendingAction.value));
+  const canRetry = computed(() => showRetry.value && state.value.kind !== "offline" && !pendingAction.value);
+  const canCancel = computed(() => showCancel.value && state.value.kind !== "offline" && !pendingAction.value);
   const actionKeys: Record<"retry" | "cancel", string | null> = { retry: null, cancel: null };
   function setActionError(message: string): void { actionError.value = { message }; actionErrorOccurrence.value += 1; }
 

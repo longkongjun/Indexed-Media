@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import type { AutomationEvent, AutomationSource } from "@mediaflow/api-client-ts";
 
 const accountId = "019f0000-0000-7000-8000-000000000001";
 const sourceId = "019f0000-0000-7000-8000-000000000070";
@@ -6,14 +7,15 @@ const eventId = "019f0000-0000-7000-8000-000000000071";
 const connectionId = "019f0000-0000-7000-8000-000000000060";
 const inboxId = "019f0000-0000-7000-8000-000000000080";
 const session = { account: { id: accountId, administrator_name: "admin" }, csrf_token: "m".repeat(43), version: "v1" };
-const source = {
+// fixture 显式标注生成契约类型：契约字段演进时，不匹配会先在类型层暴露而不是运行时。
+const source: AutomationSource = {
   id: sourceId, kind: "rss", display_name: "Release feed", enabled: true,
   downloader_connection_id: connectionId, inbox_directory_id: null,
   endpoint_summary: "feeds.example.test", poll_interval_seconds: 900, allowed_actions: [],
   secret_fingerprint: null, config_version: 2, health: "healthy", checked_at: "2026-07-24T08:00:00Z",
   failure_code: null, projection_version: 3, updated_at: "2026-07-24T08:00:00Z",
 };
-const failedEvent = {
+const failedEvent: AutomationEvent = {
   id: eventId, source_id: sourceId, source_display_name: "Failed feed", action: "create-download",
   status: "failed", downstream_kind: null, downstream_id: null, result_count: null,
   failure_code: "integration.unavailable", attempt_count: 2, retry_at: null,
@@ -58,7 +60,7 @@ test("configures sources and enhancer, recovers an event, and preserves drafts o
       sourceWrites += 1;
       const body = request.postDataJSON() as { kind: string; display_name: string };
       if (body.kind === "webhook") {
-        const webhook = { ...source, id: "019f0000-0000-7000-8000-000000000075", kind: "webhook", display_name: body.display_name, endpoint_summary: "/api/v1/source-webhooks/…/events", secret_fingerprint: "…7a2f", allowed_actions: ["download.create"] };
+        const webhook: AutomationSource = { ...source, id: "019f0000-0000-7000-8000-000000000075", kind: "webhook", display_name: body.display_name, endpoint_summary: "/api/v1/source-webhooks/…/events", secret_fingerprint: "…7a2f", allowed_actions: ["download.create"] };
         sources.unshift(webhook);
         return json({ source: webhook, secret: "SECRET_ONCE_MUST_DISAPPEAR" }, 201);
       }

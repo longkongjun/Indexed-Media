@@ -1,5 +1,12 @@
 <script setup lang="ts">
-/** 使用原生表单语义编辑有界 organization target，并强制先执行无副作用 preflight。 */
+/**
+ * 使用原生表单语义编辑有界 organization target，并强制先执行无副作用 preflight。
+ *
+ * 表单状态模式说明：`feature` 是 `useOrganizationTargets` 返回的可变状态容器，
+ * `v-model` 绑定的是 composable 暴露的 reactive form 字段（本仓库表单既定模式），
+ * 不是对 props 数据流的意外突变，因此整体豁免 `vue/no-mutating-props`。
+ */
+/* eslint-disable vue/no-mutating-props -- feature 为 composable 状态容器，form 字段设计为可变 */
 import ErrorSummary from "../../components/ErrorSummary.vue";
 import { useOrganizationTargets } from "./useOrganizationTargets";
 

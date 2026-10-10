@@ -83,14 +83,16 @@ export function useReviewDecision(
       message.value = "上一次提交结果尚未确认；请先重试原决定，再修改草稿。";
       return false;
     }
+    const key = idempotencyKey ?? crypto.randomUUID();
+    const queuedBody = pendingBody ?? structuredClone(body);
     if (!idempotencyKey) {
-      idempotencyKey = crypto.randomUUID();
-      pendingBody = structuredClone(body);
+      idempotencyKey = key;
+      pendingBody = queuedBody;
       pendingDigest = digest;
     }
     state.value = { kind: "submitting" };
     message.value = "";
-    const request = () => client.submitReviewDecision(current.id, current.version, idempotencyKey!, pendingBody!);
+    const request = () => client.submitReviewDecision(current.id, current.version, key, queuedBody);
     try {
       return accept(await request());
     } catch (error) {

@@ -4,6 +4,8 @@ import { expect, test, type Page } from "@playwright/test";
 import { m2Fixtures } from "../../../packages/test-fixtures/src/index.ts";
 
 const { recovery, session } = m2Fixtures;
+const firstFile = recovery.files.items[0];
+if (!firstFile) throw new Error("m2 recovery fixture must contain a first discovered file");
 
 interface BrowserEventSourceController {
   emit(type: string, data: string): void;
@@ -133,7 +135,7 @@ test("offline transport failure preserves rendered facts, disables writes, and r
   await expect(page.getByRole("button", { name: "取消扫描" })).toBeEnabled();
   await expect(page.getByText("已观察文件").locator("..").getByText("2")).toBeVisible();
   await page.getByRole("link", { name: "查看原始文件" }).click();
-  await expect(page.locator("[data-wide-results]:visible, [data-mobile-results]:visible").getByText(recovery.files.items[0].relative_path, { exact: true })).toBeVisible();
+  await expect(page.locator("[data-wide-results]:visible, [data-mobile-results]:visible").getByText(firstFile.relative_path, { exact: true })).toBeVisible();
   await expect(page).toHaveURL(new RegExp(`/scan-tasks/${recovery.taskId}/files`));
   expect(taskReads).toBe(2);
   expect(writeRequests).toBe(0);

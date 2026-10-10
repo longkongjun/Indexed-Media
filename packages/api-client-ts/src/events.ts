@@ -35,9 +35,11 @@ const automationFailureCodes = new Set([
 function isDateTime(value: string): boolean {
   const match = occurredAt.exec(value);
   if (!match) return false;
-  const [year, month, day, hour, minute, second] = match.slice(1, 7).map(Number);
+  // 正则捕获组可能缺失（防御性），默认 NaN 使安全整数守卫统一拒绝。
+  const [year = Number.NaN, month = Number.NaN, day = Number.NaN, hour = Number.NaN, minute = Number.NaN, second = Number.NaN] = match.slice(1, 7).map(Number);
   const offsetHour = Number(match[7] ?? "0");
   const offsetMinute = Number(match[8] ?? "0");
+  if (![year, month, day, hour, minute, second, offsetHour, offsetMinute].every((part) => Number.isSafeInteger(part))) return false;
   const calendar = new Date(Date.UTC(year, month - 1, day));
   return calendar.getUTCFullYear() === year && calendar.getUTCMonth() === month - 1 && calendar.getUTCDate() === day && hour <= 23 && minute <= 59 && second <= 59 && offsetHour <= 23 && offsetMinute <= 59;
 }

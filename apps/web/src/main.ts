@@ -17,8 +17,8 @@ useSessionStore(pinia).configureClient(mediaFlowClient);
 
 const router = createAppRouter({
   pinia,
-  getBootstrapStatus: mediaFlowClient.getBootstrapStatus,
-  getSession: mediaFlowClient.getSession,
+  getBootstrapStatus: () => mediaFlowClient.getBootstrapStatus(),
+  getSession: () => mediaFlowClient.getSession(),
 });
 app.use(router);
 app.mount("#app");

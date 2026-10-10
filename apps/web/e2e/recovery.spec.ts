@@ -2,6 +2,9 @@ import { expect, test, type Page } from "@playwright/test";
 import { m2Fixtures } from "../../../packages/test-fixtures/src/index.ts";
 
 const { recovery, session } = m2Fixtures;
+const firstFile = recovery.files.items[0];
+const firstError = recovery.errors.items[0];
+if (!firstFile || !firstError) throw new Error("m2 recovery fixture must contain a first discovered file and scan error");
 
 interface BrowserEventSourceController {
   emit(type: string, data: string): void;
@@ -97,7 +100,7 @@ async function failRealtime(page: Page): Promise<void> {
 async function reopenRealtime(page: Page): Promise<void> {
   const reopened = await page.evaluate(() => {
     const controller = (window as unknown as {
-      __mediaflowM2Events: BrowserEventSourceController & { reopen?: () => void };
+      __mediaflowM2Events: Omit<BrowserEventSourceController, "reopen"> & { reopen?: () => void };
     }).__mediaflowM2Events;
     if (!controller.reopen) return false;
     controller.reopen();
@@ -184,8 +187,8 @@ test("browser-level restart consequence keeps the durable task identity and comm
   await expect(page).toHaveURL(new RegExp(`/scan-tasks/${recovery.taskId}$`));
 
   await page.getByRole("link", { name: "查看原始文件" }).click();
-  await expect(page.locator("[data-wide-results]:visible, [data-mobile-results]:visible").getByText(recovery.files.items[0].relative_path, { exact: true })).toBeVisible();
-  await expect(page.getByText(recovery.errors.items[0].relative_path)).toBeVisible();
+  await expect(page.locator("[data-wide-results]:visible, [data-mobile-results]:visible").getByText(firstFile.relative_path, { exact: true })).toBeVisible();
+  await expect(page.getByText(firstError.relative_path)).toBeVisible();
   expect(taskReads).toBe(2);
   expect(fileReads).toBe(1);
   expect(errorReads).toBe(1);
@@ -254,15 +257,15 @@ test("stream gap performs one targeted REST truth refresh and stale named events
   const filesPayload = await filesResponse.json() as typeof recovery.files;
   const errorsPayload = await errorsResponse.json() as typeof recovery.errors;
   expect(filesPayload.items[0]).toMatchObject({
-    id: recovery.files.items[0].id,
-    relative_path: recovery.files.items[0].relative_path,
+    id: firstFile.id,
+    relative_path: firstFile.relative_path,
   });
   expect(errorsPayload.items[0]).toMatchObject({
-    id: recovery.errors.items[0].id,
-    relative_path: recovery.errors.items[0].relative_path,
+    id: firstError.id,
+    relative_path: firstError.relative_path,
   });
-  await expect(page.locator("[data-wide-results]:visible, [data-mobile-results]:visible").getByText(recovery.files.items[0].relative_path, { exact: true })).toBeVisible();
-  await expect(page.getByText(recovery.errors.items[0].relative_path, { exact: true })).toBeVisible();
+  await expect(page.locator("[data-wide-results]:visible, [data-mobile-results]:visible").getByText(firstFile.relative_path, { exact: true })).toBeVisible();
+  await expect(page.getByText(firstError.relative_path, { exact: true })).toBeVisible();
   await expect.poll(() => reads).toEqual({ task: 2, files: 1, errors: 1, list: 0 });
   await expect(page).toHaveURL(new RegExp(`/scan-tasks/${recovery.taskId}/files\\?view=files$`));
 });

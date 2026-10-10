@@ -21,6 +21,7 @@ export function useAutomationEvents(
   const state = ref<TaskCenterState>({ kind: "loading", stale: false });
   const items = ref<AutomationEvent[]>([]);
   const selected = ref<AutomationEvent | null>(null);
+  let loadEpoch = 0;
   const context = ref<AutomationEventListOptions>({ ...initialContext });
   const nextCursor = ref<string | null>(null);
   const errorMessage = ref("");
@@ -35,16 +36,21 @@ export function useAutomationEvents(
   }
 
   async function load(next: AutomationEventListOptions = context.value): Promise<void> {
+    // epoch 守卫：连续触发多个 load 时，只有最新请求的结果可以写入状态；
+    // 乱序晚到的旧响应（成功或失败）一律丢弃，避免旧数据覆盖新筛选上下文。
+    const epoch = ++loadEpoch;
     context.value = { ...next };
     const stale = items.value.length > 0;
     state.value = { kind: "loading", stale };
     try {
-      const page = await client.listAutomationEvents(context.value);
+      const page = await client.listAutomationEvents(next);
+      if (epoch !== loadEpoch) return;
       items.value = page.items;
       nextCursor.value = page.next_cursor;
       state.value = { kind: page.items.length > 0 ? "content" : "empty" };
       errorMessage.value = "";
     } catch (error) {
+      if (epoch !== loadEpoch) return;
       await onFailure?.(error);
       state.value = isOffline(error) ? { kind: "offline", stale } : { kind: "error", stale };
       errorMessage.value = safeApiError(error, "无法加载自动化事件，请重试").message;

@@ -1,4 +1,4 @@
-import { acceptEventId, parseTaskEvent, type MediaFlowClient, type TaskEventEnvelope } from "@mediaflow/api-client-ts";
+import { acceptEventId, parseTaskEvent, type TaskEventEnvelope } from "@mediaflow/api-client-ts";
 import { ref, type InjectionKey } from "vue";
 import { isUnauthorized } from "../../components/apiErrors";
 import type { ScanTaskFeature } from "./useScanTasks";
@@ -20,11 +20,11 @@ export const taskEventSourceFactoryKey: InjectionKey<EventSourceFactory> = Symbo
 interface Options {
   eventSourceFactory?: EventSourceFactory;
   refreshRelated?: () => Promise<void>;
-  onUnauthorized?: () => unknown | Promise<unknown>;
+  onUnauthorized?: () => unknown;
 }
 type ScanTaskEvent = Extract<TaskEventEnvelope, { type: "task.progress" | "task.state-changed" }>;
 
-function defaultFactory(url: string): EventSourceLike { return new EventSource(url) as unknown as EventSourceLike; }
+function defaultFactory(url: string): EventSourceLike { return new EventSource(url); }
 
 /**
  * 将扫描任务功能与版本一 SSE 任务事件同步。
@@ -44,7 +44,7 @@ export function useTaskEvents(detail: ScanTaskFeature, options: Options = {}) {
   const probePromise = ref<Promise<void> | null>(null);
   const seen = new Set<number>();
   let source: EventSourceLike | null = null;
-  let disposed = false;
+  const lifecycle = { disposed: false };
   let pendingTruthId = 0;
   const namedTypes = ["task.progress", "task.state-changed", "stream.gap"] as const;
   const terminalStatuses = new Set(["completed", "partial-success", "failed", "cancelled"]);
@@ -57,7 +57,7 @@ export function useTaskEvents(detail: ScanTaskFeature, options: Options = {}) {
   }
 
   function applyEvent(event: ScanTaskEvent): void {
-    if (disposed || !detail.task.value || !acceptEventId(seen, event.id)) return;
+    if (lifecycle.disposed || !detail.task.value || !acceptEventId(seen, event.id)) return;
     lastAcceptedId.value = event.id;
     dedupSize.value = seen.size;
     if (event.type === "task.progress") detail.applySnapshot({ ...detail.task.value, counts: { ...event.payload } });
@@ -71,11 +71,12 @@ export function useTaskEvents(detail: ScanTaskFeature, options: Options = {}) {
   }
 
   async function refreshAfterGap(): Promise<void> {
-    while (!disposed && pendingTruthId > lastAcceptedId.value) {
+    while (!lifecycle.disposed && pendingTruthId > lastAcceptedId.value) {
       const coveredId = pendingTruthId;
       try { await Promise.all([detail.load(), options.refreshRelated?.()]); }
       catch { diagnostic.value = "事件状态刷新失败，将在后续事件到达时重试"; return; }
-      if (disposed) { pendingTruthId = 0; return; }
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- await 期间 stop() 可翻转 disposed，类型层不可见
+      if (lifecycle.disposed) { pendingTruthId = 0; return; }
       if (detail.state.value.kind !== "content") { diagnostic.value = "事件状态尚未确认，将在后续事件到达时重试"; return; }
       acceptId(coveredId);
       if (pendingTruthId === coveredId) pendingTruthId = 0;
@@ -83,7 +84,7 @@ export function useTaskEvents(detail: ScanTaskFeature, options: Options = {}) {
   }
 
   function ensureTruthRefresh(): void {
-    if (disposed || refreshing.value) return;
+    if (lifecycle.disposed || refreshing.value) return;
     const run = refreshAfterGap();
     const tracked = run.finally(() => { if (refreshing.value === tracked) refreshing.value = null; });
     refreshing.value = tracked;
@@ -93,7 +94,7 @@ export function useTaskEvents(detail: ScanTaskFeature, options: Options = {}) {
     let event;
     try { event = parseTaskEvent(JSON.parse(message.data)); }
     catch { diagnostic.value = "事件格式无效，已忽略"; return; }
-    if (disposed || (event.type !== "stream.gap" && event.task_id !== detail.task.value?.id)) return;
+    if (lifecycle.disposed || (event.type !== "stream.gap" && event.task_id !== detail.task.value?.id)) return;
     if (event.type === "stream.gap") {
       bufferTruthId(event.id);
       ensureTruthRefresh();
@@ -114,25 +115,23 @@ export function useTaskEvents(detail: ScanTaskFeature, options: Options = {}) {
   }
 
   function onError(): void {
-    if (disposed) return;
+    if (lifecycle.disposed) return;
     connection.value = "reconnecting";
-    const candidate = detail as ScanTaskFeature & { client?: MediaFlowClient };
-    const api = candidate.client;
-    probePromise.value = api?.getSession
-      ? api.getSession().then(() => undefined).catch(async (error) => {
-        if (!disposed && isUnauthorized(error)) await options.onUnauthorized?.();
-      })
-      : Promise.resolve();
+    probePromise.value = detail.client.getSession()
+      .then(() => undefined)
+      .catch(async (error: unknown) => {
+        if (!lifecycle.disposed && isUnauthorized(error)) await options.onUnauthorized?.();
+      });
   }
 
-  function onOpen(): void { if (!disposed) connection.value = "connected"; }
-  const namedMessage = (event: Event | MessageEvent<string>) => onMessage(event as MessageEvent<string>);
-  const openListener = () => onOpen();
-  const errorListener = () => onError();
+  function onOpen(): void { if (!lifecycle.disposed) connection.value = "connected"; }
+  const namedMessage = (event: Event | MessageEvent<string>) => { onMessage(event as MessageEvent<string>); };
+  const openListener = () => { onOpen(); };
+  const errorListener = () => { onError(); };
 
   async function start(): Promise<void> {
     await detail.load();
-    if (disposed || !detail.task.value) return;
+    if (lifecycle.disposed || !detail.task.value) return;
     source = (options.eventSourceFactory ?? defaultFactory)("/api/v1/events");
     for (const type of namedTypes) source.addEventListener(type, namedMessage);
     source.addEventListener("open", openListener);
@@ -140,7 +139,7 @@ export function useTaskEvents(detail: ScanTaskFeature, options: Options = {}) {
   }
 
   function stop(): void {
-    disposed = true;
+    lifecycle.disposed = true;
     pendingTruthId = 0;
     if (source) {
       for (const type of namedTypes) source.removeEventListener(type, namedMessage);

@@ -27,19 +27,25 @@ export function useProcessingTasks(
   const nextCursor = ref<string | null>(null);
   const errorMessage = ref("");
   const context = ref<TaskCenterContext>({ ...initialContext });
+  let loadEpoch = 0;
 
   async function load(next: TaskCenterContext = context.value): Promise<void> {
+    // epoch 守卫：连续触发多个 load 时，只有最新请求的结果可以写入状态；
+    // 乱序晚到的旧响应（成功或失败）一律丢弃，避免旧数据覆盖新筛选上下文。
+    const epoch = ++loadEpoch;
     context.value = { ...next };
     const stale = tasks.value.length > 0;
     state.value = { kind: "loading", stale };
     try {
-      const page = await client.listProcessingTasks(context.value);
+      const page = await client.listProcessingTasks(next);
+      if (epoch !== loadEpoch) return;
       tasks.value = page.items;
       summary.value = page.summary;
       nextCursor.value = page.next_cursor;
       state.value = { kind: page.items.length > 0 ? "content" : "empty" };
       errorMessage.value = "";
     } catch (error) {
+      if (epoch !== loadEpoch) return;
       await onFailure?.(error);
       state.value = isOffline(error) ? { kind: "offline", stale } : { kind: "error", stale };
       errorMessage.value = safeApiError(error, "无法加载处理任务，请重试").message;

@@ -24,7 +24,7 @@ function describeError(error: unknown, operation: IdentityOperation): IdentityEr
       case "auth.rate_limited": {
         const retryAfter = error.body.error.details?.retry_after_seconds;
         const message = typeof retryAfter === "number" && Number.isFinite(retryAfter) && retryAfter > 0
-          ? `尝试次数过多，请在 ${Math.ceil(retryAfter)} 秒后重试。`
+          ? `尝试次数过多，请在 ${String(Math.ceil(retryAfter))} 秒后重试。`
           : "尝试次数过多，请稍后再试。";
         return { message, targets: [] };
       }
@@ -119,5 +119,5 @@ export function useIdentity() {
     await session.logout(router, client.deleteSession.bind(client));
   }
 
-  return { client: client as MediaFlowClient, submitting, error, errorTargets, clearError, setup, login, logout };
+  return { client, submitting, error, errorTargets, clearError, setup, login, logout };
 }

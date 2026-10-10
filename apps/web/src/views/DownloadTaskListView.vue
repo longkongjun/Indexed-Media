@@ -25,7 +25,7 @@ const client = useMediaFlowClient();
 const eventSourceFactory = inject(taskEventSourceFactoryKey, undefined);
 const filters = reactive({ connectionId: "", status: "", query: "" });
 const statuses = ["queued", "submitting", "monitoring", "retry-wait", "completed", "failed"] as const;
-const queryString = (name: string) => typeof route.query[name] === "string" && route.query[name] ? String(route.query[name]) : undefined;
+const queryString = (name: string) => { const value = route.query[name]; return typeof value === "string" && value ? value : undefined; };
 const context = computed<DownloadTaskListOptions>(() => ({
   connectionId: queryString("connection_id"),
   status: statuses.includes(queryString("status") as typeof statuses[number]) ? queryString("status") as DownloadTaskListOptions["status"] : undefined,
@@ -51,7 +51,7 @@ const events = useProjectionEvents({
 });
 
 syncControls();
-onMounted(() => { void connections.load(); events.start(); });
+onMounted(() => { void connections.load(); void events.start(); });
 onBeforeUnmount(events.stop);
 watch(() => route.fullPath, () => { syncControls(); return refresh(); }, { immediate: true });
 </script>

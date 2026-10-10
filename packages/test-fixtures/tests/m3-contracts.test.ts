@@ -55,7 +55,8 @@ describe("M3 identification contract fixtures", () => {
       ["IdentificationDetail", "candidates", 100],
     ] as const) {
       const schema = openApi.components.schemas[name] as { properties: Record<string, { maxItems?: number }> };
-      expect(schema.properties[property].maxItems, `${name}.${property}`).toBe(maximum);
+      const bound = schema.properties[property]?.maxItems;
+      expect(bound, `${name}.${property}`).toBe(maximum);
     }
   });
 

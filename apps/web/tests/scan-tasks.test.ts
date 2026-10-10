@@ -35,6 +35,34 @@ describe("scan task state", () => {
     expect(feature.tasks.value).toHaveLength(1);
   });
 
+  it("discards stale list responses that resolve after a newer load", async () => {
+    // 回归钉子：旧请求的响应乱序晚到时（先发起的 cursor-a 后返回），
+    // 其结果与失败都不得覆盖新筛选上下文（cursor-b）的数据。
+    let firstResolve!: (page: { items: ScanTask[]; next_cursor: string | null }) => void;
+    const deferredFirst: Promise<{ items: ScanTask[]; next_cursor: string | null }> = new Promise((resolve) => {
+      firstResolve = resolve;
+    });
+    const api = client({
+      listScanTasks: vi.fn((cursor?: string) =>
+        cursor === "cursor-b"
+          ? Promise.resolve({ items: [task("completed")], next_cursor: null })
+          : deferredFirst),
+    });
+    const feature = useScanTasks(api, {});
+    const firstLoad = feature.load({ cursor: "cursor-a" });
+    const secondLoad = feature.load({ cursor: "cursor-b" });
+    await secondLoad;
+    expect(feature.state.value.kind).toBe("content");
+    expect(feature.tasks.value).toEqual([task("completed")]);
+    expect(feature.nextCursor.value).toBeNull();
+    // 旧响应现在才返回：必须被丢弃，不得把数据改回旧页面。
+    firstResolve({ items: [task("running")], next_cursor: "stale-cursor" });
+    await firstLoad;
+    expect(feature.tasks.value).toEqual([task("completed")]);
+    expect(feature.nextCursor.value).toBeNull();
+    expect(feature.state.value.kind).toBe("content");
+  });
+
   it("shows valid task facts and updates only the affected task for retry/cancel with unique keys", async () => {
     const api = client();
     const detail = useScanTask(api, id);

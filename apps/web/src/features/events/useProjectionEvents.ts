@@ -12,10 +12,10 @@ interface ProjectionEventOptions {
   versionOf?: (event: TaskEventEnvelope) => ProjectionVersion | null;
   eventSourceFactory?: EventSourceFactory;
   probeClient?: Pick<MediaFlowClient, "getSession">;
-  onUnauthorized?: () => unknown | Promise<unknown>;
+  onUnauthorized?: () => unknown;
 }
 
-function defaultFactory(url: string): EventSourceLike { return new EventSource(url) as unknown as EventSourceLike; }
+function defaultFactory(url: string): EventSourceLike { return new EventSource(url); }
 
 /**
  * 依据严格且单调的 SSE 提示刷新一个有界 REST 投影。
@@ -32,11 +32,9 @@ export function useProjectionEvents(options: ProjectionEventOptions) {
   const probePromise = ref<Promise<void> | null>(null);
   const seen = new Set<number>();
   const pendingVersions = new Map<string, number>();
-  let pendingId = 0;
-  let pendingGap = false;
-  let pendingUnversioned = false;
+  const pending = { id: 0, gap: false, unversioned: false };
   let source: EventSourceLike | null = null;
-  let disposed = false;
+  const lifecycle = { disposed: false };
   const namedTypes = [...new Set([...options.eventTypes, "stream.gap" as const])];
 
   function acceptId(id: number): boolean {
@@ -46,34 +44,34 @@ export function useProjectionEvents(options: ProjectionEventOptions) {
   }
 
   function queue(event: TaskEventEnvelope): void {
-    if (!Number.isSafeInteger(event.id) || event.id <= lastAcceptedId.value || event.id <= pendingId) return;
-    pendingId = event.id;
+    if (!Number.isSafeInteger(event.id) || event.id <= lastAcceptedId.value || event.id <= pending.id) return;
+    pending.id = event.id;
     if (event.type === "stream.gap") {
-      pendingGap = true;
+      pending.gap = true;
       return;
     }
     const projection = options.versionOf?.(event) ?? null;
     if (!projection) {
-      pendingUnversioned = true;
+      pending.unversioned = true;
       return;
     }
     const accepted = projectionVersions.value[projection.key] ?? 0;
     if (projection.version <= accepted) {
       acceptId(event.id);
-      pendingId = 0;
+      pending.id = 0;
       return;
     }
     pendingVersions.set(projection.key, Math.max(pendingVersions.get(projection.key) ?? 0, projection.version));
   }
 
   async function refreshTruth(): Promise<void> {
-    while (!disposed && pendingId > lastAcceptedId.value) {
-      const coveredId = pendingId;
+    while (!lifecycle.disposed && pending.id > lastAcceptedId.value) {
+      const coveredId = pending.id;
       const coveredVersions = new Map(pendingVersions);
-      const hadGap = pendingGap;
-      const hadUnversioned = pendingUnversioned;
-      pendingGap = false;
-      pendingUnversioned = false;
+      const hadGap = pending.gap;
+      const hadUnversioned = pending.unversioned;
+      pending.gap = false;
+      pending.unversioned = false;
       for (const [key, version] of coveredVersions) {
         if ((pendingVersions.get(key) ?? 0) <= version) pendingVersions.delete(key);
       }
@@ -81,12 +79,13 @@ export function useProjectionEvents(options: ProjectionEventOptions) {
         await options.refresh();
       } catch {
         diagnostic.value = "事件状态刷新失败，将在后续事件到达时重试";
-        pendingGap ||= hadGap;
-        pendingUnversioned ||= hadUnversioned;
+        pending.gap ||= hadGap;
+        pending.unversioned ||= hadUnversioned;
         for (const [key, version] of coveredVersions) pendingVersions.set(key, Math.max(pendingVersions.get(key) ?? 0, version));
         return;
       }
-      if (disposed) return;
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- await 期间 stop() 可翻转 disposed，类型层不可见
+      if (lifecycle.disposed) return;
       const nextVersions = { ...projectionVersions.value };
       for (const [key, version] of coveredVersions) nextVersions[key] = Math.max(nextVersions[key] ?? 0, version);
       projectionVersions.value = nextVersions;
@@ -94,15 +93,16 @@ export function useProjectionEvents(options: ProjectionEventOptions) {
       for (const [key, version] of pendingVersions) {
         if (version <= (projectionVersions.value[key] ?? 0)) pendingVersions.delete(key);
       }
-      if (!pendingGap && !pendingUnversioned && pendingVersions.size === 0 && pendingId > lastAcceptedId.value) {
-        acceptId(pendingId);
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- await 期间并发事件回调可置位 gap/unversioned，类型层不可见
+      if (!pending.gap && !pending.unversioned && pendingVersions.size === 0 && pending.id > lastAcceptedId.value) {
+        acceptId(pending.id);
       }
-      if (pendingId <= lastAcceptedId.value) pendingId = 0;
+      if (pending.id <= lastAcceptedId.value) pending.id = 0;
     }
   }
 
   function ensureRefresh(): void {
-    if (disposed || refreshing.value) return;
+    if (lifecycle.disposed || refreshing.value) return;
     const run = refreshTruth();
     const tracked = run.finally(() => { if (refreshing.value === tracked) refreshing.value = null; });
     refreshing.value = tracked;
@@ -112,28 +112,28 @@ export function useProjectionEvents(options: ProjectionEventOptions) {
     let event: TaskEventEnvelope;
     try { event = parseTaskEvent(JSON.parse(message.data)); }
     catch { diagnostic.value = "事件格式无效，已忽略"; return; }
-    if (disposed) return;
+    if (lifecycle.disposed) return;
     if (event.type !== "stream.gap" && !options.matches(event)) return;
     queue(event);
-    if (pendingId > lastAcceptedId.value) ensureRefresh();
+    if (pending.id > lastAcceptedId.value) ensureRefresh();
   }
 
-  function onOpen(): void { if (!disposed) connection.value = "connected"; }
+  function onOpen(): void { if (!lifecycle.disposed) connection.value = "connected"; }
   function onError(): void {
-    if (disposed) return;
+    if (lifecycle.disposed) return;
     connection.value = "reconnecting";
     probePromise.value = options.probeClient?.getSession()
       .then(() => undefined)
-      .catch(async (error) => { if (!disposed && isUnauthorized(error)) await options.onUnauthorized?.(); })
+      .catch(async (error: unknown) => { if (!lifecycle.disposed && isUnauthorized(error)) await options.onUnauthorized?.(); })
       ?? Promise.resolve();
   }
-  const messageListener = (event: Event | MessageEvent<string>) => onMessage(event as MessageEvent<string>);
-  const openListener = () => onOpen();
-  const errorListener = () => onError();
+  const messageListener = (event: Event | MessageEvent<string>) => { onMessage(event as MessageEvent<string>); };
+  const openListener = () => { onOpen(); };
+  const errorListener = () => { onError(); };
 
   async function start(): Promise<void> {
     await options.refresh();
-    if (disposed) return;
+    if (lifecycle.disposed) return;
     const factory = options.eventSourceFactory ?? (typeof EventSource === "undefined" ? null : defaultFactory);
     if (!factory) return;
     source = factory("/api/v1/events");
@@ -143,7 +143,7 @@ export function useProjectionEvents(options: ProjectionEventOptions) {
   }
 
   function stop(): void {
-    disposed = true;
+    lifecycle.disposed = true;
     if (source) {
       for (const type of namedTypes) source.removeEventListener(type, messageListener);
       source.removeEventListener("open", openListener);

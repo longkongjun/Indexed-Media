@@ -33,10 +33,11 @@ const summaryItems = computed(() => {
     const message = fieldErrors[target];
     if (message) items.push({ target, message });
   }
-  if (identity.error.value) {
+  const identityError = identity.error.value;
+  if (identityError) {
     const targets = identity.errorTargets.value.filter((target): target is SetupField => target in fieldErrors);
-    if (targets.length) targets.forEach((target) => items.push({ target, message: identity.error.value! }));
-    else items.push({ message: identity.error.value });
+    if (targets.length) targets.forEach((target) => items.push({ target, message: identityError }));
+    else items.push({ message: identityError });
   }
   return items;
 });
