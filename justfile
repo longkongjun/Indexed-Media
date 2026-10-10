@@ -5,6 +5,12 @@ check-contracts:
     @just check-openapi
     @just check-events
     @just check-contract-examples
+    @just check-capability
+
+# 验证 media-capability.v1 信封契约：fixtures 回放（Ajv）+ Core Rust 类型回放。
+check-capability:
+    @cargo test --manifest-path apps/core/Cargo.toml --test capability_contracts
+    @CI=true pnpm --filter @mediaflow/test-fixtures test -- --run tests/capability-contracts.test.ts
 
 # 验证 M3 Change 1 的 REST/SSE 契约、生成客户端和公共 fixtures。
 check-m3-identification-contracts:
@@ -320,6 +326,7 @@ check-web:
     export MEDIAFLOW_TEST_OUTPUT_DIR="$output_root/playwright"
     CI=true pnpm --filter @mediaflow/api-client-ts check-generated
     CI=true pnpm --filter @mediaflow/web typecheck
+    CI=true pnpm --filter @mediaflow/web exec eslint .
     CI=true pnpm --filter @mediaflow/web exec vitest --exclude "e2e/**" --run
     CI=true pnpm --filter @mediaflow/web exec vite build --outDir "$output_root/dist" --emptyOutDir
     node apps/web/scripts/check-budget.mjs "$output_root/dist"
@@ -366,7 +373,6 @@ check-api-client-ts:
     @pnpm --filter @mediaflow/api-client-ts typecheck
     @pnpm --filter @mediaflow/api-client-ts test -- --run
     @pnpm --filter @mediaflow/api-client-ts check-generated
-
 # 检查 Dart API Client；当前模块未初始化，因此返回状态 2。
 check-api-client-dart:
     @printf '未初始化：packages/api-client-dart\n' >&2
@@ -470,6 +476,29 @@ check-observability:
     @printf '未初始化：infra/observability\n' >&2
     @exit 2
 
+# 检查 Rust 文档门禁：rustdoc 必须无警告构建（公开 API 文档注释齐全）。
+check-rust-docs:
+    @RUSTDOCFLAGS="-D warnings" cargo doc --manifest-path apps/core/Cargo.toml --no-deps
+
+# 运行 Rust doctest；文档示例即契约，必须可编译可执行。
+test-rust-doc:
+    @cargo test --manifest-path apps/core/Cargo.toml --doc
+
+# 检查依赖治理：advisory/许可扫描（cargo-deny）与未用依赖清理（cargo-machete）。
+check-rust-deps:
+    @cargo deny --manifest-path apps/core/Cargo.toml --config apps/core/deny.toml check
+    @cargo machete apps/core
+
 # 执行当前已初始化正式能力的完整自动门禁；真实外部系统验收由独立 live 入口负责。
 check:
     @just check-m4-source-automation
+    @just check-rust-docs
+    @just test-rust-doc
+    @just check-rust-deps
+
+# 本地一键全量门禁聚合（与远端 CI 同构）：check 全量 + 容器/Compose/NAS 静态门禁。
+check-all:
+    @just check
+    @just check-containers-static
+    @just check-compose-static
+    @just check-nas

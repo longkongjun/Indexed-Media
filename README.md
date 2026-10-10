@@ -52,8 +52,9 @@ MediaFlow/
 
 公开仓库的默认自动门禁通过以下命令运行：
 
-- `just check`：执行 Core 格式、Clippy、全目标测试、契约、客户端、共享夹具、Web 类型/测试/构建/E2E 与差异检查。
-- `just check-m4-source-automation`：与默认检查相同的当前里程碑聚合入口。
+- `just check`：执行 Core 格式、Clippy（pedantic）、全目标测试、doctest、rustdoc、依赖治理（cargo-deny/cargo-machete）、契约、客户端、共享夹具、Web lint/类型/测试/构建/E2E 与差异检查。
+- `just check-all`：本地一键全量门禁聚合（`check` + 容器/Compose 静态 + NAS 文档门禁），与远端 CI（`.github/workflows/ci.yml`）同构。
+- `just check-m4-source-automation`：当前里程碑自动门禁的既有聚合入口。
 - 真实 NAS、下载器、RSS 与模型验收使用对应 `*-live` 命令，环境缺失时不得冒充通过。
 
 本地项目结构与 AI 工作流门禁由 StudySpace 的 `workflow-packs/mediaflow/` 提供；从 StudySpace 根目录调用对应检查脚本，不向本仓库注入入口或脚本副本。项目仓库的构建与测试入口以根 `justfile` 和各模块文档为准。

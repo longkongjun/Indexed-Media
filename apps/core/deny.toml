@@ -1,0 +1,36 @@
+# cargo-deny 配置：advisory 数据库扫描与许可证边界。
+# `just check-rust-deps` 执行；advisory 数据库需要网络，离线时该目标显式失败而不是静默跳过。
+
+[advisories]
+version = 2
+# 漏洞出现即失败，不维护 ignore 清单；确需豁免的 advisory 必须在此登记原因与时限。
+yanked = "deny"
+
+[licenses]
+version = 2
+# 本 crate 为 publish=false 的私有 workspace 成员且尚未声明 license（仓库无 LICENSE 文件）；
+# license 选择是用户决策，决定后在 Cargo.toml 声明（见任务 notify 队列登记）。
+private = { ignore = true }
+allow = [
+  "MIT",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "ISC",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "Zlib",
+  "Unicode-3.0",
+  "CC0-1.0",
+  "CDLA-Permissive-2.0",
+]
+confidence-threshold = 0.93
+
+[bans]
+# 重复依赖只告警（生态中同名多版本常见），不阻断；硬禁个别 crate 时在此列出。
+multiple-versions = "warn"
+wildcards = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
