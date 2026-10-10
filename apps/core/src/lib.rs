@@ -9,6 +9,8 @@ pub mod automation;
 
 /// 启动配置与顶层 HTTP 路由构建。
 pub mod bootstrap;
+/// `media-capability.v1` 能力协议类型与 AI 控制面网关边界。
+pub mod capability;
 /// 正式本地媒体记录及已核对本地结果投影边界。
 pub mod catalog;
 /// 内置元数据连接器配置、健康与提供方边界。

@@ -1,0 +1,20 @@
+{
+  "protocol_version": "media-capability.v1",
+  "request_id": "019f8a10-0000-7000-8000-000000000003",
+  "task_id": "019f8a10-0000-7000-8000-000000000100",
+  "status": "rejected",
+  "result": null,
+  "evidence": [],
+  "next_actions": ["replan"],
+  "error": {
+    "error_code": "capability.revision-stale",
+    "category": "conflict",
+    "retryable": false,
+    "phase": "planning",
+    "task_id": "019f8a10-0000-7000-8000-000000000100",
+    "operation_id": null,
+    "required_action": "replan",
+    "safe_details": { "expected": "task.version:12", "actual": "task.version:14" },
+    "evidence_refs": ["task:019f8a10-0000-7000-8000-000000000100"]
+  }
+}

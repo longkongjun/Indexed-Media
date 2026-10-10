@@ -1,0 +1,15 @@
+{
+  "protocol_version": "media-capability.v1",
+  "request_id": "019f8a10-0000-7000-8000-000000000001",
+  "session_id": "019f8a10-0000-7000-8000-000000000010",
+  "task_id": "019f8a10-0000-7000-8000-000000000100",
+  "capability": "media.task-status",
+  "actor": { "kind": "ai", "id": "dsh" },
+  "input": { "include": ["stage", "reason", "result"] },
+  "execution": {
+    "mode": "read-only",
+    "idempotency_key": "idem-7f3a-status-01",
+    "expected_revision": "task.version:12",
+    "deadline_ms": 30000
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "event_id": "019f8a10-0000-7000-8000-000000000400",
+  "sequence": 42,
+  "event_type": "task.waiting_approval",
+  "occurred_at": "2026-10-10T08:00:00Z",
+  "task_id": "019f8a10-0000-7000-8000-000000000100",
+  "request_id": "019f8a10-0000-7000-8000-000000000002",
+  "operation_id": null,
+  "state": "waiting-approval",
+  "progress": null,
+  "evidence_refs": ["plan:019f8a10-0000-7000-8000-000000000300"],
+  "error": null
+}

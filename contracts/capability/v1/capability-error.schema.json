@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mediaflow.local/contracts/capability/v1/capability-error.schema.json",
+  "title": "MediaFlow structured capability error (media-capability.v1)",
+  "description": "Core 反馈给 AI 的结构化错误。错误是持久任务与 AI 交互的一部分：必须可机器判断（category/retryable/required_action），且不泄露凭据、完整敏感路径或原始模型输出。",
+  "type": "object",
+  "required": ["error_code", "category", "retryable", "phase", "task_id", "operation_id", "required_action", "safe_details", "evidence_refs"],
+  "additionalProperties": false,
+  "properties": {
+    "error_code": { "type": "string", "pattern": "^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)+$", "minLength": 3, "maxLength": 96 },
+    "category": { "$ref": "#/$defs/errorCategory" },
+    "retryable": { "type": "boolean" },
+    "phase": { "$ref": "#/$defs/errorPhase" },
+    "task_id": { "anyOf": [{ "$ref": "#/$defs/uuid" }, { "type": "null" }] },
+    "operation_id": { "anyOf": [{ "type": "string", "maxLength": 128 }, { "type": "null" }] },
+    "required_action": { "$ref": "#/$defs/requiredAction" },
+    "safe_details": { "type": "object", "maxProperties": 16 },
+    "evidence_refs": { "type": "array", "items": { "type": "string", "maxLength": 128 }, "maxItems": 16 }
+  },
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "errorCategory": {
+      "enum": ["validation", "permission", "conflict", "precondition", "not_found", "provider", "transient", "consistency", "unsupported", "internal"]
+    },
+    "errorPhase": {
+      "enum": ["scan", "identification", "planning", "execution", "sync"]
+    },
+    "requiredAction": {
+      "enum": ["ask_user", "replan", "retry", "rollback", "none"]
+    }
+  }
+}

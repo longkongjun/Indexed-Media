@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mediaflow.local/contracts/capability/v1/capability-event-page.schema.json",
+  "title": "MediaFlow capability event page (media-capability.v1)",
+  "description": "AI 按事件 cursor 拉取的有序事件页。next_cursor 为 null 表示当前没有更多事件；非 null 时携带该 cursor 继续拉取。事件按 sequence 单调递增。",
+  "type": "object",
+  "required": ["items", "next_cursor"],
+  "additionalProperties": false,
+  "properties": {
+    "items": { "type": "array", "items": { "$ref": "capability-event.schema.json" }, "maxItems": 200 },
+    "next_cursor": { "anyOf": [{ "type": "string", "minLength": 1, "maxLength": 128 }, { "type": "null" }] }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "protocol_version": "media-capability.v1",
+  "request_id": "019f8a10-0000-7000-8000-000000000002",
+  "task_id": "019f8a10-0000-7000-8000-000000000100",
+  "status": "needs_approval",
+  "result": {
+    "plan_id": "019f8a10-0000-7000-8000-000000000300",
+    "plan_version": 2,
+    "operation_count": 3,
+    "summary": "3 个文件操作：2 移动 + 1 NFO 生成"
+  },
+  "evidence": [
+    { "id": "019f8a10-0000-7000-8000-000000000300", "kind": "plan" }
+  ],
+  "next_actions": ["request_approval", "cancel"],
+  "error": null
+}

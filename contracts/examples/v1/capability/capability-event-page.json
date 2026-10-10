@@ -1,0 +1,41 @@
+{
+  "items": [
+    {
+      "event_id": "019f8a10-0000-7000-8000-000000000400",
+      "sequence": 42,
+      "event_type": "task.waiting_approval",
+      "occurred_at": "2026-10-10T08:00:00Z",
+      "task_id": "019f8a10-0000-7000-8000-000000000100",
+      "request_id": "019f8a10-0000-7000-8000-000000000002",
+      "operation_id": null,
+      "state": "waiting-approval",
+      "progress": null,
+      "evidence_refs": ["plan:019f8a10-0000-7000-8000-000000000300"],
+      "error": null
+    },
+    {
+      "event_id": "019f8a10-0000-7000-8000-000000000401",
+      "sequence": 43,
+      "event_type": "external_sync.retryable",
+      "occurred_at": "2026-10-10T08:00:05Z",
+      "task_id": "019f8a10-0000-7000-8000-000000000100",
+      "request_id": null,
+      "operation_id": "op-2026-10-10-0001",
+      "state": "local_succeeded",
+      "progress": { "attempt": 2, "next_retry_in_seconds": 300 },
+      "evidence_refs": ["journal:019f8a10-0000-7000-8000-000000000500"],
+      "error": {
+        "error_code": "integration.unavailable",
+        "category": "provider",
+        "retryable": true,
+        "phase": "sync",
+        "task_id": "019f8a10-0000-7000-8000-000000000100",
+        "operation_id": "op-2026-10-10-0001",
+        "required_action": "retry",
+        "safe_details": { "provider": "jellyfin" },
+        "evidence_refs": []
+      }
+    }
+  ],
+  "next_cursor": "capability-events:43"
+}

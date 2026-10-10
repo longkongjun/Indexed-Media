@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mediaflow.local/contracts/capability/v1/capability-call.schema.json",
+  "title": "MediaFlow capability call envelope (media-capability.v1)",
+  "description": "AI 控制面（DSH）向 Core 发起的能力调用信封。输入不可信：Core 必须按 capability 与输入 schema 再次校验，不信任调用方已完成校验。",
+  "type": "object",
+  "required": ["protocol_version", "request_id", "session_id", "task_id", "capability", "actor", "input", "execution"],
+  "additionalProperties": false,
+  "properties": {
+    "protocol_version": { "const": "media-capability.v1" },
+    "request_id": { "$ref": "#/$defs/uuid" },
+    "session_id": { "anyOf": [{ "$ref": "#/$defs/uuid" }, { "type": "null" }] },
+    "task_id": { "anyOf": [{ "$ref": "#/$defs/uuid" }, { "type": "null" }] },
+    "capability": { "$ref": "#/$defs/capabilityName" },
+    "actor": { "$ref": "#/$defs/actor" },
+    "input": { "type": "object", "maxProperties": 64 },
+    "execution": { "$ref": "#/$defs/execution" }
+  },
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "capabilityName": {
+      "enum": [
+        "media.scan",
+        "media.task-status",
+        "media.match-candidates",
+        "media.create-plan",
+        "media.request-approval",
+        "media.apply-plan",
+        "media.retry",
+        "media.cancel",
+        "media.rollback",
+        "media.sync-external"
+      ]
+    },
+    "actor": {
+      "type": "object",
+      "required": ["kind", "id"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "enum": ["ai", "user", "system"] },
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "required": ["mode", "idempotency_key", "expected_revision", "deadline_ms"],
+      "additionalProperties": false,
+      "properties": {
+        "mode": { "$ref": "#/$defs/executionMode" },
+        "idempotency_key": { "type": "string", "pattern": "^[A-Za-z0-9_-]{8,128}$" },
+        "expected_revision": { "anyOf": [{ "type": "string", "maxLength": 128 }, { "type": "null" }] },
+        "deadline_ms": { "type": "integer", "minimum": 1, "maximum": 600000 }
+      }
+    },
+    "executionMode": {
+      "enum": ["read-only", "plan-only", "approval-required", "reversible-write"]
+    }
+  }
+}

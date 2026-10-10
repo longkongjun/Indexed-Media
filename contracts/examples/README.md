@@ -6,7 +6,7 @@
 
 ## 职责
 
-所有客户端共享的有效与无效 payload 样例。
+所有客户端共享的有效与无效 payload 样例；`v1/capability/` 保存 `media-capability.v1` 信封的 golden 示例，由 test-fixtures（Ajv）与 Core Rust 契约测试双端回放。
 
 ## 非目标
 

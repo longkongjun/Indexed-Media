@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mediaflow.local/contracts/capability/v1/capability-event.schema.json",
+  "title": "MediaFlow capability event envelope (media-capability.v1)",
+  "description": "Core 反馈给 AI 控制面的事实事件。事件由 Core 排序并持久化；AI 按 sequence 去重、断线后按 cursor 补发，不依赖 Session 重建 Core 事实。此事件流与 Web SSE（events/v1）相互独立。",
+  "type": "object",
+  "required": ["event_id", "sequence", "event_type", "occurred_at", "task_id", "request_id", "operation_id", "state", "progress", "evidence_refs", "error"],
+  "additionalProperties": false,
+  "properties": {
+    "event_id": { "$ref": "#/$defs/uuid" },
+    "sequence": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "event_type": { "$ref": "#/$defs/eventType" },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "task_id": { "anyOf": [{ "$ref": "#/$defs/uuid" }, { "type": "null" }] },
+    "request_id": { "anyOf": [{ "$ref": "#/$defs/uuid" }, { "type": "null" }] },
+    "operation_id": { "anyOf": [{ "type": "string", "maxLength": 128 }, { "type": "null" }] },
+    "state": { "anyOf": [{ "type": "string", "maxLength": 64 }, { "type": "null" }] },
+    "progress": { "anyOf": [{ "type": "object", "maxProperties": 16 }, { "type": "null" }] },
+    "evidence_refs": { "anyOf": [{ "type": "array", "items": { "type": "string", "maxLength": 128 }, "maxItems": 16 }, { "type": "null" }] },
+    "error": {
+      "anyOf": [
+        { "$ref": "capability-error.schema.json" },
+        { "type": "null" }
+      ]
+    }
+  },
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "eventType": {
+      "enum": [
+        "task.accepted",
+        "task.progressed",
+        "task.waiting_input",
+        "task.waiting_approval",
+        "capability.completed",
+        "capability.failed",
+        "task.retryable",
+        "task.paused",
+        "task.succeeded",
+        "task.failed",
+        "external_sync.retryable"
+      ]
+    }
+  }
+}

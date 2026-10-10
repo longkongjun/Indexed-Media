@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mediaflow.local/contracts/capability/v1/capability-result.schema.json",
+  "title": "MediaFlow capability result envelope (media-capability.v1)",
+  "description": "Core 对能力调用的结果信封。AI 只能依据结构化 status 与 next_actions 选择下一步，不能把自然语言结果当执行成功。",
+  "type": "object",
+  "required": ["protocol_version", "request_id", "task_id", "status", "result", "evidence", "next_actions", "error"],
+  "additionalProperties": false,
+  "properties": {
+    "protocol_version": { "const": "media-capability.v1" },
+    "request_id": { "$ref": "#/$defs/uuid" },
+    "task_id": { "anyOf": [{ "$ref": "#/$defs/uuid" }, { "type": "null" }] },
+    "status": { "$ref": "#/$defs/resultStatus" },
+    "result": { "anyOf": [{ "type": "object", "maxProperties": 64 }, { "type": "null" }] },
+    "evidence": { "type": "array", "items": { "$ref": "#/$defs/evidenceRef" }, "maxItems": 32 },
+    "next_actions": { "type": "array", "items": { "$ref": "#/$defs/nextAction" }, "maxItems": 8 },
+    "error": {
+      "anyOf": [
+        { "$ref": "capability-error.schema.json" },
+        { "type": "null" }
+      ]
+    }
+  },
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "resultStatus": {
+      "enum": ["succeeded", "accepted", "needs_input", "needs_approval", "retryable", "paused", "rejected", "failed", "cancelled"]
+    },
+    "evidenceRef": {
+      "type": "object",
+      "required": ["id", "kind"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "kind": { "enum": ["candidate", "plan", "decision", "journal", "task", "review-case", "media-item"] }
+      }
+    },
+    "nextAction": {
+      "enum": ["ask_user", "retry", "replan", "request_approval", "cancel", "stop_and_report"]
+    }
+  }
+}

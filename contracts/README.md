@@ -6,7 +6,7 @@ MediaFlow 采用契约优先方式：实现前由版本化契约定义 Core 与�
 
 ## 职责
 
-版本化 REST、事件和共享 payload 样例契约。
+版本化 REST、事件、AI 能力（`media-capability.v1`）和共享 payload 样例契约。
 
 ## 非目标
 
@@ -14,7 +14,7 @@ MediaFlow 采用契约优先方式：实现前由版本化契约定义 Core 与�
 
 ## 状态
 
-已初始化：M2 身份、收件目录、扫描与 SSE 契约保持兼容；M3 增加 TMDB/发现、ProcessingTask/识别、版本化 ReviewCase/人工决定、正式 Catalog，以及 organization target/preflight/计划/journal/result/重算/一次执行/回滚和两个最小变化事件；M4 Change 1 增加 qBittorrent/Transmission 连接、候选测试、手动下载、任务查询和 `download-task-changed` 最小事件；M4 Change 2 增加自动来源/事件、本地识别增强和三个最小变化事件。网络契约不返回凭据、Cookie、下载源、Feed URL、Webhook secret/signature/payload、模型输入输出、tracker passkey、远端/宿主绝对路径、NFO 原文、第三方原始响应或远程 Artwork URL。
+已初始化：M2 身份、收件目录、扫描与 SSE 契约保持兼容；M3 增加 TMDB/发现、ProcessingTask/识别、版本化 ReviewCase/人工决定、正式 Catalog，以及 organization target/preflight/计划/journal/result/重算/一次执行/回滚和两个最小变化事件；M4 Change 1 增加 qBittorrent/Transmission 连接、候选测试、手动下载、任务查询和 `download-task-changed` 最小事件；M4 Change 2 增加自动来源/事件、本地识别增强和三个最小变化事件；A0 冻结 `media-capability.v1`（`capability/v1/`）调用/结果/错误/事件/事件页五类信封 schema，A1 起网关按其实现。网络契约不返回凭据、Cookie、下载源、Feed URL、Webhook secret/signature/payload、模型输入输出、tracker passkey、远端/宿主绝对路径、NFO 原文、第三方原始响应或远程 Artwork URL。
 
 ## 后续验证
 
