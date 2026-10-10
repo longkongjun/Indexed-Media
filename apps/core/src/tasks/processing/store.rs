@@ -749,6 +749,12 @@ impl ProcessingStore {
 
     /// 在精确匹配所有者与版本时续期未过期的处理租约。
     ///
+    /// 续租只延长 `lease_expires_at_us`，不递增任务 `version`：`version` 是任务状态的乐观
+    /// 并发锁（管理员修改、阶段转换时递增），而阶段处理器在整个执行期间持有启动时的租约
+    /// 快照；若续租也递增版本，处理器的终态提交会因快照版本过期而被误判为
+    /// `task-lease-lost`，尽管租约从未丢失。`WHERE version=?` 保留：任务被外部修改时，
+    /// 续租失败并停止处理器，阻止过期提交。
+    ///
     /// # Errors
     ///
     /// 乐观租约不再匹配时返回 `task-lease-lost`；数据库或时间戳失败时返回内部错误。
@@ -759,7 +765,7 @@ impl ProcessingStore {
     ) -> Result<ProcessingLease, AppError> {
         let expires_at_us = now_us.saturating_add(PROCESSING_LEASE_DURATION_US);
         let result = sqlx::query(
-            "UPDATE tasks_processing_tasks SET lease_expires_at_us=?,version=version+1,updated_at_us=?
+            "UPDATE tasks_processing_tasks SET lease_expires_at_us=?,updated_at_us=?
              WHERE id=? AND version=? AND status='running' AND lease_owner=?
                AND lease_expires_at_us>?",
         )
@@ -779,7 +785,6 @@ impl ProcessingStore {
             ));
         }
         let mut renewed = lease.clone();
-        renewed.version += 1;
         renewed.expires_at_us = expires_at_us;
         renewed.task.updated_at = timestamp(now_us)?;
         Ok(renewed)

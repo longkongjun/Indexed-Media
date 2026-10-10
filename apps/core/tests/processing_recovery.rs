@@ -250,3 +250,43 @@ async fn one_recovery_call_requeues_one_thousand_expired_tasks_without_scanning_
         2000
     );
 }
+
+#[tokio::test]
+async fn renewal_keeps_snapshot_lease_committable() {
+    // 诊断钉子：renew 不递增 version 后，启动快照 lease 在多次续租后必须仍可提交终态。
+    let fixture = common::TestConfigDir::new(RunMode::Development);
+    let db = migrate_with_backup(fixture.config()).await.unwrap();
+    common::seed_account(db.pool()).await;
+    let inbox = common::seed_inbox(db.pool()).await;
+    let revision =
+        common::seed_stable_revision(db.pool(), inbox, b"renewal-snapshot.mkv", vec![7]).await;
+    let store = ProcessingStore::new(db.pool().clone());
+    store.ensure_revision(revision, 90_000_001).await.unwrap();
+    let lease = store
+        .claim_next(
+            "renewal-worker",
+            &[mediaflow_core::tasks::processing::model::ProcessingStage::Identification],
+            100_000_000,
+        )
+        .await
+        .unwrap()
+        .expect("task must be claimable");
+    let first = store.renew(&lease, 100_000_005).await.unwrap();
+    assert_eq!(first.version, lease.version);
+    let second = store.renew(&first, 100_000_010).await.unwrap();
+    assert_eq!(second.version, lease.version);
+    // 用最初的启动快照提交终态：必须成功（租约从未丢失，只是续期）。
+    store
+        .finish_identification_complete(
+            &lease,
+            mediaflow_core::tasks::processing::model::ProcessingReason::IdentificationConfirmedTitleYear,
+            100_000_015,
+        )
+        .await
+        .unwrap();
+    let finished = store.get_by_task_id(lease.task.id).await.unwrap();
+    assert_eq!(
+        finished.status,
+        mediaflow_core::tasks::processing::model::ProcessingStatus::Queued
+    );
+}

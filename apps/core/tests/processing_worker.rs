@@ -120,6 +120,46 @@ async fn renewal_loss_stops_handler_and_prevents_a_stale_terminal_commit() {
 }
 
 #[tokio::test]
+async fn renewal_during_handler_execution_keeps_terminal_commit_valid() {
+    // 回归钉子：阶段处理器持有启动时的租约快照；续租（renewal_loop）发生若干次后，
+    // 处理器用快照版本提交终态必须成功。续租只延长过期时间，不递增任务乐观版本，
+    // 否则已产生副作用的提交会被误判为 task-lease-lost。
+    let fixture = common::TestConfigDir::new(RunMode::Development);
+    let db = migrate_with_backup(fixture.config()).await.unwrap();
+    common::seed_account(db.pool()).await;
+    let inbox = common::seed_inbox(db.pool()).await;
+    let revision = common::seed_stable_revision(db.pool(), inbox, b"movie.mkv", vec![11]).await;
+    let store = ProcessingStore::new(db.pool().clone());
+    let task = store.ensure_revision(revision, 90_000_001).await.unwrap();
+    let started = Arc::new(tokio::sync::Notify::new());
+    let worker = ProcessingWorker::new(
+        "processing-worker".to_owned(),
+        store.clone(),
+        vec![Arc::new(SlowCommitHandler {
+            store: store.clone(),
+            started: Arc::clone(&started),
+        })],
+        Arc::new(ManualTaskClock::new(100_000_000)),
+    )
+    .unwrap()
+    .with_renewal_interval(std::time::Duration::from_millis(5));
+
+    let running = tokio::spawn(async move { worker.run_once().await });
+    started.notified().await;
+    assert_eq!(
+        tokio::time::timeout(std::time::Duration::from_secs(2), running)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap(),
+        Some(task.id)
+    );
+    let committed = store.get_by_task_id(task.id).await.unwrap();
+    assert_eq!(committed.status, ProcessingStatus::Queued);
+    assert_eq!(committed.stage, ProcessingStage::Planning);
+}
+
+#[tokio::test]
 async fn running_cancel_stops_handler_and_commits_only_the_cancel_checkpoint() {
     let fixture = common::TestConfigDir::new(RunMode::Development);
     let db = migrate_with_backup(fixture.config()).await.unwrap();
@@ -251,6 +291,37 @@ impl ProcessingStageHandler for CompleteHandler {
 struct BlockingHandler {
     started: Arc<tokio::sync::Notify>,
     stopped: Arc<AtomicBool>,
+}
+
+/// 模拟慢阶段处理器：先让续租循环跑过若干次，再用启动时的租约快照提交终态。
+struct SlowCommitHandler {
+    store: ProcessingStore,
+    started: Arc<tokio::sync::Notify>,
+}
+
+#[async_trait]
+impl ProcessingStageHandler for SlowCommitHandler {
+    fn stage(&self) -> ProcessingStage {
+        ProcessingStage::Identification
+    }
+
+    async fn run(
+        &self,
+        lease: &ProcessingLease,
+        _stop: ProcessingStopToken,
+    ) -> Result<ProcessingHandlerOutcome, AppError> {
+        self.started.notify_one();
+        // 续租周期 5ms：等待 30ms 保证至少数次续租发生在提交之前。
+        tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+        self.store
+            .finish_identification_complete(
+                lease,
+                ProcessingReason::IdentificationConfirmedTitleYear,
+                100_000_001,
+            )
+            .await?;
+        Ok(ProcessingHandlerOutcome::Committed)
+    }
 }
 
 #[async_trait]

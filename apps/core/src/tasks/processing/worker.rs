@@ -163,13 +163,19 @@ impl ProcessingWorker {
         let outcome = tokio::select! {
             outcome = &mut execution => {
                 let _ = heartbeat_stop_sender.send(true);
-                match heartbeat.await? {
-                    HeartbeatExit::Stopped => outcome?,
-                    HeartbeatExit::Cancelled => {
+                match heartbeat.await {
+                    Ok(HeartbeatExit::Stopped) => outcome,
+                    Ok(HeartbeatExit::Cancelled) => {
                         let lease = shared_lease.lock().await.clone();
                         self.store.finish_cancelled(&lease, self.clock.now_us()).await?;
                         return Ok(Some(task_id));
                     }
+                    // 续租失败与 handler 完成存在固有竞态：handler 已自行提交（Committed）
+                    // 时任务已离开 running，续租条件自然失效；只有未提交的结果才受续租失败保护。
+                    Err(renewal_error) => match outcome {
+                        Ok(ProcessingHandlerOutcome::Committed) => return Ok(Some(task_id)),
+                        Ok(_) | Err(_) => return Err(renewal_error),
+                    },
                 }
             }
             heartbeat_result = &mut heartbeat => {
@@ -177,8 +183,11 @@ impl ProcessingWorker {
                 let exit = match heartbeat_result {
                     Ok(exit) => exit,
                     Err(error) => {
-                        let _ = execution.await;
-                        return Err(error);
+                        // 同上：handler 已成功提交时续租失败是预期竞态，不覆盖业务结果。
+                        match execution.await {
+                            Ok(ProcessingHandlerOutcome::Committed) => return Ok(Some(task_id)),
+                            Ok(_) | Err(_) => return Err(error),
+                        }
                     }
                 };
                 let _ = execution.await;
@@ -197,26 +206,45 @@ impl ProcessingWorker {
                 }
             }
         };
+        let outcome = outcome?;
         let lease = shared_lease.lock().await.clone();
+        self.commit_handler_outcome(task_id, &lease, outcome)
+            .await?;
+        Ok(Some(task_id))
+    }
+
+    /// 把未自行提交的 handler 结果转换为原子任务状态变更。
+    ///
+    /// `Committed` 已由处理器提交；取消检查点优先于其余状态转换。
+    ///
+    /// # Errors
+    ///
+    /// 取消检查点或状态转换的数据库、outbox 失败时返回错误。
+    async fn commit_handler_outcome(
+        &self,
+        task_id: Uuid,
+        lease: &ProcessingLease,
+        outcome: ProcessingHandlerOutcome,
+    ) -> Result<(), AppError> {
         if outcome == ProcessingHandlerOutcome::Committed {
-            return Ok(Some(task_id));
+            return Ok(());
         }
         if self.store.cancel_requested(task_id).await? {
             self.store
-                .finish_cancelled(&lease, self.clock.now_us())
+                .finish_cancelled(lease, self.clock.now_us())
                 .await?;
-            return Ok(Some(task_id));
+            return Ok(());
         }
         match outcome {
             ProcessingHandlerOutcome::Committed => unreachable!("committed outcome returned above"),
             ProcessingHandlerOutcome::IdentificationComplete { reason } => {
                 self.store
-                    .finish_identification_complete(&lease, reason, self.clock.now_us())
+                    .finish_identification_complete(lease, reason, self.clock.now_us())
                     .await?;
             }
             ProcessingHandlerOutcome::WaitingConfirmation { reason } => {
                 self.store
-                    .finish_waiting_confirmation(&lease, reason, self.clock.now_us())
+                    .finish_waiting_confirmation(lease, reason, self.clock.now_us())
                     .await?;
             }
             ProcessingHandlerOutcome::Paused {
@@ -224,11 +252,11 @@ impl ProcessingWorker {
                 next_retry_at_us,
             } => {
                 self.store
-                    .finish_paused(&lease, reason, next_retry_at_us, self.clock.now_us())
+                    .finish_paused(lease, reason, next_retry_at_us, self.clock.now_us())
                     .await?;
             }
         }
-        Ok(Some(task_id))
+        Ok(())
     }
 
     /// 在工作器循环启动前恢复已过期的租约。
