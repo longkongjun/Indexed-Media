@@ -201,3 +201,15 @@ mod tests {
         assert!(!output.contains("sentinel"));
     }
 }
+
+/// 家庭成员的公开身份；绝不包含凭据材料（`MVP-WEB-003`：管理端对成员完全关闭）。
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct FamilyMemberView {
+    /// 成员稳定 UUID。
+    pub id: uuid::Uuid,
+    /// 已去除空白的显示名称。
+    pub display_name: String,
+    /// 创建时间 UTC RFC3339。
+    pub created_at: String,
+}

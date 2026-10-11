@@ -322,4 +322,112 @@ impl IdentityStore {
         .map_err(|error| AppError::with_source(ErrorCode::Internal, error))?;
         Ok(())
     }
+
+    // 上面是 impl 结束前追加注释错位，重新包一个 impl 块。
+}
+
+impl IdentityStore {
+    /// 列出全部家庭成员。
+    ///
+    /// # Errors
+    ///
+    /// 数据库失败时返回稳定错误。
+    pub async fn list_family_members(
+        &self,
+    ) -> Result<Vec<crate::identity::model::FamilyMemberView>, AppError> {
+        let rows = sqlx::query(
+            "SELECT id,display_name,created_at_us FROM family_members
+             WHERE status='active' ORDER BY created_at_us",
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|error| AppError::with_source(ErrorCode::Internal, error))?;
+        rows.iter()
+            .map(|row| {
+                let id: Vec<u8> = row.get("id");
+                let created_us: i64 = row.get("created_at_us");
+                Ok(crate::identity::model::FamilyMemberView {
+                    id: Uuid::from_slice(&id)
+                        .map_err(|error| AppError::new(ErrorCode::Internal, error.to_string()))?,
+                    display_name: row.get("display_name"),
+                    created_at: chrono::TimeZone::timestamp_micros(&chrono::Utc, created_us)
+                        .single()
+                        .map(|value| value.to_rfc3339_opts(chrono::SecondsFormat::Micros, true))
+                        .unwrap_or_default(),
+                })
+            })
+            .collect()
+    }
+
+    /// 创建一名家庭成员；显示名规范化后唯一。
+    ///
+    /// # Errors
+    ///
+    /// 名称无效、名称冲突或数据库失败时返回稳定错误。
+    pub async fn insert_family_member(
+        &self,
+        display_name: &str,
+        password_phc: &str,
+        now_us: i64,
+    ) -> Result<crate::identity::model::FamilyMemberView, AppError> {
+        let id = Uuid::now_v7();
+        let normalized = display_name.trim().to_lowercase();
+        let trimmed = display_name.trim();
+        if normalized.is_empty() || normalized.len() > 100 {
+            return Err(AppError::new(
+                ErrorCode::ValidationFailed,
+                "member name is invalid",
+            ));
+        }
+        let rows = sqlx::query(
+            "INSERT INTO family_members (id,normalized_name,display_name,password_phc,status,created_at_us,updated_at_us)
+             VALUES (?,?,?,?,'active',?,?)",
+        )
+        .bind(id.as_bytes().as_slice())
+        .bind(&normalized)
+        .bind(trimmed)
+        .bind(password_phc)
+        .bind(now_us)
+        .bind(now_us)
+        .execute(&self.pool)
+        .await
+        .map_err(|_| AppError::new(ErrorCode::ResourceConflict, "member name is taken"))?;
+        if rows.rows_affected() != 1 {
+            return Err(AppError::new(
+                ErrorCode::ResourceConflict,
+                "member name is taken",
+            ));
+        }
+        Ok(crate::identity::model::FamilyMemberView {
+            id,
+            display_name: trimmed.to_owned(),
+            created_at: chrono::TimeZone::timestamp_micros(&chrono::Utc, now_us)
+                .single()
+                .map(|value| value.to_rfc3339_opts(chrono::SecondsFormat::Micros, true))
+                .unwrap_or_default(),
+        })
+    }
+
+    /// 删除（停用）一名家庭成员。
+    ///
+    /// # Errors
+    ///
+    /// 目标不存在或数据库失败时返回稳定错误。
+    pub async fn delete_family_member(&self, id: Uuid, now_us: i64) -> Result<(), AppError> {
+        let rows = sqlx::query(
+            "UPDATE family_members SET status='disabled',updated_at_us=? WHERE id=? AND status='active'",
+        )
+        .bind(now_us)
+        .bind(id.as_bytes().as_slice())
+        .execute(&self.pool)
+        .await
+        .map_err(|error| AppError::with_source(ErrorCode::Internal, error))?;
+        if rows.rows_affected() != 1 {
+            return Err(AppError::new(
+                ErrorCode::NotFound,
+                "family member not found",
+            ));
+        }
+        Ok(())
+    }
 }

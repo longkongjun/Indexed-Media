@@ -77,8 +77,46 @@ impl IdentityService {
         )
     }
 
-    #[must_use]
+    /// 列出家庭成员。
+    ///
+    /// # Errors
+    ///
+    /// 数据库失败时返回稳定错误。
+    pub async fn list_family_members(
+        &self,
+    ) -> Result<Vec<crate::identity::model::FamilyMemberView>, AppError> {
+        self.store.list_family_members().await
+    }
+
+    /// 创建一名家庭成员（Argon2id 哈希后落库）。
+    ///
+    /// # Errors
+    ///
+    /// 名称或密码无效、名称冲突或数据库失败时返回稳定错误。
+    pub async fn create_family_member(
+        &self,
+        display_name: &str,
+        password: &str,
+    ) -> Result<crate::identity::model::FamilyMemberView, AppError> {
+        let phc = self.passwords.hash(password.to_owned()).await?;
+        self.store
+            .insert_family_member(display_name, &phc, chrono::Utc::now().timestamp_micros())
+            .await
+    }
+
+    /// 删除（停用）一名家庭成员。
+    ///
+    /// # Errors
+    ///
+    /// 目标不存在或数据库失败时返回稳定错误。
+    pub async fn delete_family_member(&self, member_id: Uuid) -> Result<(), AppError> {
+        self.store
+            .delete_family_member(member_id, chrono::Utc::now().timestamp_micros())
+            .await
+    }
+
     /// 使用显式密码引擎创建服务，主要用于经校准的运行时/测试。
+    #[must_use]
     pub fn new_with_password_engine(
         pool: sqlx::SqlitePool,
         config_dir: PathBuf,

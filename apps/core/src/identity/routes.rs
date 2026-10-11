@@ -56,6 +56,14 @@ impl IdentityHttpState {
 pub fn router(config: AppConfig, db: &Db) -> Router {
     let service = IdentityService::new(db.pool().clone(), config.config_dir.clone());
     Router::new()
+        .route(
+            "/api/v1/family-members",
+            get(list_family_members).post(create_family_member),
+        )
+        .route(
+            "/api/v1/family-members/{memberId}",
+            axum::routing::delete(delete_family_member),
+        )
         .route("/api/v1/system/bootstrap-status", get(bootstrap_status))
         .route("/api/v1/system/bootstrap", post(bootstrap))
         .route("/api/v1/sessions", post(create_session))
@@ -176,4 +184,66 @@ async fn delete_session(
 }
 fn session_cookie(token: &str) -> String {
     format!("__Host-mediaflow_session={token}; Secure; HttpOnly; SameSite=Strict; Path=/")
+}
+
+async fn guard_admin(
+    state: &IdentityHttpState,
+    headers: &HeaderMap,
+) -> Result<crate::identity::model::AuthenticatedSession, AppError> {
+    state.ensure_ready().await?;
+    SessionGuard::authenticate(headers, &state.service).await
+}
+
+/// 家庭成员只有身份记录；管理端对他们完全关闭（`MVP-WEB-003`）。
+async fn list_family_members(
+    State(state): State<Arc<IdentityHttpState>>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, AppError> {
+    guard_admin(&state, &headers).await?;
+    let members = state.service.list_family_members().await?;
+    Ok(Json(serde_json::json!({ "items": members })))
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "snake_case")]
+struct FamilyMemberInput {
+    display_name: String,
+    password: String,
+}
+
+async fn create_family_member(
+    State(state): State<Arc<IdentityHttpState>>,
+    headers: HeaderMap,
+    payload: Result<Json<FamilyMemberInput>, JsonRejection>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    guard_admin(&state, &headers).await?;
+    validate_same_origin(&headers, &state.config.public_origin)?;
+    let Json(input) = payload.map_err(|_| {
+        AppError::new(
+            ErrorCode::ValidationFailed,
+            "family member payload is invalid",
+        )
+    })?;
+    if input.password.len() < 8 || input.password.len() > 512 {
+        return Err(AppError::new(
+            ErrorCode::ValidationFailed,
+            "password length is invalid",
+        ));
+    }
+    let member = state
+        .service
+        .create_family_member(&input.display_name, &input.password)
+        .await?;
+    Ok(Json(serde_json::json!({ "member": member })))
+}
+
+async fn delete_family_member(
+    State(state): State<Arc<IdentityHttpState>>,
+    headers: HeaderMap,
+    axum::extract::Path(member_id): axum::extract::Path<uuid::Uuid>,
+) -> Result<Response, AppError> {
+    guard_admin(&state, &headers).await?;
+    validate_same_origin(&headers, &state.config.public_origin)?;
+    state.service.delete_family_member(member_id).await?;
+    Ok(StatusCode::NO_CONTENT.into_response())
 }
