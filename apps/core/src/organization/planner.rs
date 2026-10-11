@@ -390,7 +390,10 @@ impl OrganizationPlanner {
             kind: PlannedOperationKind::File,
             destination: destination.clone(),
         }];
-        let nfo_input = if input.target.nfo_policy == OrganizationNfoPolicy::GenerateMissing {
+        // 可恢复删除不发布元数据：quarantine 计划永不生成 NFO 操作。
+        let nfo_input = if input.target.operation != OrganizationOperation::Quarantine
+            && input.target.nfo_policy == OrganizationNfoPolicy::GenerateMissing
+        {
             let nfo_destination = OrganizationLocation {
                 root_id: destination.root_id.clone(),
                 relative_path: nfo_path(&destination.relative_path)?,
