@@ -59,7 +59,8 @@ fun main() {
                 // 凭据模式与其他端点同口径（密码 fixture）。令牌为固定样例值。
                 val body = runCatching { call.receiveText() }.getOrNull() ?: ""
                 val pairingMode = body.contains("pairing_code")
-                val emptyCode = body.contains(""""pairing_code":""") || body.contains(""""pairing_code":null""")
+                val emptyCode =
+                    body.contains("\"pairing_code\":\"\"") || body.contains("\"pairing_code\":null")
                 val ok = if (pairingMode) !emptyCode else body.contains("fixture")
                 if (ok) {
                     call.respondText(fixture("device-enrollment"), ContentType.Application.Json, HttpStatusCode.Created)
