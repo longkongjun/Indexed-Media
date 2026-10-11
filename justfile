@@ -422,6 +422,11 @@ check-compose-static:
 # 使用 Docker Compose v2 解析并检查单服务部署边界。
 check-compose:
     @./infra/compose/tests/config.sh
+    @./infra/compose/tests/capability-smoke.sh --static-only
+
+# 运行 media-capability.v1 网关的 Compose 冒烟（mock DSH 调用链路）；需要已构建镜像。
+smoke-capability-compose:
+    @./infra/compose/tests/capability-smoke.sh
 
 # 运行真实 Docker Compose 冷启动/重启冒烟；只读静态检查保持为独立入口。
 smoke-m2-compose:

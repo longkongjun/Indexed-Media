@@ -13,6 +13,8 @@ use crate::automation::event_routes::router_with_notifier as automation_event_ro
 use crate::automation::routes::router as automation_router;
 use crate::automation::webhook::router_with_notifier as automation_webhook_router;
 use crate::bootstrap::config::AppConfig;
+use crate::capability::admin_routes::router as capability_admin_router;
+use crate::capability::gateway::router as capability_router;
 use crate::catalog::routes::router_with_notifier as catalog_router;
 use crate::connectors::downloader::connection_routes::router as downloader_connection_router;
 use crate::connectors::downloader::task_routes::router_with_notifier as download_task_router;
@@ -156,6 +158,8 @@ pub fn build_router_with_outbox(
         .fallback(fallback)
         .with_state(state);
     if let Some(db) = db {
+        router = router.merge(capability_router(config.clone(), &db));
+        router = router.merge(capability_admin_router(config.clone(), &db));
         router = router.merge(identity_router(config.clone(), &db));
         router = merge_connector_routes(router, &config, &db, &notifier);
         router = router.merge(automation_router(config.clone(), &db));

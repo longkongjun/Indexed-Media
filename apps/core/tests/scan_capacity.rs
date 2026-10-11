@@ -517,6 +517,7 @@ async fn initialize_config(root: &Path, config_dir: &Path) -> AppConfig {
         trusted_proxy_cidrs: Vec::new(),
         deployment_roots_file,
         web_dist: config_dir.join("web-dist"),
+        capability_token: None,
     };
     let db = migrate_with_backup(&config).await.unwrap();
     db.pool().close().await;
@@ -533,6 +534,7 @@ fn benchmark_config(root: &Path, config_dir: &Path, port: u16) -> AppConfig {
         trusted_proxy_cidrs: Vec::new(),
         deployment_roots_file: config_dir.join("deployment-roots.json"),
         web_dist: config_dir.join("web-dist"),
+        capability_token: None,
     }
 }
 

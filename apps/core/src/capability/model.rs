@@ -184,6 +184,22 @@ pub struct CapabilityEvidenceRef {
     pub kind: CapabilityEvidenceKind,
 }
 
+impl CapabilityEvidenceRef {
+    /// 事件 `evidence_refs` 使用的 `kind:id` 引用前缀。
+    #[must_use]
+    pub fn kind_id_prefix(&self) -> &'static str {
+        match self.kind {
+            CapabilityEvidenceKind::Candidate => "candidate",
+            CapabilityEvidenceKind::Plan => "plan",
+            CapabilityEvidenceKind::Decision => "decision",
+            CapabilityEvidenceKind::Journal => "journal",
+            CapabilityEvidenceKind::Task => "task",
+            CapabilityEvidenceKind::ReviewCase => "review-case",
+            CapabilityEvidenceKind::MediaItem => "media-item",
+        }
+    }
+}
+
 /// 证据类别枚举。
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]

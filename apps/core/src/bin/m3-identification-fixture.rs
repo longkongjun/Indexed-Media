@@ -88,6 +88,7 @@ async fn run(cli: &Cli) -> Result<(), String> {
         trusted_proxy_cidrs: Vec::new(),
         deployment_roots_file,
         web_dist: config_dir.join("web-dist"),
+        capability_token: None,
     };
     let db = migrate_with_backup(&config)
         .await

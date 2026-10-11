@@ -36,6 +36,8 @@ pub struct AppConfig {
     pub deployment_roots_file: PathBuf,
     /// 提供不可变 Web 资源与 SPA 入口的目录。
     pub web_dist: PathBuf,
+    /// AI 能力网关的 Bearer 令牌；未配置时能力路由稳定拒绝调用。
+    pub capability_token: Option<String>,
 }
 
 impl AppConfig {
@@ -97,6 +99,8 @@ impl AppConfig {
             .map_or_else(|| config_dir.join("deployment-roots.json"), PathBuf::from);
         let web_dist =
             PathBuf::from(env_value("MEDIAFLOW_WEB_DIST").unwrap_or_else(|| "/app/web".to_owned()));
+        let capability_token =
+            env_value("MEDIAFLOW_CAPABILITY_TOKEN").filter(|token| token.len() >= 16);
 
         Ok(Self {
             mode,
@@ -106,6 +110,7 @@ impl AppConfig {
             trusted_proxy_cidrs,
             deployment_roots_file,
             web_dist,
+            capability_token,
         })
     }
 

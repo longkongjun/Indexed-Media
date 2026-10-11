@@ -46,8 +46,15 @@ impl TestConfigDir {
                 trusted_proxy_cidrs: Vec::new(),
                 deployment_roots_file,
                 web_dist,
+                capability_token: None,
             },
         }
+    }
+
+    /// 覆盖能力网关令牌；模拟部署时注入的 `MEDIAFLOW_CAPABILITY_TOKEN`。
+    pub fn with_capability_token(mut self, token: &str) -> Self {
+        self.config.capability_token = Some(token.to_owned());
+        self
     }
 
     /// 创建开发夹具，其中包含版本为 `version` 的旧数据库和哨兵行。

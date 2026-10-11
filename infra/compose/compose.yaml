@@ -23,6 +23,7 @@ services:
       MEDIAFLOW_BOOTSTRAP_SECRET_FILE: /run/secrets/mediaflow-bootstrap
       MEDIAFLOW_PUBLIC_ORIGIN: "${MEDIAFLOW_PUBLIC_ORIGIN:?Set the trusted public HTTPS origin}"
       MEDIAFLOW_TRUSTED_PROXY_CIDRS: "${MEDIAFLOW_TRUSTED_PROXY_CIDRS:?Set the reverse proxy source CIDR}"
+      MEDIAFLOW_CAPABILITY_TOKEN: "${MEDIAFLOW_CAPABILITY_TOKEN:-}"
       TZ: "${TZ:-Asia/Shanghai}"
     volumes:
       - "${MEDIAFLOW_CONFIG_PATH:-./data/config}:/config"

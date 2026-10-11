@@ -211,6 +211,7 @@ async fn seed_database(root: &Path, config_dir: &Path) -> Result<(), String> {
         trusted_proxy_cidrs: Vec::new(),
         deployment_roots_file: deployment_roots_file.clone(),
         web_dist: config_dir.join("web-dist"),
+        capability_token: None,
     };
     let db = migrate_with_backup(&config)
         .await

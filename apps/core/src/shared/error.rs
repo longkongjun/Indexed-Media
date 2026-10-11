@@ -22,6 +22,8 @@ pub enum ErrorCode {
     RateLimited,
     /// 提供的会话令牌缺失、已过期、已撤销或不可用。
     SessionExpired,
+    /// 已认证身份不具备目标能力或资源的访问权限。
+    PermissionDenied,
     /// 状态变更请求缺少绑定到会话的 CSRF 证明。
     CsrfInvalid,
     /// 状态变更请求不匹配已配置的公开源。
@@ -106,6 +108,7 @@ impl ErrorCode {
             Self::InvalidCredentials => "auth.invalid_credentials",
             Self::RateLimited => "auth.rate_limited",
             Self::SessionExpired => "session.expired",
+            Self::PermissionDenied => "permission.denied",
             Self::CsrfInvalid => "csrf.invalid",
             Self::OriginUntrusted => "origin.untrusted",
             Self::RootNotFound => "root.not_found",
@@ -195,6 +198,7 @@ impl AppError {
             ErrorCode::InvalidCredentials => "The administrator name or password is invalid.",
             ErrorCode::RateLimited => "Too many login attempts. Try again later.",
             ErrorCode::SessionExpired => "The session has expired.",
+            ErrorCode::PermissionDenied => "The account is not allowed to perform this action.",
             ErrorCode::CsrfInvalid => "The request security token is invalid.",
             ErrorCode::OriginUntrusted => "The request origin is not trusted.",
             ErrorCode::RootNotFound => "The deployment root was not found.",
@@ -299,7 +303,9 @@ impl IntoResponse for AppError {
             ErrorCode::RateLimited | ErrorCode::IntegrationRateLimited => {
                 StatusCode::TOO_MANY_REQUESTS
             }
-            ErrorCode::CsrfInvalid | ErrorCode::OriginUntrusted => StatusCode::FORBIDDEN,
+            ErrorCode::CsrfInvalid | ErrorCode::OriginUntrusted | ErrorCode::PermissionDenied => {
+                StatusCode::FORBIDDEN
+            }
             ErrorCode::PayloadTooLarge => StatusCode::PAYLOAD_TOO_LARGE,
             ErrorCode::ValidationFailed
             | ErrorCode::OrganizationRootReadOnly
