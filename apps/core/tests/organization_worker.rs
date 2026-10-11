@@ -21,6 +21,7 @@ use mediaflow_core::organization::model::{
 use mediaflow_core::organization::plan_service::{
     OrganizationPlanService, OrganizationPlanningPort,
 };
+use mediaflow_core::organization::plan_store::AuthorizationGranter;
 use mediaflow_core::organization::plan_store::OrganizationPlanStore;
 use mediaflow_core::organization::planner::{PlanningIdentity, PlanningInput};
 use mediaflow_core::platform::migrations::migrate_with_backup;
@@ -191,6 +192,7 @@ async fn no_rule_plan_pauses_and_plan_scoped_one_time_authorization_resumes_exec
             paused.id,
             paused_plan.version,
             "authorize-current-plan-once",
+            AuthorizationGranter::Web(fixture.account_id),
         )
         .await
         .unwrap();

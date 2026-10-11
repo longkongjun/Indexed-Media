@@ -2,6 +2,7 @@
 //!
 //! 覆盖：只读能力往返、幂等重放无二次副作用、过期 revision 稳定拒绝、非法输入（绝对
 //! 路径 / shell / SQL / 凭据）拒绝、令牌认证边界，以及事件按 cursor 无缺口补发。
+//! 另含 SA-1-001 修复的 apply-plan 全路径验证（只交付不授权）。
 
 #![allow(clippy::too_many_lines)]
 
@@ -10,9 +11,15 @@ mod common;
 use axum::Router;
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode, header};
+use common::organization::organization_fixture;
 use mediaflow_core::bootstrap::config::RunMode;
+use mediaflow_core::organization::model::OrganizationOperation;
+use mediaflow_core::organization::plan_store::{
+    AuthorizationGranter, OrganizationPlanRecord, OrganizationPlanStore,
+};
 use mediaflow_core::platform::http::build_router;
 use mediaflow_core::platform::migrations::migrate_with_backup;
+use mediaflow_core::tasks::processing::model::{ProcessingReason, ProcessingStage};
 use mediaflow_core::tasks::processing::store::ProcessingStore;
 use serde_json::{Value, json};
 use tower::ServiceExt as _;
@@ -725,4 +732,234 @@ async fn malformed_envelopes_are_rejected_with_structured_errors() {
             "payload {payload}"
         );
     }
+}
+
+// ---- SA-1-001 修复：media.apply-plan 只交付不授权（网关全路径）----
+
+/// 组装带 organization 部署根与 capability 令牌的网关环境。
+struct AuthorizedHarness {
+    fixture: common::organization::OrganizationFixture,
+    app: Router,
+}
+
+async fn authorized_harness() -> AuthorizedHarness {
+    let mut fixture = organization_fixture(OrganizationOperation::Move).await;
+    fixture
+        .config
+        .config_mut()
+        .capability_token
+        .replace(format!("{TOKEN}-org"));
+    // 经真实状态机推进到"计划已落定、等待人工"形态（SQL 直改会留下不一致的
+    // checkpoint/attempt 事实）：识别完成 → 领取 planning → 计划落定不自动执行。
+    let tasks = ProcessingStore::new(fixture.db.pool().clone());
+    tasks
+        .finish_identification_complete(
+            &fixture.lease,
+            ProcessingReason::IdentificationConfirmedTitleYear,
+            90_000_000,
+        )
+        .await
+        .expect("finish identification");
+    let planning_lease = tasks
+        .claim_next(
+            "capability-apply-planning",
+            &[ProcessingStage::Planning],
+            91_000_000,
+        )
+        .await
+        .expect("claim planning")
+        .expect("planning lease");
+    tasks
+        .finish_organization_plan(&planning_lease, fixture.plan.id, false, 92_000_000)
+        .await
+        .expect("finish paused plan");
+    let app = build_router(fixture.config.config().clone(), Some(fixture.db.clone()));
+    AuthorizedHarness { fixture, app }
+}
+
+#[allow(clippy::needless_pass_by_value)]
+fn apply_envelope(request_id: Uuid, task_id: Uuid, revision: &str) -> Value {
+    json!({
+        "protocol_version": "media-capability.v1",
+        "request_id": request_id.to_string(),
+        "session_id": null,
+        "task_id": null,
+        "capability": "media.apply-plan",
+        "actor": { "kind": "ai", "id": "dsh-apply" },
+        "input": { "task_id": task_id.to_string() },
+        "execution": {
+            "mode": "reversible-write",
+            "idempotency_key": format!("idem-{request_id}"),
+            "expected_revision": revision,
+            "deadline_ms": 30000
+        }
+    })
+}
+
+async fn apply_call(app: &Router, task_id: Uuid, revision: &str) -> Value {
+    let response = app
+        .clone()
+        .oneshot(
+            Request::post("/api/capability/v1/calls")
+                .header(header::AUTHORIZATION, format!("Bearer {TOKEN}-org"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    apply_envelope(Uuid::now_v7(), task_id, revision).to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    json_body(response).await
+}
+
+async fn authorization_receipt_count(fixture: &common::organization::OrganizationFixture) -> i64 {
+    sqlx::query_scalar(
+        "SELECT COUNT(*) FROM organization_plan_authorization_receipts WHERE task_id=?",
+    )
+    .bind(fixture.lease.task.id.as_bytes().to_vec())
+    .fetch_one(fixture.db.pool())
+    .await
+    .expect("receipt count")
+}
+
+#[tokio::test]
+async fn apply_plan_without_web_receipt_waits_for_approval_with_zero_side_effects() {
+    // SA-1-001 核心：无 Web 人工授权回执时 AI 通道只得到 needs_approval——
+    // 不执行、不写回执、任务留在审批队列、源文件不动。
+    let harness = authorized_harness().await;
+    let body = apply_call(
+        &harness.app,
+        harness.fixture.lease.task.id,
+        "plan.version:1",
+    )
+    .await;
+
+    assert_eq!(body["status"], "needs_approval", "body: {body}");
+    assert_eq!(body["result"]["plan_version"], "1");
+    assert_eq!(body["evidence"][0]["kind"], "plan");
+    assert!(
+        body["next_actions"]
+            .as_array()
+            .expect("next actions")
+            .iter()
+            .any(|action| action == "request_approval")
+    );
+    assert_eq!(
+        authorization_receipt_count(&harness.fixture).await,
+        0,
+        "capability 通道必须不产生授权回执"
+    );
+    let status =
+        sqlx::query_scalar::<_, String>("SELECT status FROM tasks_processing_tasks WHERE id=?")
+            .bind(harness.fixture.lease.task.id.as_bytes().to_vec())
+            .fetch_one(harness.fixture.db.pool())
+            .await
+            .expect("task status");
+    assert_eq!(status, "paused", "任务必须留在等待人工的暂停形态");
+    assert!(
+        harness.fixture.source_path().exists(),
+        "源文件必须保持原位（零文件副作用）"
+    );
+}
+
+#[tokio::test]
+async fn apply_plan_delivers_plan_authorized_by_web() {
+    // Web 人工授权回执存在时，AI 通道交付执行（不再需要自行授权）。
+    let harness = authorized_harness().await;
+    let plan: &OrganizationPlanRecord = &harness.fixture.plan;
+    OrganizationPlanStore::new(harness.fixture.db.pool().clone())
+        .authorize_once(
+            harness.fixture.account_id,
+            harness.fixture.lease.task.id,
+            plan.version,
+            "web-manual-execute",
+            90_000_100,
+            AuthorizationGranter::Web(harness.fixture.account_id),
+        )
+        .await
+        .expect("web authorization");
+
+    let body = apply_call(
+        &harness.app,
+        harness.fixture.lease.task.id,
+        "plan.version:1",
+    )
+    .await;
+    assert_eq!(body["status"], "accepted", "body: {body}");
+    assert_eq!(body["result"]["plan_version"], "1");
+
+    let granter = sqlx::query_scalar::<_, Option<String>>(
+        "SELECT granted_by_kind FROM organization_plan_authorization_receipts WHERE task_id=?",
+    )
+    .bind(harness.fixture.lease.task.id.as_bytes().to_vec())
+    .fetch_one(harness.fixture.db.pool())
+    .await
+    .expect("receipt granter");
+    assert_eq!(
+        authorization_receipt_count(&harness.fixture).await,
+        1,
+        "交付本身必须不追加第二份回执"
+    );
+    assert_eq!(granter.as_deref(), Some("web"));
+}
+
+#[tokio::test]
+async fn apply_plan_with_stale_plan_version_is_rejected_as_conflict() {
+    let harness = authorized_harness().await;
+    let body = apply_call(
+        &harness.app,
+        harness.fixture.lease.task.id,
+        "plan.version:99",
+    )
+    .await;
+    assert_eq!(body["status"], "failed", "body: {body}");
+    assert_eq!(body["error"]["category"], "conflict");
+    assert_eq!(body["error"]["required_action"], "replan");
+    assert_eq!(
+        authorization_receipt_count(&harness.fixture).await,
+        0,
+        "版本拒绝同样不得产生回执"
+    );
+}
+
+#[tokio::test]
+async fn apply_plan_after_recalculation_awaits_a_fresh_web_receipt() {
+    // 旧版本的人工回执不能授权新版本计划：重算后 AI 必须再次等待人工审批。
+    let harness = authorized_harness().await;
+    let store = OrganizationPlanStore::new(harness.fixture.db.pool().clone());
+    let plan = harness.fixture.plan.clone();
+    store
+        .authorize_once(
+            harness.fixture.account_id,
+            harness.fixture.lease.task.id,
+            plan.version,
+            "web-manual-execute-v1",
+            90_000_100,
+            AuthorizationGranter::Web(harness.fixture.account_id),
+        )
+        .await
+        .expect("web authorization v1");
+
+    let mut changed = plan.draft.clone();
+    changed.target.config_version += 1;
+    let next = store
+        .persist_next(harness.fixture.account_id, changed, 90_000_200)
+        .await
+        .expect("recalculated plan");
+    assert_eq!(next.version, 2);
+
+    let body = apply_call(
+        &harness.app,
+        harness.fixture.lease.task.id,
+        "plan.version:2",
+    )
+    .await;
+    assert_eq!(body["status"], "needs_approval", "body: {body}");
+    assert_eq!(body["result"]["plan_version"], "2");
+    assert_eq!(
+        authorization_receipt_count(&harness.fixture).await,
+        1,
+        "v1 回执保留，v2 不得被 AI 授权"
+    );
 }

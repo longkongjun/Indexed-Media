@@ -11,7 +11,7 @@ use mediaflow_core::organization::model::{
     OrganizationNfoPolicy, OrganizationOperation, OrganizationRuleInput, OrganizationTargetInput,
     OrganizationTargetKind,
 };
-use mediaflow_core::organization::plan_store::OrganizationPlanStore;
+use mediaflow_core::organization::plan_store::{AuthorizationGranter, OrganizationPlanStore};
 use mediaflow_core::organization::planner::{
     OrganizationLocation, OrganizationPlanner, PlanAuthorization, PlanningIdentity, PlanningInput,
 };
@@ -222,12 +222,26 @@ async fn one_time_authorization_is_plan_scoped_idempotent_and_cannot_authorize_s
     let store = OrganizationPlanStore::new(db.pool().clone());
     let plan = store.persist_next(account_id, draft, 200).await.unwrap();
     let authorized = store
-        .authorize_once(account_id, task_id, 1, "authorize-once", 300)
+        .authorize_once(
+            account_id,
+            task_id,
+            1,
+            "authorize-once",
+            300,
+            AuthorizationGranter::Web(account_id),
+        )
         .await
         .unwrap();
     assert_eq!(authorized.authorization, PlanAuthorization::OneTime);
     let replay = store
-        .authorize_once(account_id, task_id, 1, "authorize-once", 400)
+        .authorize_once(
+            account_id,
+            task_id,
+            1,
+            "authorize-once",
+            400,
+            AuthorizationGranter::Web(account_id),
+        )
         .await
         .unwrap();
     assert_eq!(replay.id, plan.id);
@@ -237,7 +251,14 @@ async fn one_time_authorization_is_plan_scoped_idempotent_and_cannot_authorize_s
     let current = store.persist_next(account_id, changed, 500).await.unwrap();
     assert_eq!(current.version, 2);
     let stale = store
-        .authorize_once(account_id, task_id, 1, "stale-authorization", 600)
+        .authorize_once(
+            account_id,
+            task_id,
+            1,
+            "stale-authorization",
+            600,
+            AuthorizationGranter::Web(account_id),
+        )
         .await
         .unwrap_err();
     assert_eq!(stale.code(), ErrorCode::ConfigVersionConflict);

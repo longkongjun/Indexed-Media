@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 use crate::shared::error::{AppError, ErrorCode};
 
-use super::plan_store::{OrganizationPlanRecord, OrganizationPlanStore};
+use super::plan_store::{AuthorizationGranter, OrganizationPlanRecord, OrganizationPlanStore};
 use super::planner::{OrganizationPlanner, PlanningDecision, PlanningInput};
 
 #[async_trait]
@@ -85,9 +85,17 @@ impl OrganizationPlanService {
         task_id: Uuid,
         plan_version: i64,
         idempotency_key: &str,
+        granter: AuthorizationGranter,
     ) -> Result<OrganizationPlanRecord, AppError> {
         self.store
-            .authorize_once(account_id, task_id, plan_version, idempotency_key, now_us())
+            .authorize_once(
+                account_id,
+                task_id,
+                plan_version,
+                idempotency_key,
+                now_us(),
+                granter,
+            )
             .await
     }
 }

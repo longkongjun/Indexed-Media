@@ -21,6 +21,7 @@ use mediaflow_core::organization::model::{
 use mediaflow_core::organization::plan_service::{
     OrganizationPlanService, OrganizationPlanningPort,
 };
+use mediaflow_core::organization::plan_store::AuthorizationGranter;
 use mediaflow_core::organization::plan_store::{OrganizationPlanRecord, OrganizationPlanStore};
 use mediaflow_core::organization::planner::{PlanningIdentity, PlanningInput};
 use mediaflow_core::organization::task_routes::{self, OrganizationTaskService};
@@ -32,6 +33,7 @@ use mediaflow_core::shared::error::AppError;
 use mediaflow_core::tasks::processing::model::{ProcessingReason, ProcessingStage};
 use mediaflow_core::tasks::processing::store::ProcessingStore;
 use serde_json::{Value, json};
+use sqlx::Row as _;
 use tower::ServiceExt as _;
 use uuid::Uuid;
 
@@ -237,6 +239,7 @@ async fn execution_receipt_repairs_response_loss_without_an_extra_attempt() {
             fixture.lease.task.id,
             paused_plan.version,
             "execute-after-response-loss",
+            AuthorizationGranter::Web(fixture.account_id),
         )
         .await
         .unwrap();
@@ -285,6 +288,19 @@ async fn execution_receipt_repairs_response_loss_without_an_extra_attempt() {
     .await
     .unwrap();
     assert_eq!(receipts, 1);
+    // SA-2-001：Web 人工执行写入的回执必须携带授权者身份。
+    let granter = sqlx::query(
+        "SELECT granted_by_kind, granted_by_id FROM organization_plan_authorization_receipts
+         WHERE plan_id=?",
+    )
+    .bind(paused_plan.id.as_bytes().as_slice())
+    .fetch_one(fixture.db.pool())
+    .await
+    .unwrap();
+    let granter_kind: String = granter.get("granted_by_kind");
+    let granter_id: Vec<u8> = granter.get("granted_by_id");
+    assert_eq!(granter_kind, "web");
+    assert_eq!(granter_id, fixture.account_id.as_bytes().to_vec());
 }
 
 #[tokio::test]

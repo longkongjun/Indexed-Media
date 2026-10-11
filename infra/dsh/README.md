@@ -50,8 +50,8 @@
 | `media.match-candidates` | read-only | 待确认记录候选查询 |
 | `media.create-plan` | plan-only | 计划预览；`dry_run=true` 重算并持久化新版本 |
 | `media.request-approval` | approval-required | 如实反馈计划授权状态（`paused` → `needs_approval` + `task.waiting_approval` 事件）；审批动作由管理员在 Web 执行 |
-| `media.apply-plan` | reversible-write | `plan.version:N` 绑定的一次性授权执行 |
-| `media.rollback` | reversible-write | `result.version:N` 绑定的受控回滚 |
+| `media.apply-plan` | reversible-write | `plan.version:N` 绑定；**只交付不授权**——仅执行已获 Web 人工授权回执的计划，无人工回执时返回 `needs_approval`（零副作用） |
+| `media.rollback` | reversible-write | `result.version:N` 绑定的受控回滚（撤销已授权执行结果的逆操作） |
 
 `media.scan` / `media.retry` / `media.cancel` / `media.sync-external` 已在契约枚举中保留，尚未开放 handler。
 

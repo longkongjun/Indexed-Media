@@ -26,6 +26,34 @@ pub struct OrganizationPlannedOperation {
     pub destination: OrganizationLocation,
 }
 
+/// 一次性授权回执的授权者。
+///
+/// SA-1-001 修复后 Web 人工会话是唯一授权产生方；capability 网关只交付已授权
+/// 计划，不再写入授权回执。
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AuthorizationGranter {
+    /// Web 人工会话（管理员账号）。
+    Web(Uuid),
+}
+
+impl AuthorizationGranter {
+    /// 回执 `granted_by_kind` 列取值。
+    #[must_use]
+    pub fn kind(self) -> &'static str {
+        match self {
+            Self::Web(_) => "web",
+        }
+    }
+
+    /// 授权主体账号 ID（`granted_by_id` 列取值）。
+    #[must_use]
+    pub fn account_id(self) -> Uuid {
+        match self {
+            Self::Web(account_id) => account_id,
+        }
+    }
+}
+
 /// 从不可变持久事实重建的计划与配置快照。
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OrganizationPlanRecord {
@@ -158,7 +186,7 @@ impl OrganizationPlanStore {
             .ok_or_else(|| invalid_database("recalculated organization plan is missing"))
     }
 
-    /// 保存只绑定当前计划版本的一次性授权回执。
+    /// 保存只绑定当前计划版本的一次性授权回执，并记录授权者身份。
     ///
     /// # Errors
     ///
@@ -170,6 +198,7 @@ impl OrganizationPlanStore {
         plan_version: i64,
         idempotency_key: &str,
         now_us: i64,
+        granter: AuthorizationGranter,
     ) -> Result<OrganizationPlanRecord, AppError> {
         validate_key(idempotency_key)?;
         self.assert_current(account_id, task_id, plan_version)
@@ -195,8 +224,9 @@ impl OrganizationPlanStore {
         ]);
         let result = sqlx::query(
             "INSERT INTO organization_plan_authorization_receipts
-             (plan_id,account_id,task_id,plan_version,idempotency_key_sha256,created_at_us)
-             VALUES (?,?,?,?,?,?) ON CONFLICT(plan_id) DO NOTHING",
+             (plan_id,account_id,task_id,plan_version,idempotency_key_sha256,created_at_us,
+              granted_by_kind,granted_by_id)
+             VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(plan_id) DO NOTHING",
         )
         .bind(current.id.as_bytes().as_slice())
         .bind(account_id.as_bytes().as_slice())
@@ -204,6 +234,8 @@ impl OrganizationPlanStore {
         .bind(plan_version)
         .bind(key_hash.as_slice())
         .bind(now_us)
+        .bind(granter.kind())
+        .bind(granter.account_id().as_bytes().as_slice())
         .execute(&self.pool)
         .await
         .map_err(database_error)?;
@@ -223,6 +255,30 @@ impl OrganizationPlanStore {
         self.get(account_id, current.id)
             .await?
             .ok_or_else(|| invalid_database("authorized organization plan is missing"))
+    }
+
+    /// 判断指定版本计划是否已存在 Web 人工授权回执（AI 通道交付执行的前置）。
+    ///
+    /// # Errors
+    ///
+    /// 数据库失败时返回稳定应用错误。
+    pub async fn has_web_authorization_receipt(
+        &self,
+        account_id: Uuid,
+        task_id: Uuid,
+        plan_version: i64,
+    ) -> Result<bool, AppError> {
+        let count = sqlx::query_scalar::<_, i64>(
+            "SELECT COUNT(*) FROM organization_plan_authorization_receipts
+             WHERE account_id=? AND task_id=? AND plan_version=? AND granted_by_kind='web'",
+        )
+        .bind(account_id.as_bytes().as_slice())
+        .bind(task_id.as_bytes().as_slice())
+        .bind(plan_version)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(database_error)?;
+        Ok(count > 0)
     }
 
     /// 断言期望版本仍是任务的当前计划版本。

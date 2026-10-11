@@ -336,7 +336,10 @@ async fn approval_state(
     })
 }
 
-/// `media.apply-plan`（`reversible-write`）：`expected_revision`（`plan.version:N`）授权并交付执行。
+/// `media.apply-plan`（`reversible-write`）：只交付已获 Web 人工授权的计划版本。
+///
+/// SA-1-001 修复：capability 通道不再产生授权回执——无有效人工回执时返回
+/// `needs_approval`（无执行、无回执、无文件副作用），审批权威界面是 Web。
 async fn apply_plan(
     state: &Arc<CapabilityHttpState>,
     call: &CapabilityCall,
@@ -345,15 +348,32 @@ async fn apply_plan(
     let task_id = input_task(call)?;
     let plan_version = revision_number(call, "plan.version")?;
     let account_id = account_of(state, task_id).await?;
-    let view = service
-        .execute(
+    match service
+        .deliver_authorized(
             account_id,
             task_id,
             plan_version,
             &call.execution.idempotency_key,
         )
-        .await?;
-    plan_outcome_from_view(state, task_id, view).await
+        .await?
+    {
+        crate::organization::task_routes::DeliverOutcome::Delivered(view) => {
+            plan_outcome_from_view(state, task_id, *view).await
+        }
+        crate::organization::task_routes::DeliverOutcome::NeedsApproval {
+            plan_id,
+            plan_version,
+        } => Ok(CapabilityOutcome {
+            status: CapabilityResultStatus::NeedsApproval,
+            task_id: Some(task_id),
+            result: Some(single_field_map("plan_version", &plan_version.to_string())),
+            evidence: vec![CapabilityEvidenceRef {
+                id: uuid_string(plan_id.as_bytes()),
+                kind: CapabilityEvidenceKind::Plan,
+            }],
+            next_actions: vec![CapabilityNextAction::RequestApproval],
+        }),
+    }
 }
 
 /// `media.rollback`（`reversible-write`）：`expected_revision`（`result.version:N`）绑定结果版本回滚。

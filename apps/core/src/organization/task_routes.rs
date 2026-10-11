@@ -28,7 +28,9 @@ use crate::organization::journal_store::{
     JournalKind, JournalRecord, JournalStatus, JournalStore, LocalResultStatus, LocalResultView,
 };
 use crate::organization::plan_service::{OrganizationPlanService, OrganizationPlanningPort};
-use crate::organization::plan_store::{OrganizationPlanRecord, OrganizationPlanStore};
+use crate::organization::plan_store::{
+    AuthorizationGranter, OrganizationPlanRecord, OrganizationPlanStore,
+};
 use crate::organization::planner::{OrganizationLocation, PlanAuthorization, PlanningRiskCode};
 use crate::platform::audit;
 use crate::platform::db::Db;
@@ -168,6 +170,20 @@ pub struct ProcessingTaskOrganizationView {
     pub allowed_actions: Vec<OrganizationTaskAction>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+/// capability 通道交付执行的两种结果（SA-1-001 修复语义）。
+pub enum DeliverOutcome {
+    /// 计划已获 Web 人工授权并交付执行。
+    Delivered(Box<ProcessingTaskOrganizationView>),
+    /// 计划版本尚无 Web 人工授权回执；等待人工审批，零副作用。
+    NeedsApproval {
+        /// 等待审批的计划稳定 ID（信封 evidence 用）。
+        plan_id: Uuid,
+        /// 等待审批的计划版本。
+        plan_version: i64,
+    },
+}
+
 #[derive(Clone)]
 /// 组合 tasks、planner、journal、FS 和 rollback 的 organization 应用服务。
 pub struct OrganizationTaskService {
@@ -287,6 +303,10 @@ impl OrganizationTaskService {
 
     /// 为精确当前计划版本保存一次性授权，并从 planning 恢复点重新排队。
     ///
+    /// Web 人工执行的权威入口：授权回执记录会话主体（`granted_by=web`）。
+    /// capability 通道不调用本方法——AI 只能经 [`Self::deliver_authorized`]
+    /// 交付已获人工授权的计划（SA-1-001 修复语义）。
+    ///
     /// # Errors
     ///
     /// 计划版本过期、风险不可覆盖、任务已开始执行或幂等键冲突时返回稳定错误。
@@ -299,11 +319,59 @@ impl OrganizationTaskService {
     ) -> Result<ProcessingTaskOrganizationView, AppError> {
         let task = self.commandable_planning_task(account_id, task_id).await?;
         self.plans
-            .authorize_once(account_id, task_id, plan_version, idempotency_key)
+            .authorize_once(
+                account_id,
+                task_id,
+                plan_version,
+                idempotency_key,
+                AuthorizationGranter::Web(account_id),
+            )
             .await?;
         self.resume_planning(account_id, &task, idempotency_key)
             .await?;
         self.get(account_id, task_id).await
+    }
+
+    /// 交付一个已由 Web 人工授权的当前版本计划；不产生授权回执。
+    ///
+    /// capability 网关（`media.apply-plan`）的唯一执行入口：计划版本上不存在
+    /// Web 人工授权回执时返回 [`DeliverOutcome::NeedsApproval`]，不执行、不写
+    /// 回执、无任何文件副作用。
+    ///
+    /// # Errors
+    ///
+    /// 任务不可命令、计划版本过期或数据库失败时返回稳定应用错误。
+    pub async fn deliver_authorized(
+        &self,
+        account_id: Uuid,
+        task_id: Uuid,
+        plan_version: i64,
+        idempotency_key: &str,
+    ) -> Result<DeliverOutcome, AppError> {
+        let task = self.commandable_planning_task(account_id, task_id).await?;
+        self.plan_store
+            .assert_current(account_id, task_id, plan_version)
+            .await?;
+        if !self
+            .plan_store
+            .has_web_authorization_receipt(account_id, task_id, plan_version)
+            .await?
+        {
+            let plan = self
+                .plan_store
+                .current(account_id, task_id)
+                .await?
+                .ok_or_else(|| AppError::new(ErrorCode::NotFound, "organization plan not found"))?;
+            return Ok(DeliverOutcome::NeedsApproval {
+                plan_id: plan.id,
+                plan_version: plan.version,
+            });
+        }
+        self.resume_planning(account_id, &task, idempotency_key)
+            .await?;
+        Ok(DeliverOutcome::Delivered(Box::new(
+            self.get(account_id, task_id).await?,
+        )))
     }
 
     /// 对当前结果执行版本绑定且可重放的安全补偿。
