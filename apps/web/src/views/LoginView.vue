@@ -118,4 +118,3 @@ async function submit(): Promise<void> {
     </section>
   </main>
 </template>
-
