@@ -971,6 +971,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/capability-events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List redacted AI capability channel events
+         * @description Newest-first projection of the media-capability.v1 event stream for the admin Web; independent of the AI protocol endpoint.
+         */
+        get: operations["listCapabilityEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/identification-enhancer": {
         parameters: {
             query?: never;
@@ -1985,6 +2005,27 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
         };
+        /** @description Redacted AI capability channel event; carries no input payloads, credentials, or paths. */
+        CapabilityActivityEvent: {
+            sequence: number;
+            /** Format: uuid */
+            event_id: string;
+            /** @enum {unknown} */
+            event_type: "task.accepted" | "task.progressed" | "task.waiting_input" | "task.waiting_approval" | "capability.completed" | "capability.failed" | "task.retryable" | "task.paused" | "task.succeeded" | "task.failed" | "external_sync.retryable";
+            /** Format: date-time */
+            occurred_at: string;
+            /** Format: uuid */
+            task_id: string | null;
+            /** Format: uuid */
+            request_id: string | null;
+            state: string | null;
+            error_code: string | null;
+        };
+        /** @description Newest-first cursor page of redacted capability events. */
+        CapabilityActivityPage: {
+            items: components["schemas"]["CapabilityActivityEvent"][];
+            next_cursor: string | null;
+        };
         /** @description Stable cursor page of redacted automation events. */
         AutomationEventPage: {
             items: components["schemas"]["AutomationEvent"][];
@@ -2724,6 +2765,15 @@ export interface components {
             };
             content: {
                 "application/json": components["schemas"]["ProcessingTaskOrganization"];
+            };
+        };
+        /** @description Redacted AI capability channel events */
+        CapabilityActivityPage: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["CapabilityActivityPage"];
             };
         };
         /** @description Authentication required */
@@ -4411,6 +4461,25 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    listCapabilityEvents: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["CapabilityActivityPage"];
+            401: components["responses"]["Unauthorized"];
             422: components["responses"]["ValidationFailed"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];

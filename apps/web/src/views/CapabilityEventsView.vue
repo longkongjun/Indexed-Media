@@ -1,0 +1,99 @@
+<script setup lang="ts">
+/**
+ * AI 能力通道活动的只读管理视图。
+ *
+ * 展示 `media-capability.v1` 事件流的脱敏投影（最新在前）：事件类型、时间、关联任务与
+ * 错误码。本页没有写路径——能力调用由 AI 控制面发起，管理员在此只看事实。
+ */
+import { onMounted } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import AsyncState from "../components/AsyncState.vue";
+import CursorPager from "../components/CursorPager.vue";
+import { handleAuthenticatedFailure } from "../components/apiErrors";
+import { useMediaFlowClient } from "../components/injectedClient";
+import { useCapabilityEvents } from "../features/capability-activity/useCapabilityEvents";
+import { useSessionStore } from "../app/session";
+
+const route = useRoute();
+const router = useRouter();
+const session = useSessionStore();
+const client = useMediaFlowClient();
+const failure = (error: unknown) => handleAuthenticatedFailure(error, session, router, route.fullPath);
+const activity = useCapabilityEvents(client, failure);
+
+const TYPE_LABELS: Record<string, string> = {
+  "task.accepted": "任务已接受",
+  "task.progressed": "任务推进",
+  "task.waiting_input": "等待输入",
+  "task.waiting_approval": "等待审批",
+  "capability.completed": "能力完成",
+  "capability.failed": "能力失败",
+  "task.retryable": "可重试",
+  "task.paused": "已暂停",
+  "task.succeeded": "任务成功",
+  "task.failed": "任务失败",
+  "external_sync.retryable": "外部同步可重试",
+};
+
+function typeLabel(eventType: string): string {
+  return TYPE_LABELS[eventType] ?? eventType;
+}
+
+onMounted(() => {
+  void activity.load();
+});
+</script>
+
+<template>
+  <section class="capability-events" aria-labelledby="capability-events-heading">
+    <h1 id="capability-events-heading">AI 能力活动</h1>
+    <p class="page-help">AI 通道（media-capability.v1）事件流的脱敏只读投影；能力调用与审批由对应任务页承载。</p>
+    <AsyncState :state="activity.state.value" :error-message="activity.errorMessage.value" empty-message="暂无 AI 能力活动" @retry="() => { void activity.load(); }">
+        <table class="activity-table">
+          <caption class="sr-only">AI 能力通道事件（最新在前）</caption>
+          <thead>
+            <tr>
+              <th scope="col">序号</th>
+              <th scope="col">事件</th>
+              <th scope="col">时间</th>
+              <th scope="col">关联任务</th>
+              <th scope="col">状态</th>
+              <th scope="col">错误码</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="event in activity.events.value" :key="event.sequence" :data-event-sequence="event.sequence">
+              <td>{{ event.sequence }}</td>
+              <td>{{ typeLabel(event.event_type) }}</td>
+              <td><time :datetime="event.occurred_at">{{ event.occurred_at }}</time></td>
+              <td>
+                <RouterLink v-if="event.task_id" :to="{ name: 'task', params: { id: event.task_id } }">
+                  {{ event.task_id.slice(0, 8) }}…
+                </RouterLink>
+                <span v-else aria-label="无关联任务">—</span>
+              </td>
+              <td>{{ event.state ?? "—" }}</td>
+              <td>
+                <code v-if="event.error_code" data-error-code>{{ event.error_code }}</code>
+                <span v-else>—</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <CursorPager
+          :next-cursor="activity.nextCursor.value"
+          @next="() => { void activity.loadMore(); }"
+        />
+    </AsyncState>
+  </section>
+</template>
+
+<style scoped>
+.capability-events { display: grid; gap: 1rem; }
+.page-help { margin: 0; color: #3d5a4d; }
+.activity-table { width: 100%; border-collapse: collapse; background: white; border: 1px solid #b9c9c1; border-radius: .75rem; overflow: hidden; }
+.activity-table th, .activity-table td { padding: .6rem .8rem; border-bottom: 1px solid #dce7e1; text-align: left; font-size: .9rem; }
+.activity-table th { background: #eef5f1; }
+.activity-table code { font-size: .8rem; }
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+</style>

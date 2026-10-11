@@ -1015,6 +1015,21 @@ paths:
         '422': { $ref: '#/components/responses/ValidationFailed' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
         '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/capability-events:
+    get:
+      operationId: listCapabilityEvents
+      summary: List redacted AI capability channel events
+      description: Newest-first projection of the media-capability.v1 event stream for the admin Web; independent of the AI protocol endpoint.
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '200': { $ref: '#/components/responses/CapabilityActivityPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
   /api/v1/identification-enhancer:
     get:
       operationId: getIdentificationEnhancer
@@ -1179,6 +1194,7 @@ components:
     OrganizationTarget: { description: One safe organization target projection, content: { application/json: { schema: { $ref: '#/components/schemas/OrganizationTarget' } } } }
     OrganizationTargetPreflight: { description: Non-persistent organization target preflight, content: { application/json: { schema: { $ref: '#/components/schemas/OrganizationTargetPreflight' } } } }
     ProcessingTaskOrganization: { description: "One task's safe plan, journals, and local result", content: { application/json: { schema: { $ref: '#/components/schemas/ProcessingTaskOrganization' } } } }
+    CapabilityActivityPage: { description: Redacted AI capability channel events, content: { application/json: { schema: { $ref: '#/components/schemas/CapabilityActivityPage' } } } }
     Unauthorized: { description: Authentication required, content: { application/json: { schema: { $ref: '#/components/schemas/ApiErrorBody' } } } }
     Forbidden: { description: CSRF or Origin rejected, content: { application/json: { schema: { $ref: '#/components/schemas/ApiErrorBody' } } } }
     NotFound: { description: Resource not found, content: { application/json: { schema: { $ref: '#/components/schemas/ApiErrorBody' } } } }
@@ -2121,6 +2137,28 @@ components:
         projection_version: { type: integer, minimum: 1, maximum: 9007199254740991 }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
+    CapabilityActivityEvent:
+      description: Redacted AI capability channel event; carries no input payloads, credentials, or paths.
+      type: object
+      additionalProperties: false
+      required: [sequence, event_id, event_type, occurred_at, task_id, request_id, state, error_code]
+      properties:
+        sequence: { type: integer, minimum: 1, maximum: 9007199254740991 }
+        event_id: { type: string, format: uuid }
+        event_type: { enum: [task.accepted, task.progressed, task.waiting_input, task.waiting_approval, capability.completed, capability.failed, task.retryable, task.paused, task.succeeded, task.failed, external_sync.retryable] }
+        occurred_at: { type: string, format: date-time }
+        task_id: { type: [string, 'null'], format: uuid }
+        request_id: { type: [string, 'null'], format: uuid }
+        state: { type: [string, 'null'], maxLength: 64 }
+        error_code: { type: [string, 'null'], maxLength: 96 }
+    CapabilityActivityPage:
+      description: Newest-first cursor page of redacted capability events.
+      type: object
+      additionalProperties: false
+      required: [items, next_cursor]
+      properties:
+        items: { type: array, maxItems: 200, items: { $ref: '#/components/schemas/CapabilityActivityEvent' } }
+        next_cursor: { type: [string, 'null'], maxLength: 512 }
     AutomationEventPage:
       description: Stable cursor page of redacted automation events.
       type: object

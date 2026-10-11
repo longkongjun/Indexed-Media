@@ -1,0 +1,10 @@
+{
+  "sequence": 42,
+  "event_id": "019f8a10-0000-7000-8000-000000000400",
+  "event_type": "task.waiting_approval",
+  "occurred_at": "2026-10-10T08:00:00.000001Z",
+  "task_id": "019f8a10-0000-7000-8000-000000000100",
+  "request_id": "019f8a10-0000-7000-8000-000000000002",
+  "state": "waiting_approval",
+  "error_code": null
+}

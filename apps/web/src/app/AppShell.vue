@@ -32,6 +32,7 @@ async function logout(): Promise<void> {
         <RouterLink to="/downloads">下载任务</RouterLink>
         <RouterLink to="/connections/downloaders">下载器连接</RouterLink>
         <RouterLink to="/automation/sources">来源自动化</RouterLink>
+        <RouterLink to="/capability-events">AI 能力活动</RouterLink>
         <button data-account-toggle type="button" aria-controls="account-panel" :aria-expanded="accountOpen" @click="accountOpen = !accountOpen">账户与系统</button>
       </nav>
     </aside>
@@ -40,6 +41,7 @@ async function logout(): Promise<void> {
         <h2 id="account-heading">账户与系统</h2>
         <p v-if="session.account">当前管理员：{{ session.account.administrator_name }}</p>
         <RouterLink to="/automation/sources">管理来源自动化</RouterLink>
+        <RouterLink to="/capability-events">AI 能力活动</RouterLink>
         <button type="button" @click="logout">退出登录</button>
       </section>
       <RouterView />

@@ -102,6 +102,8 @@ export type WebhookSecretReceipt = components["schemas"]["WebhookSecretReceipt"]
 export type AutomationEvent = components["schemas"]["AutomationEvent"];
 /** 自动化事件的稳定游标分页。 */
 export type AutomationEventPage = components["schemas"]["AutomationEventPage"];
+export type CapabilityActivityEvent = components["schemas"]["CapabilityActivityEvent"];
+export type CapabilityActivityPage = components["schemas"]["CapabilityActivityPage"];
 /** 本地 Ollama 识别增强器的候选配置。 */
 export type IdentificationEnhancerInput = components["schemas"]["IdentificationEnhancerInput"];
 /** 已脱敏的本地识别增强器配置与健康。 */
@@ -162,6 +164,12 @@ export interface DownloadTaskListOptions {
   connectionId?: string;
   status?: DownloadTask["status"];
   query?: string;
+}
+
+/** AI 能力通道事件列表的分页参数。 */
+export interface CapabilityEventListOptions {
+  cursor?: string;
+  limit?: number;
 }
 
 /** 自动化事件列表的稳定服务端筛选。 */
@@ -306,6 +314,8 @@ export interface MediaFlowClient {
   retryAutomationEvent(id: string, idempotencyKey: string): Promise<AutomationEvent>;
   /** @param id - 尚未关联下游的事件 UUID。@param idempotencyKey - 取消意图的稳定键。 */
   cancelAutomationEvent(id: string, idempotencyKey: string): Promise<AutomationEvent>;
+  /** @param options - 游标与页大小。@returns 最新在前的 AI 能力通道事件。 */
+  listCapabilityEvents(options?: CapabilityEventListOptions): Promise<CapabilityActivityPage>;
   /** @returns 已脱敏的本地识别增强器配置。 */
   getIdentificationEnhancer(): Promise<IdentificationEnhancer>;
   /** @param body - 候选 Ollama 配置。@returns 不落盘的能力与健康。 */
@@ -388,6 +398,7 @@ const operations = {
   testAutomationSource: ["POST", "/api/v1/automation-sources/connection-tests"],
   rotateAutomationWebhookSecret: ["POST", "/api/v1/automation-sources/{automationSourceId}/secret-rotations"],
   listAutomationEvents: ["GET", "/api/v1/automation-events"],
+  listCapabilityEvents: ["GET", "/api/v1/capability-events"],
   getAutomationEvent: ["GET", "/api/v1/automation-events/{automationEventId}"],
   retryAutomationEvent: ["POST", "/api/v1/automation-events/{automationEventId}/retries"],
   cancelAutomationEvent: ["POST", "/api/v1/automation-events/{automationEventId}/cancellations"],
@@ -560,6 +571,10 @@ export function createMediaFlowClient(options: { baseUrl?: string; fetch?: typeo
     listAutomationEvents: (options = {}) => request("listAutomationEvents", {
       cursor: options.cursor,
       query: { source_id: options.sourceId, status: options.status, action: options.action },
+    }),
+    listCapabilityEvents: (options = {}) => request("listCapabilityEvents", {
+      cursor: options.cursor,
+      query: { limit: options.limit?.toString() },
     }),
     getAutomationEvent: (id) => request("getAutomationEvent", { path: { automationEventId: id } }),
     retryAutomationEvent: (id, idempotencyKey) => request("retryAutomationEvent", {

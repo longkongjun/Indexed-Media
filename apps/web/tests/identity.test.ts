@@ -44,6 +44,7 @@ function client(overrides: Partial<MediaFlowClient> = {}): MediaFlowClient {
     listAutomationSources: vi.fn(), createAutomationSource: vi.fn(), getAutomationSource: vi.fn(),
     updateAutomationSource: vi.fn(), deleteAutomationSource: vi.fn(), testAutomationSource: vi.fn(),
     rotateAutomationWebhookSecret: vi.fn(), listAutomationEvents: vi.fn(), getAutomationEvent: vi.fn(),
+    listCapabilityEvents: vi.fn(),
     retryAutomationEvent: vi.fn(), cancelAutomationEvent: vi.fn(), getIdentificationEnhancer: vi.fn(),
     testIdentificationEnhancer: vi.fn(), putIdentificationEnhancer: vi.fn(),
     ...overrides,

@@ -35,6 +35,7 @@ export function useMediaFlowClient(): MediaFlowClient {
     listAutomationSources: unavailable, createAutomationSource: unavailable, getAutomationSource: unavailable,
     updateAutomationSource: unavailable, deleteAutomationSource: unavailable, testAutomationSource: unavailable,
     rotateAutomationWebhookSecret: unavailable, listAutomationEvents: unavailable, getAutomationEvent: unavailable,
+    listCapabilityEvents: unavailable,
     retryAutomationEvent: unavailable, cancelAutomationEvent: unavailable, getIdentificationEnhancer: unavailable,
     testIdentificationEnhancer: unavailable, putIdentificationEnhancer: unavailable,
     setCsrfToken: () => undefined,
