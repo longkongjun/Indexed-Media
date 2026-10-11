@@ -13,6 +13,7 @@ import CursorPager from "../components/CursorPager.vue";
 import { useMediaFlowClient } from "../components/injectedClient";
 import { handleAuthenticatedFailure } from "../components/apiErrors";
 import { useSessionStore } from "../app/session";
+import { processingStatusBadge } from "../components/dictionaries";
 import { useProcessingTasks } from "../features/processing-tasks/useProcessingTasks";
 import type { TaskCenterContext } from "../features/processing-tasks/model";
 import { useProjectionEvents } from "../features/events/useProjectionEvents";
@@ -102,7 +103,7 @@ watch(() => route.fullPath, () => { syncControls(); return load(); });
     </nav>
     <form class="filter-bar task-filter" @submit.prevent="applyFilters">
       <label>阶段<select v-model="filters.stage"><option value="">全部</option><option value="identification">识别</option><option value="planning">规划</option><option value="file-operation">文件操作</option><option value="nfo">NFO</option><option value="completion">完成</option></select></label>
-      <label>状态<select v-model="filters.status"><option value="">全部</option><option value="queued">等待中</option><option value="running">进行中</option><option value="waiting-confirmation">等待人工确认</option><option value="paused">已暂停</option><option value="partial-success">部分成功</option><option value="completed">已完成</option><option value="failed">失败</option><option value="cancelled">已取消</option></select></label>
+      <label>状态<select v-model="filters.status"><option value="">全部</option><option value="queued">排队</option><option value="running">运行中</option><option value="waiting-confirmation">待确认</option><option value="paused">已暂停</option><option value="partial-success">部分成功</option><option value="completed">已完成</option><option value="failed">失败</option><option value="cancelled">已取消</option></select></label>
       <label>收件目录 ID<input v-model="filters.inbox" maxlength="36"></label>
       <label>关键字<input v-model="filters.query" maxlength="200" placeholder="相对路径或任务 ID"></label>
       <button type="submit">应用筛选</button>
@@ -111,7 +112,7 @@ watch(() => route.fullPath, () => { syncControls(); return load(); });
       <ul class="card-list task-card-list">
         <li v-for="item in feature.tasks.value" :key="item.id" class="resource-card">
           <RouterLink :to="{ name: 'task', params: { id: item.id }, query: queryFor(context) }"><strong>{{ item.relative_path }}</strong></RouterLink>
-          <dl class="compact-facts"><div><dt>状态</dt><dd>{{ item.status }}</dd></div><div><dt>阶段</dt><dd>{{ item.stage }}</dd></div><div><dt>原因</dt><dd>{{ item.reason ?? '—' }}</dd></div><div><dt>决定检查点</dt><dd>{{ item.decision_checkpoint ?? '—' }}</dd></div></dl>
+          <dl class="compact-facts"><div><dt>状态</dt><dd><span class="status-badge" :data-tone="processingStatusBadge(item.status).tone"><span aria-hidden="true">{{ processingStatusBadge(item.status).shape }}</span> {{ processingStatusBadge(item.status).label }}</span></dd></div><div><dt>阶段</dt><dd>{{ item.stage }}</dd></div><div><dt>原因</dt><dd>{{ item.reason ?? '—' }}</dd></div><div><dt>决定检查点</dt><dd>{{ item.decision_checkpoint ?? '—' }}</dd></div></dl>
           <p><time :datetime="item.updated_at">{{ item.updated_at }}</time></p>
           <p v-if="item.allowed_actions.length">可操作：{{ item.allowed_actions.join('、') }}</p>
         </li>

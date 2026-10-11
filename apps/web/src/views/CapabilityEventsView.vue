@@ -10,6 +10,7 @@ import { useRoute, useRouter } from "vue-router";
 import AsyncState from "../components/AsyncState.vue";
 import CursorPager from "../components/CursorPager.vue";
 import { handleAuthenticatedFailure } from "../components/apiErrors";
+import { capabilityEventBadge, capabilityStateBadge } from "../components/dictionaries";
 import { useMediaFlowClient } from "../components/injectedClient";
 import { useCapabilityEvents } from "../features/capability-activity/useCapabilityEvents";
 import { useSessionStore } from "../app/session";
@@ -21,22 +22,12 @@ const client = useMediaFlowClient();
 const failure = (error: unknown) => handleAuthenticatedFailure(error, session, router, route.fullPath);
 const activity = useCapabilityEvents(client, failure);
 
-const TYPE_LABELS: Record<string, string> = {
-  "task.accepted": "任务已接受",
-  "task.progressed": "任务推进",
-  "task.waiting_input": "等待输入",
-  "task.waiting_approval": "等待审批",
-  "capability.completed": "能力完成",
-  "capability.failed": "能力失败",
-  "task.retryable": "可重试",
-  "task.paused": "已暂停",
-  "task.succeeded": "任务成功",
-  "task.failed": "任务失败",
-  "external_sync.retryable": "外部同步可重试",
-};
+function typeBadge(eventType: string) {
+  return capabilityEventBadge(eventType);
+}
 
-function typeLabel(eventType: string): string {
-  return TYPE_LABELS[eventType] ?? eventType;
+function stateBadge(state: string | null) {
+  return state === null ? null : capabilityStateBadge(state);
 }
 
 onMounted(() => {
@@ -64,7 +55,7 @@ onMounted(() => {
           <tbody>
             <tr v-for="event in activity.events.value" :key="event.sequence" :data-event-sequence="event.sequence">
               <td>{{ event.sequence }}</td>
-              <td>{{ typeLabel(event.event_type) }}</td>
+              <td><span class="status-badge" :data-tone="typeBadge(event.event_type).tone"><span aria-hidden="true">{{ typeBadge(event.event_type).shape }}</span> {{ typeBadge(event.event_type).label }}</span></td>
               <td><time :datetime="event.occurred_at">{{ event.occurred_at }}</time></td>
               <td>
                 <RouterLink v-if="event.task_id" :to="{ name: 'task', params: { id: event.task_id } }">
@@ -72,7 +63,10 @@ onMounted(() => {
                 </RouterLink>
                 <span v-else aria-label="无关联任务">—</span>
               </td>
-              <td>{{ event.state ?? "—" }}</td>
+              <td>
+                <span v-if="stateBadge(event.state)" class="status-badge" :data-tone="stateBadge(event.state)?.tone"><span aria-hidden="true">{{ stateBadge(event.state)?.shape }}</span> {{ stateBadge(event.state)?.label }}</span>
+                <span v-else>—</span>
+              </td>
               <td>
                 <code v-if="event.error_code" data-error-code>{{ event.error_code }}</code>
                 <span v-else>—</span>
@@ -82,6 +76,7 @@ onMounted(() => {
         </table>
         <CursorPager
           :next-cursor="activity.nextCursor.value"
+          :shown-count="activity.events.value.length"
           @next="() => { void activity.loadMore(); }"
         />
     </AsyncState>

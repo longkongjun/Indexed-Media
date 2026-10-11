@@ -129,7 +129,7 @@ test("configures sources and enhancer, recovers an event, and preserves drafts o
   await page.getByLabel("显示名").first().fill("Offline draft remains");
   offline = true;
   await page.getByRole("button", { name: "刷新此来源" }).first().click();
-  await expect(page.getByText("Offline")).toBeVisible();
+  await expect(page.getByText("离线", { exact: true })).toBeVisible();
   await expect(page.getByLabel("显示名").first()).toHaveValue("Offline draft remains");
   await expect(page.getByRole("button", { name: "保存来源" })).toBeDisabled();
   await expect(page.locator("body")).not.toContainText("FEED_SECRET_MUST_NOT_RENDER");

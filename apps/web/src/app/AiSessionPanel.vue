@@ -9,6 +9,7 @@
 import { onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import type { CapabilityActivityEvent, MediaFlowClient } from "@mediaflow/api-client-ts";
+import { capabilityEventBadge } from "../components/dictionaries";
 import { useMediaFlowClient } from "../components/injectedClient";
 
 const client: MediaFlowClient = useMediaFlowClient();
@@ -16,22 +17,8 @@ const router = useRouter();
 const recent = ref<CapabilityActivityEvent[]>([]);
 const failed = ref(false);
 
-const TYPE_LABELS: Record<string, string> = {
-  "task.accepted": "任务已接受",
-  "task.progressed": "任务推进",
-  "task.waiting_input": "等待输入",
-  "task.waiting_approval": "等待审批",
-  "capability.completed": "能力完成",
-  "capability.failed": "能力失败",
-  "task.retryable": "可重试",
-  "task.paused": "已暂停",
-  "task.succeeded": "任务成功",
-  "task.failed": "任务失败",
-  "external_sync.retryable": "外部同步可重试",
-};
-
 function typeLabel(eventType: string): string {
-  return TYPE_LABELS[eventType] ?? eventType;
+  return capabilityEventBadge(eventType).label;
 }
 
 function openTask(taskId: string): void {

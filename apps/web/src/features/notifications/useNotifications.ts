@@ -56,7 +56,13 @@ export function useNotifications(client: MediaFlowClient, onFailure?: Authentica
     }
   }
 
-  async function markRead(notificationId?: string): Promise<void> {
+  /**
+   * 标记已读（幂等）。
+   *
+   * @param notificationId - 省略时标记全部已读。
+   * @returns 成功返回 true；失败返回 false（错误经 `errorMessage` 透出，已加载内容不清空）。
+   */
+  async function markRead(notificationId?: string): Promise<boolean> {
     try {
       await client.markNotificationsRead(notificationId);
       if (notificationId) {
@@ -64,9 +70,11 @@ export function useNotifications(client: MediaFlowClient, onFailure?: Authentica
       } else {
         unreadCount.value = 0;
       }
+      return true;
     } catch (error) {
       await onFailure?.(error);
       errorMessage.value = safeApiError(error, "无法标记已读，请重试").message;
+      return false;
     }
   }
 

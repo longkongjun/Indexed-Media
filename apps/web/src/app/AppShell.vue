@@ -149,7 +149,9 @@ onMounted(() => {
 nav { display: flex; gap: .5rem; }
 .sidebar nav { flex-direction: column; }
 nav a, nav button { min-height: 2.75rem; box-sizing: border-box; padding: .75rem 1rem; border: 0; border-radius: .6rem; background: transparent; color: inherit; font: inherit; text-align: left; text-decoration: none; }
-nav a:hover, nav a:focus-visible, nav button:hover, nav button:focus-visible, nav a.router-link-active { outline: var(--mfd-stroke-focus-ring) solid var(--mfd-color-border-focus); outline-offset: 1px; background: var(--mfd-color-bg-inverse-hover); }
+nav a:hover, nav button:hover { background: var(--mfd-color-bg-inverse-hover); }
+nav a:focus-visible, nav button:focus-visible { outline: var(--mfd-stroke-focus-ring) solid var(--mfd-color-border-focus); outline-offset: 1px; background: var(--mfd-color-bg-inverse-hover); }
+nav a.router-link-active { box-shadow: inset var(--mfd-stroke-focus-ring) 0 0 var(--mfd-color-border-focus); background: var(--mfd-color-bg-inverse-hover); font-weight: var(--mfd-font-weight-semibold); }
 .content { min-height: 100vh; margin-left: 15rem; box-sizing: border-box; padding: 2rem; }
 .account-panel { margin-bottom: 1.5rem; padding: 1rem; border: 1px solid var(--mfd-color-border-default); border-radius: var(--mfd-radius-lg); background: var(--mfd-color-bg-surface); }
 .account-panel h2 { margin-top: 0; }

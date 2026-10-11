@@ -8,9 +8,11 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 a { color: var(--mfd-color-text-link); }
 :focus-visible { outline: var(--mfd-stroke-focus-ring) solid var(--mfd-color-border-focus); outline-offset: var(--mfd-stroke-focus-ring); }
 code { overflow-wrap: anywhere; font-family: var(--mfd-font-family-mono); }
-table { width: 100%; border-collapse: collapse; background: var(--mfd-color-bg-surface); }
+table { width: 100%; border-collapse: collapse; background: var(--mfd-color-bg-surface); font-size: var(--mfd-font-size-sm); }
 caption { padding: .75rem; font-weight: 700; text-align: left; }
-th, td { padding: .75rem; border-bottom: 1px solid var(--mfd-color-border-default); text-align: left; vertical-align: top; }
+th, td { padding: .75rem; border-bottom: 1px solid var(--mfd-color-border-subtle); text-align: left; vertical-align: top; }
+th { background: var(--mfd-color-bg-selected); color: var(--mfd-color-text-secondary); font-weight: var(--mfd-font-weight-medium); }
+input:focus-visible, select:focus-visible, textarea:focus-visible { border-color: var(--mfd-color-border-focus); }
 .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 /* 主题/皮肤切换过渡：仅在切换窗口（root.theme-transition，见 app/theme.ts）对颜色类属性交叉淡入；
    prefers-reduced-motion 时立即切换（theme-switching 模式 §4）。 */

@@ -14,6 +14,7 @@ import { useMediaFlowClient } from "../components/injectedClient";
 import { useProcessingTask } from "../features/processing-tasks/useProcessingTask";
 import { handleAuthenticatedFailure } from "../components/apiErrors";
 import { useSessionStore } from "../app/session";
+import { processingStatusBadge } from "../components/dictionaries";
 import { useProjectionEvents } from "../features/events/useProjectionEvents";
 import { useOrganizationTask } from "../features/organization-task/useOrganizationTask";
 import { taskEventSourceFactoryKey } from "../features/scan-tasks/useTaskEvents";
@@ -85,7 +86,7 @@ onBeforeUnmount(events.stop);
     <AsyncState :state="detail.state.value" :error-message="detail.errorMessage.value" offline-message="当前离线，保留最近投影并暂停写操作" @retry="detail.load">
       <article v-if="detail.task.value" class="detail-card">
         <h2><code>{{ detail.task.value.relative_path }}</code></h2>
-        <dl class="count-grid"><div><dt>状态</dt><dd>{{ detail.task.value.status }}</dd></div><div><dt>阶段</dt><dd>{{ detail.task.value.stage }}</dd></div><div><dt>检查点</dt><dd>{{ detail.task.value.checkpoint }}</dd></div><div><dt>尝试次数</dt><dd>{{ detail.task.value.attempt_count }}</dd></div></dl>
+        <dl class="count-grid"><div><dt>状态</dt><dd><span class="status-badge" :data-tone="processingStatusBadge(detail.task.value.status).tone"><span aria-hidden="true">{{ processingStatusBadge(detail.task.value.status).shape }}</span> {{ processingStatusBadge(detail.task.value.status).label }}</span></dd></div><div><dt>阶段</dt><dd>{{ detail.task.value.stage }}</dd></div><div><dt>检查点</dt><dd>{{ detail.task.value.checkpoint }}</dd></div><div><dt>尝试次数</dt><dd>{{ detail.task.value.attempt_count }}</dd></div></dl>
         <ol class="timeline" aria-label="处理时间线"><li>当前阶段：{{ detail.task.value.stage }}</li><li>持久检查点：{{ detail.task.value.checkpoint }}</li><li v-if="detail.task.value.decision_checkpoint">人工决定：{{ detail.task.value.decision_checkpoint }}</li><li>最近更新：<time :datetime="detail.task.value.updated_at">{{ detail.task.value.updated_at }}</time></li></ol>
         <p v-if="detail.task.value.reason">原因：{{ detail.task.value.reason }}</p>
         <nav class="detail-actions" aria-label="处理任务操作">

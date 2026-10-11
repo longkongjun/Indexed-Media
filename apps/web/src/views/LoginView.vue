@@ -119,17 +119,3 @@ async function submit(): Promise<void> {
   </main>
 </template>
 
-<style scoped>
-.identity-page { display: grid; min-height: 100vh; place-items: center; box-sizing: border-box; padding: 1.25rem; background: var(--mfd-color-bg-canvas); color: var(--mfd-color-text-primary); }
-.identity-card { width: min(100%, 30rem); box-sizing: border-box; padding: clamp(1.5rem, 5vw, 2.5rem); border-radius: var(--mfd-radius-xl); background: var(--mfd-color-bg-surface); box-shadow: var(--mfd-shadow-2); }
-.eyebrow { color: var(--mfd-color-text-secondary); font-weight: 700; }
-form { display: grid; gap: .65rem; margin-top: 1.5rem; }
-label { margin-top: .5rem; font-weight: 700; }
-input { min-height: 2.75rem; box-sizing: border-box; padding: .65rem .8rem; border: 1px solid var(--mfd-color-border-strong); border-radius: .45rem; font: inherit; }
-input:focus-visible, button:focus-visible, a:focus-visible, .error-summary:focus { outline: 3px solid var(--mfd-color-border-focus); outline-offset: 2px; }
-button { min-height: 2.75rem; margin-top: .75rem; border: 0; border-radius: .5rem; background: var(--mfd-color-action-primary); color: var(--mfd-color-text-on-action); font: inherit; font-weight: 700; }
-button:disabled { opacity: .65; }
-.field-error { margin: 0; color: var(--mfd-color-state-danger); font-weight: 650; }
-.error-summary { padding: 1rem; border-inline-start: .3rem solid var(--mfd-color-state-danger); background: var(--mfd-color-state-danger-bg); }
-.error-summary h2 { margin-top: 0; font-size: 1rem; }
-</style>

@@ -13,7 +13,7 @@ const responsiveCss = readFileSync(resolve("src/styles/responsive.css"), "utf8")
 describe("responsive and accessible business primitives", () => {
   it("keeps stale content visible in Offline and never maps it to Empty", () => {
     const wrapper = mount(AsyncState, { props: { state: { kind: "offline", stale: true }, offlineMessage: "已离线，显示上次结果" }, slots: { default: "原始文件 safe/movie.mkv" } });
-    expect(wrapper.text()).toContain("Offline");
+    expect(wrapper.text()).toContain("离线");
     expect(wrapper.text()).toContain("已离线，显示上次结果");
     expect(wrapper.text()).toContain("safe/movie.mkv");
     expect(wrapper.text()).not.toContain("暂无数据");

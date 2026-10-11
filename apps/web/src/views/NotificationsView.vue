@@ -5,11 +5,12 @@
  * 只读事实 + 显式已读动作；出站 Webhook 的配置与健康在同一页面的独立区块维护，
  * 其失败绝不影响应用内投递。
  */
-import { onMounted, ref } from "vue";
+import { nextTick, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import AsyncState from "../components/AsyncState.vue";
 import CursorPager from "../components/CursorPager.vue";
 import { handleAuthenticatedFailure } from "../components/apiErrors";
+import { notificationKindLabel } from "../components/dictionaries";
 import { useMediaFlowClient } from "../components/injectedClient";
 import { useNotifications } from "../features/notifications/useNotifications";
 import { useSessionStore } from "../app/session";
@@ -22,18 +23,13 @@ const failure = (error: unknown) => handleAuthenticatedFailure(error, session, r
 const notifications = useNotifications(client, failure);
 const unreadOnly = ref(false);
 
-const KIND_LABELS: Record<string, string> = {
-  "review.waiting": "待人工审核",
-  "organization.paused": "整理已暂停",
-  "organization.rolled-back": "整理已回滚",
-  "system.notice": "系统通知",
-};
-
 function kindLabel(kind: string): string {
-  return KIND_LABELS[kind] ?? kind;
+  return notificationKindLabel(kind);
 }
 
-function openTask(taskId: string): void {
+/** 跳转即读（notification 规格 §3）：查看任务前先标记该条已读，失败不阻塞导航。 */
+function openTask(taskId: string, notificationId: string, unread: boolean): void {
+  if (unread) void notifications.markRead(notificationId);
   void router.push({ name: "task", params: { id: taskId } });
 }
 
@@ -41,8 +37,19 @@ async function reload(): Promise<void> {
   await notifications.load({ unreadOnly: unreadOnly.value });
 }
 
-async function markRead(notificationId?: string): Promise<void> {
-  await notifications.markRead(notificationId);
+/** 逐条已读：成功后本地更新（不重载列表），并把焦点留在该行（可访问性：不丢焦点）。 */
+async function markRead(notificationId: string, event?: Event): Promise<void> {
+  const row = event ? ((event.currentTarget as HTMLElement).closest("li") as HTMLElement | null) : null;
+  if (!(await notifications.markRead(notificationId))) return;
+  const item = notifications.items.value.find((entry) => entry.id === notificationId);
+  if (item && item.read_at === null) item.read_at = new Date().toISOString();
+  await nextTick();
+  row?.focus();
+}
+
+/** 全部已读后重载列表与计数。 */
+async function markAllRead(): Promise<void> {
+  if (!(await notifications.markRead())) return;
   await reload();
 }
 
@@ -59,31 +66,33 @@ onMounted(() => {
       <label class="check-field">
         <input v-model="unreadOnly" type="checkbox" @change="() => { void reload(); }" />只看未读
       </label>
-      <button type="button" :disabled="notifications.unreadCount.value === 0" @click="() => { void markRead(); }">
+      <button type="button" :disabled="notifications.unreadCount.value === 0" @click="() => { void markAllRead(); }">
         全部标记已读
       </button>
     </div>
-    <AsyncState :state="notifications.state.value" :error-message="notifications.errorMessage.value" empty-message="暂无通知" @retry="reload">
+    <AsyncState :state="notifications.state.value" :error-message="notifications.errorMessage.value" empty-message="暂无通知。需要管理员关注的事件会出现在这里。" @retry="reload">
       <ul class="notification-list">
         <li
           v-for="item in notifications.items.value"
           :key="item.id"
           :data-notification-kind="item.kind"
           :class="{ unread: item.read_at === null }"
+          tabindex="-1"
         >
           <div class="notification-main">
             <span class="kind">{{ kindLabel(item.kind) }}</span>
+            <span v-if="item.read_at === null" class="visually-hidden">未读</span>
             <span class="title">{{ item.title }}</span>
             <p class="body">{{ item.body }}</p>
             <time :datetime="item.created_at">{{ item.created_at }}</time>
           </div>
           <div class="notification-actions">
-            <button v-if="item.task_id" type="button" class="link-button" @click="openTask(item.task_id)">查看任务</button>
-            <button v-if="item.read_at === null" type="button" @click="() => { void markRead(item.id); }">标记已读</button>
+            <button v-if="item.task_id" type="button" class="link-button" @click="openTask(item.task_id, item.id, item.read_at === null)">查看任务</button>
+            <button v-if="item.read_at === null" type="button" @click="markRead(item.id, $event)">标记已读</button>
           </div>
         </li>
       </ul>
-      <CursorPager :next-cursor="notifications.nextCursor.value" @next="() => { void notifications.loadMore(); }" />
+      <CursorPager :next-cursor="notifications.nextCursor.value" :shown-count="notifications.items.value.length" @next="() => { void notifications.loadMore(); }" />
     </AsyncState>
   </section>
 </template>
@@ -96,9 +105,10 @@ onMounted(() => {
 .toolbar button:disabled { opacity: .5; }
 .notification-list { margin: 0; padding: 0; list-style: none; display: grid; gap: .6rem; }
 .notification-list li { display: flex; justify-content: space-between; gap: 1rem; padding: .8rem 1rem; border: 1px solid var(--mfd-color-border-default); border-radius: var(--mfd-radius-lg); background: var(--mfd-color-bg-surface); }
-.notification-list li.unread { border-color: var(--mfd-color-action-primary); box-shadow: inset 3px 0 0 var(--mfd-color-action-primary); }
-.kind { display: inline-block; margin-right: .5rem; padding: .1rem .5rem; border-radius: .4rem; background: var(--mfd-color-bg-surface-sunken); font-size: .78rem; }
-.title { font-weight: 650; }
+.notification-list li.unread { border-color: var(--mfd-color-border-strong); box-shadow: inset 3px 0 0 var(--mfd-color-border-strong); }
+.kind { display: inline-block; margin-right: .5rem; padding: .1rem .5rem; border-radius: var(--mfd-radius-full); background: var(--mfd-color-bg-selected); color: var(--mfd-color-text-secondary); font-size: var(--mfd-font-size-xs); }
+.title { font-weight: 400; color: var(--mfd-color-text-secondary); }
+.notification-list li.unread .title { font-weight: 650; color: var(--mfd-color-text-primary); }
 .body { margin: .3rem 0; color: var(--mfd-color-text-secondary); font-size: .9rem; }
 time { color: var(--mfd-color-text-muted); font-size: .78rem; }
 .notification-actions { display: flex; flex-direction: column; gap: .4rem; align-items: flex-end; }
