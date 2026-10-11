@@ -21,6 +21,7 @@ import ProcessingTaskDetailView from "../src/views/ProcessingTaskDetailView.vue"
 
 const client = {
   bootstrap: vi.fn(), createSession: vi.fn(), setCsrfToken: vi.fn(),
+  listCapabilityEvents: vi.fn(async () => ({ items: [], next_cursor: null })),
 } as unknown as MediaFlowClient;
 
 async function mountWithRouter(component: Component, path: string, api: MediaFlowClient = client) {

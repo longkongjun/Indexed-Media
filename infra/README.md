@@ -21,3 +21,7 @@ Core 产品行为、应用 UI、契约定义和运行时业务规则。
 ## 后续验证
 
 `just check-infra`
+
+## DSH 接入
+
+`dsh/` 保存 AI 控制面（DSH）接入 `media-capability.v1` 的部署方文档：端点、令牌、协议版本锁定与降级语义。Core 不包含 DSH 客户端；防腐层即能力网关。

@@ -7,6 +7,7 @@
  */
 import { inject, ref } from "vue";
 import { useRouter } from "vue-router";
+import AiSessionPanel from "./AiSessionPanel.vue";
 import { identityClientKey } from "./client";
 import { useSessionStore } from "./session";
 
@@ -35,6 +36,7 @@ async function logout(): Promise<void> {
         <RouterLink to="/capability-events">AI 能力活动</RouterLink>
         <button data-account-toggle type="button" aria-controls="account-panel" :aria-expanded="accountOpen" @click="accountOpen = !accountOpen">账户与系统</button>
       </nav>
+      <AiSessionPanel />
     </aside>
     <div id="main-content" class="content" tabindex="-1">
       <section v-if="accountOpen" id="account-panel" data-account-panel class="account-panel" aria-labelledby="account-heading">
