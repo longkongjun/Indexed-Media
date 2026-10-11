@@ -357,7 +357,11 @@ impl OrganizationPlanner {
         if input.destination_exists {
             safety_risks.push(PlanningRiskCode::TargetExists);
         }
-        if input.target.operation == OrganizationOperation::Move && !input.source_writable {
+        if matches!(
+            input.target.operation,
+            OrganizationOperation::Move | OrganizationOperation::Quarantine
+        ) && !input.source_writable
+        {
             safety_risks.push(PlanningRiskCode::SourceReadOnly);
         }
         if input.target.operation == OrganizationOperation::Hardlink && !input.same_filesystem {

@@ -549,6 +549,13 @@ impl OrganizationFs for FailFirstNfoFs {
         self.inner.hardlink_no_clobber(operation)
     }
 
+    fn quarantine_no_clobber(
+        &self,
+        operation: &FileOperationSpec,
+    ) -> Result<AppliedFile, FileOperationError> {
+        self.inner.quarantine_no_clobber(operation)
+    }
+
     fn write_new_nfo(
         &self,
         operation: &NfoOperationSpec,

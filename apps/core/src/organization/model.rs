@@ -47,6 +47,8 @@ pub enum OrganizationOperation {
     Copy,
     /// 只在同文件系统内创建硬链接。
     Hardlink,
+    /// 可恢复删除：把来源移入计划指定的 trash 位置并保留清单；不覆盖、不永久删除。
+    Quarantine,
 }
 
 impl OrganizationOperation {
@@ -57,6 +59,7 @@ impl OrganizationOperation {
             Self::Move => "move",
             Self::Copy => "copy",
             Self::Hardlink => "hardlink",
+            Self::Quarantine => "quarantine",
         }
     }
 
@@ -65,6 +68,7 @@ impl OrganizationOperation {
             "move" => Some(Self::Move),
             "copy" => Some(Self::Copy),
             "hardlink" => Some(Self::Hardlink),
+            "quarantine" => Some(Self::Quarantine),
             _ => None,
         }
     }

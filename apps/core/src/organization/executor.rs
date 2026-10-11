@@ -348,47 +348,32 @@ impl OrganizationExecutor {
                 journal.status == JournalStatus::Verified
                     && matches!(
                         journal.kind,
-                        JournalKind::Copy | JournalKind::Move | JournalKind::Hardlink
+                        JournalKind::Copy
+                            | JournalKind::Move
+                            | JournalKind::Hardlink
+                            | JournalKind::Quarantine
                     )
             })
             .cloned()
             .ok_or_else(|| {
                 AppError::new(ErrorCode::ResourceConflict, "verified journal missing")
             })?;
-        let mut compensated_additional = Vec::new();
-        if let Some(nfo) = journals.iter().find(|candidate| {
-            candidate.status == JournalStatus::Verified
-                && candidate.kind == JournalKind::Nfo
-                && candidate.nfo_outcome == Some(LocalNfoStatus::Generated)
-        }) {
-            let compensation = self
-                .fs
-                .compensate(&verified_operation(nfo)?)
-                .map_err(file_operation)?;
-            if compensation == CompensationOutcome::ManualReview {
-                self.journals
-                    .manual_review(
-                        nfo.id,
-                        nfo.projection_version,
-                        "rollback.manual-review",
-                        self.clock.now_us(),
-                    )
-                    .await?;
-                return self
-                    .journals
-                    .finish_rollback(
-                        self.account_id,
-                        command.task_id,
-                        command.result_version,
-                        &command.idempotency_key,
-                        &journal,
-                        &[],
-                        LocalResultStatus::ManualReview,
-                        self.clock.now_us(),
-                    )
-                    .await;
-            }
-            compensated_additional.push(nfo.clone());
+        let (compensated_additional, nfo_blocked) =
+            self.compensate_generated_nfo(&journals).await?;
+        if nfo_blocked {
+            return self
+                .journals
+                .finish_rollback(
+                    self.account_id,
+                    command.task_id,
+                    command.result_version,
+                    &command.idempotency_key,
+                    &journal,
+                    &[],
+                    LocalResultStatus::ManualReview,
+                    self.clock.now_us(),
+                )
+                .await;
         }
         let compensation = self
             .fs
@@ -412,6 +397,36 @@ impl OrganizationExecutor {
                 self.clock.now_us(),
             )
             .await
+    }
+
+    /// 回滚主产物前先补偿已生成的 NFO；返回 (额外已补偿, 是否转人工)。
+    async fn compensate_generated_nfo(
+        &self,
+        journals: &[JournalRecord],
+    ) -> Result<(Vec<JournalRecord>, bool), AppError> {
+        let Some(nfo) = journals.iter().find(|candidate| {
+            candidate.status == JournalStatus::Verified
+                && candidate.kind == JournalKind::Nfo
+                && candidate.nfo_outcome == Some(LocalNfoStatus::Generated)
+        }) else {
+            return Ok((Vec::new(), false));
+        };
+        let compensation = self
+            .fs
+            .compensate(&verified_operation(nfo)?)
+            .map_err(file_operation)?;
+        if compensation == CompensationOutcome::ManualReview {
+            self.journals
+                .manual_review(
+                    nfo.id,
+                    nfo.projection_version,
+                    "rollback.manual-review",
+                    self.clock.now_us(),
+                )
+                .await?;
+            return Ok((Vec::new(), true));
+        }
+        Ok((vec![nfo.clone()], false))
     }
 
     async fn current_plan(&self, task_id: Uuid) -> Result<OrganizationPlanRecord, AppError> {
@@ -481,6 +496,9 @@ impl OrganizationExecutor {
             super::model::OrganizationOperation::Move => self.fs.move_no_clobber(&operation),
             super::model::OrganizationOperation::Hardlink => {
                 self.fs.hardlink_no_clobber(&operation)
+            }
+            super::model::OrganizationOperation::Quarantine => {
+                self.fs.quarantine_no_clobber(&operation)
             }
         };
         match applied {
@@ -1074,6 +1092,7 @@ fn verified_operation(journal: &JournalRecord) -> Result<VerifiedOperation, AppE
     let kind = match journal.kind {
         JournalKind::Copy => VerifiedOperationKind::Copy,
         JournalKind::Move => VerifiedOperationKind::Move,
+        JournalKind::Quarantine => VerifiedOperationKind::Quarantine,
         JournalKind::Hardlink => VerifiedOperationKind::Hardlink,
         JournalKind::Nfo if journal.nfo_outcome == Some(LocalNfoStatus::Generated) => {
             VerifiedOperationKind::Nfo
@@ -1169,6 +1188,15 @@ fn executing_target_matches(
         JournalKind::Hardlink => Ok(
             target.identity() == source.identity() && target.size_bytes() == source.size_bytes()
         ),
+        JournalKind::Quarantine => {
+            let current_source = fs.observe(source.locator()).map_err(filesystem)?;
+            let applied_matches = journal.applied.as_ref().is_none_or(|applied| {
+                target.size_bytes() == applied.size_bytes() && target.sha256() == applied.sha256()
+            });
+            Ok(current_source.as_ref().is_none()
+                && target.size_bytes() == source.size_bytes()
+                && applied_matches)
+        }
         JournalKind::SourceRemoval | JournalKind::Nfo => Ok(false),
     }
 }

@@ -21,6 +21,8 @@ pub enum JournalKind {
     Move,
     /// 同设备硬链接。
     Hardlink,
+    /// 可恢复删除：移入计划 trash 位置并保留清单。
+    Quarantine,
     /// 跨设备 move 在目标核对后的来源删除子步骤。
     SourceRemoval,
     /// 缺失 NFO 创建。
@@ -35,6 +37,7 @@ impl JournalKind {
             Self::Copy => "copy",
             Self::Move => "move",
             Self::Hardlink => "hardlink",
+            Self::Quarantine => "quarantine",
             Self::SourceRemoval => "source-removal",
             Self::Nfo => "nfo",
         }
@@ -45,6 +48,7 @@ impl JournalKind {
             "copy" => Some(Self::Copy),
             "move" => Some(Self::Move),
             "hardlink" => Some(Self::Hardlink),
+            "quarantine" => Some(Self::Quarantine),
             "source-removal" => Some(Self::SourceRemoval),
             "nfo" => Some(Self::Nfo),
             _ => None,
@@ -58,6 +62,7 @@ impl From<OrganizationOperation> for JournalKind {
             OrganizationOperation::Copy => Self::Copy,
             OrganizationOperation::Move => Self::Move,
             OrganizationOperation::Hardlink => Self::Hardlink,
+            OrganizationOperation::Quarantine => Self::Quarantine,
         }
     }
 }

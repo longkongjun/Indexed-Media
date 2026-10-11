@@ -119,7 +119,10 @@ pub async fn organization_fixture_with_nfo(
         nfo_policy,
         &source_root,
         &target_root,
-        operation == OrganizationOperation::Move,
+        matches!(
+            operation,
+            OrganizationOperation::Move | OrganizationOperation::Quarantine
+        ),
     )
     .await
 }

@@ -14,7 +14,9 @@ use mediaflow_core::organization::fs::{
     NfoOperationSpec, ObservedFile, OrganizationFs, ProcessingStopToken, TargetCapabilitySnapshot,
     VerifiedOperation,
 };
-use mediaflow_core::organization::journal_store::{JournalStatus, JournalStore, LocalResultStatus};
+use mediaflow_core::organization::journal_store::{
+    JournalKind, JournalStatus, JournalStore, LocalResultStatus,
+};
 use mediaflow_core::organization::model::OrganizationOperation;
 use mediaflow_core::organization::plan_store::OrganizationPlanStore;
 use mediaflow_core::organization::target_store::OrganizationTargetStore;
@@ -67,6 +69,68 @@ async fn successful_copy_move_and_hardlink_commit_verified_journals() {
             .await
             .unwrap();
     }
+}
+
+#[tokio::test]
+async fn quarantine_moves_source_into_trash_with_recoverable_manifest_and_rolls_back() {
+    let fixture = organization_fixture(OrganizationOperation::Quarantine).await;
+    let executor = executor(&fixture);
+
+    let outcome = executor
+        .run_next(&fixture.lease, ProcessingStopToken::default())
+        .await
+        .unwrap();
+    let ExecutionOutcome::Completed(result) = outcome else {
+        panic!("quarantine must complete: {outcome:?}");
+    };
+    assert!(
+        !fixture.source_path().exists(),
+        "quarantined source must leave its original location"
+    );
+    assert_eq!(
+        std::fs::read(fixture.destination_path()).unwrap(),
+        b"arrival-media"
+    );
+    let manifest_path = fixture.destination_path().parent().unwrap().join(format!(
+        ".mediaflow-{}.quarantine.json",
+        fixture.plan.operations[0].id
+    ));
+    let manifest: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&manifest_path).unwrap()).unwrap();
+    assert_eq!(
+        manifest["source_relative_path"],
+        fixture.plan.draft.source.relative_path.as_str()
+    );
+    assert_eq!(manifest["size_bytes"], 13u64);
+
+    let journals = JournalStore::new(fixture.db.pool().clone())
+        .for_task(fixture.account_id, fixture.lease.task.id)
+        .await
+        .unwrap();
+    assert_eq!(journals.len(), 1);
+    assert_eq!(journals[0].kind, JournalKind::Quarantine);
+    assert_eq!(journals[0].status, JournalStatus::Verified);
+
+    // 支持范围内的回滚：trash 内容移回原位，清单一并清除。
+    let rolled_back = executor
+        .rollback(RollbackCommand {
+            task_id: fixture.lease.task.id,
+            result_version: result.version,
+            idempotency_key: "quarantine-rollback-once".to_owned(),
+        })
+        .await
+        .unwrap();
+    assert!(
+        fixture.source_path().exists(),
+        "rollback must restore the source"
+    );
+    assert!(!fixture.destination_path().exists());
+    assert!(!manifest_path.exists(), "rollback must remove the manifest");
+    assert_eq!(
+        std::fs::read(fixture.source_path()).unwrap(),
+        b"arrival-media"
+    );
+    assert_eq!(rolled_back.status, LocalResultStatus::Compensated);
 }
 
 #[tokio::test]
@@ -237,6 +301,13 @@ impl OrganizationFs for CompositeFs {
         operation: &FileOperationSpec,
     ) -> Result<AppliedFile, FileOperationError> {
         self.inner.hardlink_no_clobber(operation)
+    }
+
+    fn quarantine_no_clobber(
+        &self,
+        operation: &FileOperationSpec,
+    ) -> Result<AppliedFile, FileOperationError> {
+        self.inner.quarantine_no_clobber(operation)
     }
 
     fn write_new_nfo(

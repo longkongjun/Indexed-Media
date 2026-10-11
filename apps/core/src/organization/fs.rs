@@ -220,6 +220,8 @@ pub enum VerifiedOperationKind {
     Move,
     /// 来源保持不变的硬链接。
     Hardlink,
+    /// 来源被移入可恢复 trash 位置并保留清单。
+    Quarantine,
     /// 只创建缺失 NFO。
     Nfo,
 }
@@ -415,6 +417,20 @@ pub trait OrganizationFs: Send + Sync {
     ///
     /// 跨设备或身份无法核对时失败关闭；不降级为 copy/move。
     fn hardlink_no_clobber(
+        &self,
+        operation: &FileOperationSpec,
+    ) -> Result<AppliedFile, FileOperationError>;
+
+    /// 可恢复删除：把来源移入计划 trash 位置并在旁发布恢复清单。
+    ///
+    /// 同设备走原子 rename；跨设备先复制核对、再删除匹配的来源，并在两步间保持
+    /// journal 可恢复。清单记录来源定位与内容摘要，供人工或自动恢复使用；目标已存在
+    /// 时失败关闭，绝不覆盖或永久删除。
+    ///
+    /// # Errors
+    ///
+    /// 来源变化、目标存在、来源根只读或能力边界失败时返回稳定错误。
+    fn quarantine_no_clobber(
         &self,
         operation: &FileOperationSpec,
     ) -> Result<AppliedFile, FileOperationError>;

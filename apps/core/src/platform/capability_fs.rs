@@ -469,6 +469,31 @@ impl OsCapabilityFs {
         ))
     }
 
+    /// 在 trash 目标旁发布可恢复清单；清单不改变目标身份核对事实。
+    fn publish_quarantine_manifest(
+        &self,
+        operation: &FileOperationSpec,
+        applied: &AppliedFile,
+    ) -> Result<(), FileOperationError> {
+        let manifest_locator = quarantine_manifest_locator(applied.locator(), operation.id());
+        let mut sha256_hex = String::with_capacity(64);
+        for byte in applied.sha256() {
+            use std::fmt::Write as _;
+            let _ = write!(sha256_hex, "{byte:02x}");
+        }
+        let manifest = serde_json::json!({
+            "operation_id": operation.id().to_string(),
+            "source_root_id": operation.source().locator().root_id().as_str(),
+            "source_relative_path": operation.source().locator().relative_path().as_str(),
+            "sha256": sha256_hex,
+            "size_bytes": applied.size_bytes(),
+        });
+        let bytes =
+            serde_json::to_vec(&manifest).map_err(|_| FileOperationError::OperationUnsupported)?;
+        self.publish_bytes(operation.id(), &manifest_locator, &bytes)?;
+        Ok(())
+    }
+
     fn compensate_created(
         &self,
         operation: &VerifiedOperation,
@@ -523,8 +548,24 @@ impl OsCapabilityFs {
             return Ok(CompensationOutcome::ManualReview);
         }
 
-        if operation.kind() == VerifiedOperationKind::Move {
-            return self.restore_move(operation, &current.parent, &quarantine);
+        match operation.kind() {
+            VerifiedOperationKind::Move => {
+                return self.restore_move(operation, &current.parent, &quarantine);
+            }
+            VerifiedOperationKind::Quarantine => {
+                let restored = self.restore_move(operation, &current.parent, &quarantine)?;
+                if matches!(restored, CompensationOutcome::Restored) {
+                    let manifest_locator =
+                        quarantine_manifest_locator(operation.applied().locator(), operation.id());
+                    if let Ok(Some(parent)) = self.open_file_parent(&manifest_locator, false, false)
+                    {
+                        let _ =
+                            rustix::fs::unlinkat(parent.fd.as_fd(), &parent.name, AtFlags::empty());
+                    }
+                }
+                return Ok(restored);
+            }
+            _ => {}
         }
         rustix::fs::unlinkat(current.parent.fd.as_fd(), &quarantine, AtFlags::empty())
             .map_err(|_| FileOperationError::IoTemporary)?;
@@ -773,6 +814,42 @@ impl OrganizationFs for OsCapabilityFs {
         Ok(applied)
     }
 
+    fn quarantine_no_clobber(
+        &self,
+        operation: &FileOperationSpec,
+    ) -> Result<AppliedFile, FileOperationError> {
+        self.require_writable_root(operation.source().locator().root_id())?;
+        let source = self.source_for_operation(operation)?;
+        let destination = self.writable_destination_parent(operation.destination())?;
+        let destination_identity =
+            file_identity(destination.fd.as_fd()).map_err(|_| FileOperationError::IoTemporary)?;
+        let applied = if same_filesystem(operation.source().identity(), destination_identity) {
+            rename_no_replace(
+                source.parent.fd.as_fd(),
+                &source.parent.name,
+                destination.fd.as_fd(),
+                &destination.name,
+            )
+            .map_err(map_rename_move_error)?;
+            rustix::fs::fsync(source.parent.fd.as_fd())
+                .and_then(|()| rustix::fs::fsync(destination.fd.as_fd()))
+                .map_err(|_| FileOperationError::IoTemporary)?;
+            opened_applied(self, operation.destination())?
+        } else {
+            // 跨设备：先复制核对，再只删除仍匹配快照的来源；两步间保持可恢复。
+            let copied = self.copy_no_clobber(operation, &ProcessingStopToken::default())?;
+            self.remove_verified_source(operation.id(), operation.source(), copied.sha256())?;
+            copied
+        };
+        if applied.identity() != operation.source().identity()
+            || applied.size_bytes() != operation.source().size_bytes()
+        {
+            return Err(FileOperationError::SourceChanged);
+        }
+        self.publish_quarantine_manifest(operation, &applied)?;
+        Ok(applied)
+    }
+
     fn write_new_nfo(
         &self,
         operation: &NfoOperationSpec,
@@ -1014,6 +1091,25 @@ fn rollback_name(operation_id: Uuid) -> OsString {
 
 fn source_removal_name(operation_id: Uuid) -> OsString {
     OsString::from(format!(".mediaflow-{operation_id}.source-removal"))
+}
+
+fn quarantine_manifest_name(operation_id: Uuid) -> OsString {
+    OsString::from(format!(".mediaflow-{operation_id}.quarantine.json"))
+}
+
+/// trash 目标同目录的恢复清单位置。
+fn quarantine_manifest_locator(destination: &FileLocator, operation_id: Uuid) -> FileLocator {
+    let path = destination.relative_path().as_str();
+    let parent = path.rsplit_once('/').map_or(".", |(parent, _)| parent);
+    let manifest_path = format!(
+        "{parent}/{}",
+        quarantine_manifest_name(operation_id).to_string_lossy()
+    );
+    match RelativePath::parse(&manifest_path) {
+        Ok(relative) => FileLocator::new(destination.root_id().clone(), relative),
+        // 已规范化输入 rsplit 不会产生非法段；此分支不可达，保留原位置兜底。
+        Err(_) => destination.clone(),
+    }
 }
 
 fn publish_no_clobber(
