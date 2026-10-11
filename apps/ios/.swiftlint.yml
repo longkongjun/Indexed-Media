@@ -1,0 +1,17 @@
+# SwiftLint 规则（CI/本地执行；本机 CLI 未装见台账 M5-D-0002）。
+disabled_rules:
+  - trailing_whitespace # 编辑器/工具链差异噪音；格式交给 SwiftFormat 纪律
+  - todo # 切片期允许标记第二批 TODO
+opt_in_rules:
+  - empty_count
+  - closure_spacing
+  - explicit_init
+  - first_where
+  - operator_usage_whitespace
+line_length:
+  warning: 140
+  error: 160
+type_body_length: 220
+file_length: 480
+identifier_name:
+  min_length: 2

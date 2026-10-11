@@ -34,6 +34,10 @@ class TaskRepository(
             limit = limit,
         )
 
+    /** iOS 桥用的任务首页。 */
+    internal suspend fun firstPageOfTasks(): mediaflow.api.infrastructure.HttpResponse<mediaflow.api.models.ProcessingTaskPage> =
+        api.listProcessingTasks()
+
     /** 幂等取消一个处理任务；返回取消后的任务投影。 */
     suspend fun cancel(
         processingTaskId: String,

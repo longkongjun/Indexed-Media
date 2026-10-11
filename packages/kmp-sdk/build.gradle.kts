@@ -24,8 +24,12 @@ kotlin {
         minSdk = 26
     }
     jvm()
-    iosArm64()
-    iosSimulatorArm64()
+    iosArm64 {
+        binaries.framework { baseName = "MediaFlowKit" }
+    }
+    iosSimulatorArm64 {
+        binaries.framework { baseName = "MediaFlowKit" }
+    }
 
     // 生成器输出挂载为 commonMain 源（路径不含任务依赖，编译依赖在下方显式接线；
     // 格式化豁免经根 .editorconfig 的 ktlint=disabled 按路径关闭——KMP common 层级

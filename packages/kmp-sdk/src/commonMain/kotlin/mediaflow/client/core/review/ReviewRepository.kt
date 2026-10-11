@@ -55,6 +55,10 @@ class ReviewRepository(
     /** 单个审核案件（含候选与当前决定状态）。 */
     suspend fun reviewCase(reviewCaseId: String): SdkResult<ReviewCase> = apiCall(json) { api.getReviewCase(reviewCaseId) }
 
+    /** iOS 桥用的队列首页。 */
+    internal suspend fun firstPageOfQueue(): mediaflow.api.infrastructure.HttpResponse<mediaflow.api.models.ReviewCasePage> =
+        api.listReviewCases()
+
     /** 提供方候选搜索（临时性安全摘要，读取无副作用）。 */
     suspend fun searchCandidates(
         reviewCaseId: String,

@@ -538,7 +538,12 @@ client-check-android:
 client-fixture-server:
     @./gradlew :tools:client-fixture-server:run
 
-# 客户端全量门禁聚合（随 C3 增补 ios 目标）。
+# iOS 应用门禁：生成工程 + 模拟器构建与测试（需 XcodeGen：brew install xcodegen）。
+client-check-ios:
+    @cd apps/ios && xcodegen generate && xcodebuild test -project MediaFlow.xcodeproj -scheme MediaFlowiOS -destination 'platform=iOS Simulator,name=iPhone 17' 2>&1 | tail -5
+
+# 客户端全量门禁聚合。
 client-check:
     @just client-check-kmp-sdk
     @just client-check-android
+    @just client-check-ios

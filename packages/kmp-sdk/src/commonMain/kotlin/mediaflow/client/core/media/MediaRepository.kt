@@ -57,4 +57,8 @@ class MediaRepository(
 
     /** 单条详情（404 等语义经统一错误模型表达）。 */
     suspend fun detail(mediaItemId: String): SdkResult<MediaItemDetail> = apiCall(json) { api.getMediaItem(mediaItemId) }
+
+    /** iOS 桥用的显式游标单页获取（分页状态推进留在 Swift 侧）。 */
+    internal suspend fun apiPage(cursor: String?): mediaflow.api.infrastructure.HttpResponse<mediaflow.api.models.MediaItemPage> =
+        api.listMediaItems(cursor = cursor)
 }

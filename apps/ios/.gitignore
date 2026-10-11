@@ -1,0 +1,6 @@
+# XcodeGen 产物：由 project.yml 经 `xcodegen generate` 再生（D-0009）
+MediaFlow.xcodeproj/
+xcuserdata/
+*.xcuserstate
+build/
+DerivedData/

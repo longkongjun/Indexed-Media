@@ -1,0 +1,60 @@
+name: MediaFlow
+options:
+  bundleIdPrefix: mediaflow.client
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGNING_ALLOWED: "NO" # 模拟器切片不签名；真机随第二批交付
+
+targets:
+  MediaFlowiOS:
+    type: application
+    platform: iOS
+    sources:
+      - MediaFlowiOS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: mediaflow.client.ios
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_STRICT_CONCURRENCY: complete
+    info:
+      path: MediaFlowiOS/Info.plist
+      properties:
+        UILaunchScreen: {}
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true # fixture server 走本机 HTTP（生产部署经用户 HTTPS/VPN）
+    preBuildScripts:
+      - name: LinkKotlinFramework
+        script: |
+          cd "$SRCROOT/../.."
+          ./gradlew :packages:kmp-sdk:linkDebugFrameworkIosSimulatorArm64 --console=plain
+    dependencies:
+      - framework: ../../packages/kmp-sdk/build/bin/iosSimulatorArm64/debugFramework/MediaFlowKit.framework
+        embed: true
+        codeSign: false
+
+  MediaFlowiOSTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - MediaFlowiOSTests
+    dependencies:
+      - target: MediaFlowiOS
+      - framework: ../../packages/kmp-sdk/build/bin/iosSimulatorArm64/debugFramework/MediaFlowKit.framework
+        codeSign: false
+
+schemes:
+  MediaFlowiOS:
+    build:
+      targets:
+        MediaFlowiOS: all
+    test:
+      targets:
+        - MediaFlowiOSTests
