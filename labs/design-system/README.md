@@ -34,4 +34,5 @@ node labs/design-system/scripts/check-contrast.mjs
 
 ## 状态
 
+- v1.0.0 tokens —— D1 完成（2026-10-11）：99 个语义 token（46 不变 + 53 双主题）；生成链 `scripts/build-tokens.mjs`（JSON → `site/assets/tokens.css`，双主题变量组 + 跟随系统媒体查询）；对比度验证 `scripts/check-contrast.mjs` 双主题 62 必检对全过（WCAG 2.2 AA）；三端映射表 `docs/mappings/`；暗色媒体处理原则 `docs/dark-media-principles.md`。
 - v0.1 —— D0 骨架（2026-10-11）：目录规划与本 README；设计语言提案见 StudySpace 任务目录 `workflow-state/mediaflow/dev/ui-design/audit.md` §6。
