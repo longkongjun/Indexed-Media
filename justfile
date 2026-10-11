@@ -515,3 +515,21 @@ check-all:
     @just check-containers-static
     @just check-compose-static
     @just check-nas
+
+# ==== M5 客户端（追加于 m5-client 任务；只允许在此之后继续追加，勿插入上方） ====
+
+# 从 contracts/openapi 生成 KMP 客户端（DTO + API）。
+client-generate:
+    @./gradlew :packages:kmp-sdk:openApiGenerate
+
+# KMP SDK 全目标门禁：格式（ktlint）+ 静态分析（detekt）+ 测试 + 覆盖率。
+client-check-kmp-sdk:
+    @./gradlew :packages:kmp-sdk:check :packages:kmp-sdk:koverLog
+
+# KMP SDK API 文档（dokka HTML）。
+client-docs-kmp-sdk:
+    @./gradlew :packages:kmp-sdk:dokkaGeneratePublicationHtml
+
+# 客户端全量门禁聚合（随 C2/C3 增补 android 与 ios 目标）。
+client-check:
+    @just client-check-kmp-sdk
