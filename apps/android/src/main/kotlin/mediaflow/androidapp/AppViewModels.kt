@@ -56,7 +56,10 @@ class LoginViewModel(private val container: SdkContainer) : ViewModel() {
                     container.rememberBaseUrl(baseUrl)
                     loggedIn.value = true
                 }
-                is SdkResult.Failure -> error.value = PageVisual.readableMessage(result.error)
+                is SdkResult.Failure -> {
+                    android.util.Log.w("MediaFlow.Login", "enrollment failed: ${result.error}")
+                    error.value = PageVisual.readableMessage(result.error)
+                }
             }
             busy.value = false
         }
@@ -82,7 +85,10 @@ class WallViewModel(private val container: SdkContainer) : ViewModel() {
             p.reload()
         }
         viewModelScope.launch {
-            p.state.collect { state.value = it }
+            p.state.collect { collected ->
+                state.value = collected
+                container.propagateAuthFailure(collected)
+            }
         }
         viewModelScope.launch {
             p.items.collect { list ->
@@ -169,7 +175,12 @@ class ReviewQueueViewModel(private val container: SdkContainer) : ViewModel() {
         val p = container.reviewRepository.reviewQueue()
         pager = p
         viewModelScope.launch { p.reload() }
-        viewModelScope.launch { p.state.collect { state.value = it } }
+        viewModelScope.launch {
+            p.state.collect { collected ->
+                state.value = collected
+                container.propagateAuthFailure(collected)
+            }
+        }
         viewModelScope.launch { p.items.collect { cases.value = it } }
         container.eventClientOrNull()?.let { client ->
             ProjectionRefresher(client.events())
@@ -313,7 +324,12 @@ class TasksViewModel(private val container: SdkContainer) : ViewModel() {
         val p = container.taskRepository.tasks()
         pager = p
         viewModelScope.launch { p.reload() }
-        viewModelScope.launch { p.state.collect { state.value = it } }
+        viewModelScope.launch {
+            p.state.collect { collected ->
+                state.value = collected
+                container.propagateAuthFailure(collected)
+            }
+        }
         viewModelScope.launch { p.items.collect { tasks.value = it } }
         container.eventClientOrNull()?.let { client ->
             ProjectionRefresher(client.events())

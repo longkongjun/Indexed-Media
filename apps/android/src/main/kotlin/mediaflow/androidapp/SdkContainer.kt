@@ -58,6 +58,12 @@ class SdkContainer(context: Context) {
         }
     }
 
+    /** 分页状态流的 401 转发：墙/确认/任务三屏的 PageState.Error 同样触发统一登出。 */
+    suspend fun propagateAuthFailure(collected: mediaflow.client.core.paging.PageState) {
+        val error = (collected as? mediaflow.client.core.paging.PageState.Error)?.error ?: return
+        handleAuthFailure(mediaflow.client.core.SdkResult.failure(error))
+    }
+
     /** 登录前/切换服务器时重建传输层；幂等。 */
     fun configure(baseUrl: String) {
         val normalized = baseUrl.trimEnd('/')
