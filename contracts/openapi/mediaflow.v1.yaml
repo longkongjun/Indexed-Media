@@ -112,6 +112,89 @@ paths:
         '422': { $ref: '#/components/responses/ValidationFailed' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
         '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/device-pairing-codes:
+    post:
+      operationId: createDevicePairingCode
+      summary: Issue a one-time device pairing code
+      description: Issues a single-use base32 pairing code valid for ten minutes; only its SHA-256 digest is stored. Web management face, browser session channel only.
+      # 内联展开 write-security/write-parameters：SnakeYAML 别名上限 50，文档锚引用已满，
+      # 新增端点不得再引用共享锚（改动现有锚点属主线领地）。
+      security:
+        - cookieAuth: []
+          csrfHeader: []
+      parameters:
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/Origin' }
+        - { $ref: '#/components/parameters/SecFetchSite' }
+      responses:
+        '201': { $ref: '#/components/responses/PairingCodeCreated' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/devices/enrollment:
+    post:
+      operationId: enrollDevice
+      summary: Enroll a device and issue its token
+      description: Pre-authentication mobile entry point with no browser origin proof. Exactly one gate applies; a valid one-time pairing code, or administrator credentials sharing the login throttle. The raw device token is returned exactly once.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DeviceEnrollmentInput' }
+      responses:
+        '201': { $ref: '#/components/responses/DeviceEnrollmentCreated' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/devices:
+    get:
+      operationId: listDevices
+      summary: List enrolled devices
+      description: Device management face including revoked rows; browser session channel only, device tokens cannot list.
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/DevicePage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/devices/{deviceId}:
+    parameters: [{ name: deviceId, in: path, required: true, schema: { type: string, format: uuid } }]
+    delete:
+      operationId: revokeDevice
+      summary: Revoke a device token
+      description: Administrator revocation through the browser session, or a device revoking only itself as mobile logout. The cookie-session channel requires the CSRF proof; the bearer device-token channel is exempt because the token itself is the write proof.
+      security:
+        - cookieAuth: []
+          csrfHeader: []
+        - deviceTokenAuth: []
+      parameters:
+        - { name: X-CSRF-Token, in: header, required: false, description: Required for the cookie-session channel only; bearer device tokens are exempt (token as write proof)., schema: { type: string, minLength: 1 } }
+        - { name: Origin, in: header, required: false, description: Exact public origin proof used when Fetch Metadata is absent and checked whenever supplied., schema: { type: string, format: uri } }
+        - { name: Sec-Fetch-Site, in: header, required: false, description: Browser Fetch Metadata primary same-origin proof; cross-site and malformed values fail closed., schema: { type: string, enum: [same-origin, same-site, cross-site, none] } }
+      responses:
+        '204': { description: Device token revoked. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/devices/current/token-rotation:
+    post:
+      operationId: rotateDeviceToken
+      summary: Rotate the calling device token
+      description: Atomically replaces the calling device's token digest; the old token dies immediately and the new raw token is returned exactly once. Bearer channel only, no browser proofs.
+      security: [{ deviceTokenAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/DeviceTokenRotated' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
   /api/v1/deployment-roots:
     get:
       operationId: listDeploymentRoots
@@ -1332,6 +1415,7 @@ components:
   securitySchemes:
     cookieAuth: { type: apiKey, in: cookie, name: __Host-mediaflow_session }
     csrfHeader: { type: apiKey, in: header, name: X-CSRF-Token }
+    deviceTokenAuth: { type: http, scheme: bearer, description: 'Mobile device token (mfdev_ prefix) issued by device enrollment; write routes treat the token itself as the write proof and exempt browser Origin/Fetch-Metadata and CSRF requirements.' }
   parameters:
     Cursor: { name: cursor, in: query, schema: { type: string, minLength: 1, maxLength: 512 } }
     Limit: { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
@@ -1418,6 +1502,10 @@ components:
     NotificationWebhookAccepted: { description: Webhook saved, content: { application/json: { schema: { $ref: '#/components/schemas/NotificationWebhookAccepted' } } } }
     FamilyMemberPage: { description: Family member records, content: { application/json: { schema: { $ref: '#/components/schemas/FamilyMemberPage' } } } }
     FamilyMemberCreated: { description: Family member stored, content: { application/json: { schema: { $ref: '#/components/schemas/FamilyMember' } } } }
+    DeviceEnrollmentCreated: { description: Device enrolled; the raw token is returned exactly once, content: { application/json: { schema: { $ref: '#/components/schemas/DeviceEnrollment' } } } }
+    DevicePage: { description: Enrolled devices including revoked rows, content: { application/json: { schema: { $ref: '#/components/schemas/DevicePage' } } } }
+    PairingCodeCreated: { description: Pairing code issued; single-use for ten minutes, content: { application/json: { schema: { $ref: '#/components/schemas/DevicePairingCode' } } } }
+    DeviceTokenRotated: { description: Token rotated; the previous token is invalid immediately, content: { application/json: { schema: { $ref: '#/components/schemas/DeviceTokenRotation' } } } }
     BackupPage: { description: Backup manifests newest-first, content: { application/json: { schema: { $ref: '#/components/schemas/BackupPage' } } } }
     BackupCreationReceipt: { description: Manual backup written, content: { application/json: { schema: { $ref: '#/components/schemas/BackupCreationReceipt' } } } }
     JellyfinIntegration: { description: Redacted Jellyfin connection projection, content: { application/json: { schema: { $ref: '#/components/schemas/JellyfinIntegration' } } } }
@@ -1443,7 +1531,7 @@ components:
           additionalProperties: false
           required: [code, message, request_id]
           properties:
-            code: { type: string, enum: [bootstrap.already_completed, bootstrap.invalid_secret, auth.invalid_credentials, auth.rate_limited, session.expired, csrf.invalid, origin.untrusted, root.not_found, root.unavailable, path.invalid, path.escape, path.symlink_forbidden, inbox.overlap, inbox.not_found, task.not_found, task.invalid_state, task.lease_lost, integration.not_configured, integration.unauthorized, integration.rate_limited, integration.unsupported-version, provider.unavailable, provider.timeout, provider.response-too-large, provider.invalid-response, download.correlation-ambiguous, download.remote-missing, automation.source-disabled, automation.signature-invalid, automation.replay, automation.action-invalid, automation.payload-invalid, automation.downstream-conflict, organization.root-read-only, organization.target-overlap, organization.target-unavailable, organization.path-outside-root, organization.target-exists, organization.source-changed, organization.hardlink-cross-device, organization.operation-unsupported, organization.journal-ambiguous, revision.changed, event.cursor_expired, request.conflict, validation.failed, internal.error] }
+            code: { type: string, enum: [bootstrap.already_completed, bootstrap.invalid_secret, auth.invalid_credentials, auth.rate_limited, session.expired, permission.denied, csrf.invalid, origin.untrusted, root.not_found, root.unavailable, path.invalid, path.escape, path.symlink_forbidden, inbox.overlap, inbox.not_found, task.not_found, task.invalid_state, task.lease_lost, integration.not_configured, integration.unauthorized, integration.rate_limited, integration.unsupported-version, provider.unavailable, provider.timeout, provider.response-too-large, provider.invalid-response, download.correlation-ambiguous, download.remote-missing, automation.source-disabled, automation.signature-invalid, automation.replay, automation.action-invalid, automation.payload-invalid, automation.downstream-conflict, organization.root-read-only, organization.target-overlap, organization.target-unavailable, organization.path-outside-root, organization.target-exists, organization.source-changed, organization.hardlink-cross-device, organization.operation-unsupported, organization.journal-ambiguous, revision.changed, event.cursor_expired, request.conflict, validation.failed, internal.error] }
             message: { type: string }
             request_id: { type: string, format: uuid }
             details: { type: object, additionalProperties: { type: [string, number, boolean, 'null'] } }
@@ -2468,6 +2556,62 @@ components:
       properties:
         display_name: { type: string, minLength: 1, maxLength: 100 }
         password: { type: string, minLength: 8, maxLength: 512 }
+    DeviceView:
+      description: Enrolled device projection; never carries token material.
+      type: object
+      additionalProperties: false
+      required: [id, display_name, created_at, expires_at]
+      properties:
+        id: { type: string, format: uuid }
+        display_name: { type: string, minLength: 1, maxLength: 64 }
+        created_at: { type: string, format: date-time }
+        last_used_at: { type: [string, 'null'], format: date-time }
+        expires_at: { type: string, format: date-time }
+        revoked_at: { type: [string, 'null'], format: date-time }
+    DevicePage:
+      description: Device list including revoked rows.
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/DeviceView' } }
+    DeviceEnrollmentInput:
+      description: One enrollment gate; a pairing code or administrator credentials, never both. Secrets are discarded after verification.
+      type: object
+      additionalProperties: false
+      required: [device_name]
+      properties:
+        pairing_code: { type: string, minLength: 8, maxLength: 16, description: Eight base32 characters; case and separator characters are normalized server-side. }
+        administrator_name: { type: string, minLength: 1, maxLength: 100 }
+        password: { type: string, minLength: 1, maxLength: 512 }
+        device_name: { type: string, minLength: 1, maxLength: 64 }
+    DeviceEnrollment:
+      description: Enrollment receipt; the raw token is returned exactly once and only its SHA-256 digest is stored.
+      type: object
+      additionalProperties: false
+      required: [device, token, version]
+      properties:
+        device: { $ref: '#/components/schemas/DeviceView' }
+        token: { type: string, pattern: '^mfdev_[A-Za-z0-9_-]{43}$', description: Raw bearer token for the Authorization header. }
+        version: { const: v1 }
+    DevicePairingCode:
+      description: One-time pairing code issuance; the code is returned exactly once.
+      type: object
+      additionalProperties: false
+      required: [pairing_code, expires_at, version]
+      properties:
+        pairing_code: { type: string, pattern: '^[A-Z2-7]{8}$' }
+        expires_at: { type: string, format: date-time }
+        version: { const: v1 }
+    DeviceTokenRotation:
+      description: Rotated token receipt; the previous token is invalid immediately.
+      type: object
+      additionalProperties: false
+      required: [token, expires_at, version]
+      properties:
+        token: { type: string, pattern: '^mfdev_[A-Za-z0-9_-]{43}$' }
+        expires_at: { type: string, format: date-time }
+        version: { const: v1 }
     BackupFileEntry:
       description: Backup file name and its lowercase SHA-256 digest.
       type: object

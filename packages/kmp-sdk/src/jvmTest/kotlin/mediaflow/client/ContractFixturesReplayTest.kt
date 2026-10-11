@@ -9,6 +9,11 @@ import mediaflow.api.models.AutomationSourcePage
 import mediaflow.api.models.BootstrapRequest
 import mediaflow.api.models.BootstrapStatusResponse
 import mediaflow.api.models.DeploymentRootList
+import mediaflow.api.models.DeviceEnrollment
+import mediaflow.api.models.DevicePage
+import mediaflow.api.models.DevicePairingCode
+import mediaflow.api.models.DeviceTokenRotation
+import mediaflow.api.models.DeviceView
 import mediaflow.api.models.DiscoveryPolicy
 import mediaflow.api.models.DownloadTask
 import mediaflow.api.models.DownloadTaskPage
@@ -20,6 +25,8 @@ import mediaflow.api.models.InboxDirectory
 import mediaflow.api.models.JellyfinIntegration
 import mediaflow.api.models.MediaItemDetail
 import mediaflow.api.models.MediaItemPage
+import mediaflow.api.models.Notification
+import mediaflow.api.models.NotificationPage
 import mediaflow.api.models.OrganizationTarget
 import mediaflow.api.models.OrganizationTargetPage
 import mediaflow.api.models.OrganizationTargetPreflight
@@ -142,11 +149,27 @@ class ContractFixturesReplayTest {
 
     @Test
     fun notificationsAndDownloads() {
-        // M4 通知中心暂无 examples fixtures（通知 DTO 回放待主线补样例后接入）。
+        // M4 通知 fixtures 已由契约补全批（8b02d45）提供——此处回放即 M5-D-0011 销账证据。
+        json.decodeFromString(Notification.serializer(), fixture("notification"))
+        json.decodeFromString(NotificationPage.serializer(), fixture("notification-page"))
         json.decodeFromString(DownloaderConnection.serializer(), fixture("downloader-connection"))
         json.decodeFromString(DownloaderConnectionPage.serializer(), fixture("downloader-connection-page"))
         json.decodeFromString(DownloadTask.serializer(), fixture("download-task"))
         json.decodeFromString(DownloadTaskPage.serializer(), fixture("download-task-page"))
+    }
+
+    @Test
+    fun deviceEnrollmentAndTokens() {
+        val enrollment =
+            json.decodeFromString(DeviceEnrollment.serializer(), fixture("device-enrollment"))
+        assertTrue(enrollment.token.startsWith("mfdev_"), "enrollment token keeps its channel prefix")
+        assertTrue(enrollment.device.revokedAt == null, "fresh enrollment is not revoked")
+        json.decodeFromString(DeviceView.serializer(), fixture("device"))
+        val page = json.decodeFromString(DevicePage.serializer(), fixture("device-page"))
+        assertEquals(2, page.items.size, "device-page fixture carries active and revoked rows")
+        assertTrue(page.items.any { it.revokedAt != null }, "revoked projection round-trips")
+        json.decodeFromString(DevicePairingCode.serializer(), fixture("device-pairing-code"))
+        json.decodeFromString(DeviceTokenRotation.serializer(), fixture("device-token-rotation"))
     }
 
     @Test

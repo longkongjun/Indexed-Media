@@ -127,6 +127,40 @@ describe("M2 contract fixtures", () => {
     }
   });
 
+  it("defines device enrollment fixtures with synthetic one-time token projections", () => {
+    const examples = [
+      ["DeviceView", loadJson("contracts/examples/v1/device.json")],
+      ["DevicePage", loadJson("contracts/examples/v1/device-page.json")],
+      ["DeviceEnrollment", loadJson("contracts/examples/v1/device-enrollment.json")],
+      ["DevicePairingCode", loadJson("contracts/examples/v1/device-pairing-code.json")],
+      ["DeviceTokenRotation", loadJson("contracts/examples/v1/device-token-rotation.json")],
+    ] as const;
+    for (const [schemaName, example] of examples) {
+      const validator = apiAjv.getSchema(`https://mediaflow.local/contracts/openapi/mediaflow.v1.yaml#/components/schemas/${schemaName}`);
+      expect(validator, schemaName).toBeDefined();
+      expect(validator?.(example), `${schemaName}: ${JSON.stringify(validator?.errors)}`).toBe(true);
+    }
+    for (const path of [
+      "/api/v1/device-pairing-codes",
+      "/api/v1/devices/enrollment",
+      "/api/v1/devices",
+      "/api/v1/devices/{deviceId}",
+      "/api/v1/devices/current/token-rotation",
+    ]) {
+      expect((openApi as unknown as { paths: Record<string, unknown> }).paths).toHaveProperty(path);
+    }
+    // 令牌/配对码 fixture 必须是显式样例形态（mfdev_ 前缀 / base32），不得携带真实凭据字段。
+    const enrollment = examples[2][1] as { token: string };
+    const rotation = examples[4][1] as { token: string };
+    expect(enrollment.token).toMatch(/^mfdev_[A-Za-z0-9_-]{43}$/);
+    expect(rotation.token).toMatch(/^mfdev_[A-Za-z0-9_-]{43}$/);
+    expect((examples[3][1] as { pairing_code: string }).pairing_code).toMatch(/^[A-Z2-7]{8}$/);
+    const serialized = JSON.stringify(examples).toLowerCase();
+    for (const forbidden of ["password", "password_phc", "secret", "cookie"]) {
+      expect(serialized).not.toContain(forbidden);
+    }
+  });
+
   it("accepts every positive example", () => {
     const schemaNames = [
       "BootstrapStatusResponse", "BootstrapRequest", "SessionResponse", "DeploymentRootList",
