@@ -1,0 +1,25 @@
+# detekt 配置：buildUponDefaultConfig=true，本文件只记录偏离项与理由。
+# 随违规出现小步调整，不做投机性配置。
+
+complexity:
+  LongMethod:
+    # 测试内的 given/when/then 场景组装允许较长；生产代码保持默认 60。
+    threshold: 120
+  LongParameterList:
+    # DTO 组装与 Repository 构造参数经数据类/接口收拢前允许过渡；C1 收紧观察。
+    active: false
+
+naming:
+  FunctionNaming:
+    # Compose/DSL 惯例之外，KMP 测试工具函数存在动名词开头场景；保持默认但放宽前缀限制。
+    ignoreAnnotated: ['Test']
+
+style:
+  MagicNumber:
+    # HTTP 状态码/超时等协议常量集中于错误模型与网络层常量对象，放开测试与配置代码。
+    ignoreAnnotated: ['Test']
+
+exceptions:
+  TooGenericExceptionCaught:
+    # SDK 边界需要兜底捕获并映射为统一错误模型；保留默认激活，注释说明意图。
+    active: true
