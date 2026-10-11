@@ -7,6 +7,8 @@
 /// Versioned automation sources and durable source execution.
 pub mod automation;
 
+/// 系统管理面：备份/恢复的管理员边界。
+pub mod admin;
 /// 启动配置与顶层 HTTP 路由构建。
 pub mod bootstrap;
 /// `media-capability.v1` 能力协议类型与 AI 控制面网关边界。
