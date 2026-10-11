@@ -45,5 +45,5 @@ node labs/design-system/scripts/check-site.mjs
 
 ## 状态
 
-- v1.0.0 风格指南站 —— D4 完成（2026-10-11）：零依赖静态站（原生 ES Modules + fetch 本地 tokens.json）；三视图（tokens 数据驱动展示 / 12 组件 demo×状态矩阵 / 交互模式演示含可切换六态与审批链故事板）；浅/暗/跟随系统三态主题切换（防闪脚本 + localStorage）；自动检查 `scripts/check-site.mjs`。
-- v1.0.0 tokens（D1）与组件规格（D2）、模式集（D3）见 manifest 与 docs/。
+- v1.1.0 视觉工艺升级（2026-10-11 晚，响应用户"借鉴业内前沿"反馈）：参照 Linear/Geist/Radix 的前沿共性——Lucide 风格线性 SVG 图标系统（字形符降级映射）、hero 排版（mono eyebrow + display 标题 + 展示渐变强调）、specimen 标本框（hairline + 分层阴影 + 顶缘内高光 + 点阵底）、Geist 式 mono 微表头表格、渐变主操作按钮 + 悬浮微交互、品牌辉光画布、侧栏品牌 tile + 版本 chip + 图标主题控件、可复制 swatch（对白/对黑对比度徽章，浏览器内 WCAG 公式实时计算）；tokens v1.1.0（阴影分层化、display 字阶、gradient/gradient-text/highlight、radius-2xl）。截图 `docs/screenshots/*-v1.1.png`。
+- v1.0.0 全套交付（D0–D5，2026-10-11）：tokens / 组件规格 12 件 / 交互模式 9 件 / 零依赖站点 / 采纳路线图。

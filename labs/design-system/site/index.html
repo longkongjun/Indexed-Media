@@ -21,18 +21,16 @@
     <a class="skip-link" href="#main">跳到主内容</a>
     <div class="shell">
       <aside class="sidebar" aria-label="风格指南导航">
-        <div class="brand">
-          <span class="brand-mark" aria-hidden="true">◆</span>
-          <span class="brand-name">MediaFlow Design</span>
-        </div>
+        <div class="brand" id="brand"></div>
         <nav class="side-nav" id="side-nav" aria-label="章节"></nav>
-        <div class="theme-box" role="group" aria-label="主题选择">
-          <span class="theme-box-label">主题</span>
+        <div class="side-foot">
+          <p class="theme-label" id="theme-label">主题</p>
           <div class="seg" role="radiogroup" aria-label="外观">
-            <button type="button" class="seg-btn" data-theme-choice="system" role="radio" aria-checked="true">跟随系统</button>
-            <button type="button" class="seg-btn" data-theme-choice="light" role="radio" aria-checked="false">浅色</button>
-            <button type="button" class="seg-btn" data-theme-choice="dark" role="radio" aria-checked="false">暗色</button>
+            <button type="button" class="seg-btn" data-theme-choice="system" role="radio" aria-checked="true" title="跟随系统"><span data-icon="monitor"></span><span class="seg-label">跟随系统</span></button>
+            <button type="button" class="seg-btn" data-theme-choice="light" role="radio" aria-checked="false" title="浅色"><span data-icon="sun"></span><span class="seg-label">浅色</span></button>
+            <button type="button" class="seg-btn" data-theme-choice="dark" role="radio" aria-checked="false" title="暗色"><span data-icon="moon"></span><span class="seg-label">暗色</span></button>
           </div>
+          <p class="foot-note" id="foot-note"></p>
         </div>
       </aside>
       <main class="main" id="main" tabindex="-1"></main>

@@ -4,6 +4,7 @@
 import { renderTokensView } from "./views/tokens.mjs";
 import { renderComponentsView } from "./views/components.mjs";
 import { renderPatternsView } from "./views/patterns.mjs";
+import { icon } from "./demo-kit.mjs";
 import { fetchTokens, fixtures } from "./fixtures.mjs";
 
 /* ---------- 主题三态 ---------- */
@@ -27,26 +28,36 @@ function initTheme() {
   // index.html 内联脚本已防闪设了 data-theme；此处对齐控件态并持久化合法值
   if (saved === "system") delete document.documentElement.dataset.theme;
   applyThemeChoice(saved);
-  document.querySelector(".theme-box").addEventListener("click", (event) => {
+  document.querySelector(".side-foot").addEventListener("click", (event) => {
     const btn = event.target.closest("[data-theme-choice]");
     if (btn) applyThemeChoice(btn.dataset.themeChoice);
   });
 }
 
-/* ---------- hash 路由 ---------- */
+/* ---------- 壳：品牌区 / 导航 / 页脚 ---------- */
 
 const ROUTES = [
-  { path: "tokens", label: "设计 Tokens", view: renderTokensView },
-  { path: "components", label: "组件规格", view: renderComponentsView },
-  { path: "patterns", label: "交互模式", view: renderPatternsView },
+  { path: "tokens", label: "设计 Tokens", icon: "palette", view: renderTokensView },
+  { path: "components", label: "组件规格", icon: "layers", view: renderComponentsView },
+  { path: "patterns", label: "交互模式", icon: "workflow", view: renderPatternsView },
 ];
 
-function currentPath() {
-  const raw = location.hash.replace(/^#\/?/, "").split("?")[0];
-  return ROUTES.some((r) => r.path === raw) ? raw : "tokens";
-}
+let TOKENS_VERSION = "";
 
-function renderNav(active) {
+function renderChrome(active) {
+  const brand = document.getElementById("brand");
+  brand.replaceChildren();
+  const tile = document.createElement("span");
+  tile.className = "brand-tile";
+  tile.append(icon("sparkles", "icon"));
+  const name = document.createElement("span");
+  name.className = "brand-name";
+  name.textContent = "MediaFlow Design";
+  const ver = document.createElement("span");
+  ver.className = "brand-ver";
+  ver.textContent = TOKENS_VERSION ? `v${TOKENS_VERSION}` : "";
+  brand.append(tile, name, ver);
+
   const nav = document.getElementById("side-nav");
   nav.replaceChildren(
     ...ROUTES.map((r) => {
@@ -54,26 +65,43 @@ function renderNav(active) {
       a.href = `#/${r.path}`;
       a.className = r.path === active ? "is-active" : "";
       a.setAttribute("aria-current", r.path === active ? "page" : "false");
-      const glyph = document.createElement("span");
-      glyph.textContent = { tokens: "◈", components: "▤", patterns: "⇄" }[r.path];
-      glyph.setAttribute("aria-hidden", "true");
-      const span = document.createElement("span");
-      span.textContent = r.label;
-      a.append(glyph, span);
+      a.append(icon(r.icon), (() => {
+        const span = document.createElement("span");
+        span.className = "nav-label";
+        span.textContent = r.label;
+        return span;
+      })());
       return a;
     })
   );
+
+  const foot = document.getElementById("foot-note");
+  foot.textContent = "tokens.json 唯一源 · 双主题 WCAG 2.2 AA · 零依赖静态站";
+}
+
+/* ---------- hash 路由 ---------- */
+
+function currentPath() {
+  const raw = location.hash.replace(/^#\/?/, "").split("?")[0];
+  return ROUTES.some((r) => r.path === raw) ? raw : "tokens";
 }
 
 async function render() {
   const path = currentPath();
-  renderNav(path);
+  const tokens = await fetchTokens();
+  TOKENS_VERSION = tokens.version;
+  renderChrome(path);
   const route = ROUTES.find((r) => r.path === path);
   const main = document.getElementById("main");
   main.replaceChildren();
-  main.append(await route.view({ tokens: await fetchTokens(), fixtures }));
+  main.append(await route.view({ tokens, fixtures }));
   main.focus({ preventScroll: true });
   window.scrollTo(0, 0);
+}
+
+// 静态壳内的图标占位（主题控件）
+for (const slot of document.querySelectorAll("[data-icon]")) {
+  slot.replaceChildren(icon(slot.dataset.icon, "icon-sm"));
 }
 
 initTheme();

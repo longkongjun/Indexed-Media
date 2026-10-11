@@ -1,4 +1,4 @@
-/* MediaFlow Design tokens v1.0.0 — 由 scripts/build-tokens.mjs 生成，勿手改。 */
+/* MediaFlow Design tokens v1.1.0 — 由 scripts/build-tokens.mjs 生成，勿手改。 */
 /* 唯一源：labs/design-system/tokens/tokens.json */
 
 :root {
@@ -11,6 +11,7 @@
   --mfd-font-size-lg: 1.25rem;
   --mfd-font-size-xl: 1.5625rem;
   --mfd-font-size-2xl: 1.9375rem;
+  --mfd-font-size-display: 2.4375rem;
   --mfd-font-line-height-tight: 1.25;
   --mfd-font-line-height-normal: 1.5;
   --mfd-font-line-height-relaxed: 1.65;
@@ -33,6 +34,7 @@
   --mfd-radius-lg: 0.75rem;
   --mfd-radius-xl: 1rem;
   --mfd-radius-full: 999px;
+  --mfd-radius-2xl: 1.25rem;
   --mfd-motion-duration-fast: 120ms;
   --mfd-motion-duration-base: 240ms;
   --mfd-motion-duration-slow: 400ms;
@@ -61,6 +63,7 @@
   --mfd-color-bg-inverse: #10251d;
   --mfd-color-bg-inverse-hover: #1c4937;
   --mfd-color-bg-scrim: rgba(6 12 9 / 0.55);
+  --mfd-color-bg-highlight: rgba(255 255 255 / 0.6);
   --mfd-color-text-primary: #12231c;
   --mfd-color-text-secondary: #50655c;
   --mfd-color-text-muted: #5f746a;
@@ -80,6 +83,8 @@
   --mfd-color-action-secondary-bg: #ffffff;
   --mfd-color-action-danger: #8b2a2a;
   --mfd-color-action-danger-hover: #7b2020;
+  --mfd-color-action-gradient: linear-gradient(180deg, #0b8a56 0%, #08744b 100%);
+  --mfd-color-action-gradient-text: linear-gradient(90deg, #2a9d68 0%, #08744b 100%);
   --mfd-color-state-success: #0d5c30;
   --mfd-color-state-success-bg: #e8f5ee;
   --mfd-color-state-warning: #7d5f0e;
@@ -102,9 +107,9 @@
   --mfd-color-chart-5: #4a5f54;
   --mfd-color-chart-grid: #dce7e1;
   --mfd-color-chart-axis: #50655c;
-  --mfd-shadow-1: 0 1px 2px rgba(16 37 29 / 0.06);
-  --mfd-shadow-2: 0 0.35rem 1.25rem rgba(16 37 29 / 0.08);
-  --mfd-shadow-3: 0 0.75rem 2.5rem rgba(16 37 29 / 0.18);
+  --mfd-shadow-1: 0 1px 2px rgba(16 37 29 / 0.05), 0 1px 3px rgba(16 37 29 / 0.05);
+  --mfd-shadow-2: 0 1px 2px rgba(16 37 29 / 0.04), 0 8px 24px rgba(16 37 29 / 0.1);
+  --mfd-shadow-3: 0 2px 4px rgba(16 37 29 / 0.06), 0 16px 48px rgba(16 37 29 / 0.18);
 }
 
 [data-theme="dark"] {
@@ -118,6 +123,7 @@
   --mfd-color-bg-inverse: #0a100d;
   --mfd-color-bg-inverse-hover: #16241d;
   --mfd-color-bg-scrim: rgba(0 0 0 / 0.65);
+  --mfd-color-bg-highlight: rgba(255 255 255 / 0.04);
   --mfd-color-text-primary: #e6ede8;
   --mfd-color-text-secondary: #9fb3a7;
   --mfd-color-text-muted: #7d9186;
@@ -137,6 +143,8 @@
   --mfd-color-action-secondary-bg: #17221c;
   --mfd-color-action-danger: #e57373;
   --mfd-color-action-danger-hover: #ea8a8a;
+  --mfd-color-action-gradient: linear-gradient(180deg, #58cb90 0%, #4cc38a 100%);
+  --mfd-color-action-gradient-text: linear-gradient(90deg, #6fdda2 0%, #4cc38a 100%);
   --mfd-color-state-success: #58c98d;
   --mfd-color-state-success-bg: #12331f;
   --mfd-color-state-warning: #d9a53f;
@@ -159,9 +167,9 @@
   --mfd-color-chart-5: #9fb3a7;
   --mfd-color-chart-grid: #1d2a23;
   --mfd-color-chart-axis: #9fb3a7;
-  --mfd-shadow-1: 0 1px 2px rgba(0 0 0 / 0.4);
-  --mfd-shadow-2: 0 0.35rem 1.25rem rgba(0 0 0 / 0.5);
-  --mfd-shadow-3: 0 0.75rem 2.5rem rgba(0 0 0 / 0.65);
+  --mfd-shadow-1: 0 1px 2px rgba(0 0 0 / 0.4), 0 1px 3px rgba(0 0 0 / 0.3);
+  --mfd-shadow-2: 0 1px 2px rgba(0 0 0 / 0.5), 0 8px 24px rgba(0 0 0 / 0.45);
+  --mfd-shadow-3: 0 2px 4px rgba(0 0 0 / 0.5), 0 16px 48px rgba(0 0 0 / 0.6);
 }
 
 /* 无显式选择时跟随系统 */
@@ -176,6 +184,7 @@
   --mfd-color-bg-inverse: #0a100d;
   --mfd-color-bg-inverse-hover: #16241d;
   --mfd-color-bg-scrim: rgba(0 0 0 / 0.65);
+  --mfd-color-bg-highlight: rgba(255 255 255 / 0.04);
   --mfd-color-text-primary: #e6ede8;
   --mfd-color-text-secondary: #9fb3a7;
   --mfd-color-text-muted: #7d9186;
@@ -195,6 +204,8 @@
   --mfd-color-action-secondary-bg: #17221c;
   --mfd-color-action-danger: #e57373;
   --mfd-color-action-danger-hover: #ea8a8a;
+  --mfd-color-action-gradient: linear-gradient(180deg, #58cb90 0%, #4cc38a 100%);
+  --mfd-color-action-gradient-text: linear-gradient(90deg, #6fdda2 0%, #4cc38a 100%);
   --mfd-color-state-success: #58c98d;
   --mfd-color-state-success-bg: #12331f;
   --mfd-color-state-warning: #d9a53f;
@@ -217,8 +228,8 @@
   --mfd-color-chart-5: #9fb3a7;
   --mfd-color-chart-grid: #1d2a23;
   --mfd-color-chart-axis: #9fb3a7;
-  --mfd-shadow-1: 0 1px 2px rgba(0 0 0 / 0.4);
-  --mfd-shadow-2: 0 0.35rem 1.25rem rgba(0 0 0 / 0.5);
-  --mfd-shadow-3: 0 0.75rem 2.5rem rgba(0 0 0 / 0.65);
+  --mfd-shadow-1: 0 1px 2px rgba(0 0 0 / 0.4), 0 1px 3px rgba(0 0 0 / 0.3);
+  --mfd-shadow-2: 0 1px 2px rgba(0 0 0 / 0.5), 0 8px 24px rgba(0 0 0 / 0.45);
+  --mfd-shadow-3: 0 2px 4px rgba(0 0 0 / 0.5), 0 16px 48px rgba(0 0 0 / 0.6);
   }
 }

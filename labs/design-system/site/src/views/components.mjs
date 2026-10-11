@@ -1,6 +1,6 @@
 // 组件规格页：12 件组件 demo × 状态矩阵，全部以 token 驱动的 site.css 类渲染（双主题可查）。
 
-import { section, panel, note, badge, button } from "../demo-kit.mjs";
+import { section, panel, note, badge, button, hero, icon } from "../demo-kit.mjs";
 
 /* ---------- 各组件 demo ---------- */
 
@@ -22,7 +22,7 @@ function demoButton() {
   );
   return section(
     "c-button", "按钮与操作", "主/次/危险/链接四型；每视图最多一个 primary；加载态锁定宽度",
-    "button",
+    { tag: "button" },
     panel(row1, row2, note("hover/active/focus-visible 状态切到组件规格文档查矩阵；此处演示默认与加载/禁用态")),
   );
 }
@@ -84,17 +84,30 @@ function demoMediaWall({ fixtures }) {
     card.setAttribute("aria-label", `《${m.title}》${m.year ? `(${m.year})` : ""} 详情`);
     card.innerHTML = `
       <div class="poster">
-        ${m.registered ? '<div class="art"><span>海报</span></div>' : '<span aria-hidden="true">▢</span>'}
+        <span class="ph" aria-hidden="true"></span>
         <span class="corner">${m.kind}</span>
       </div>
       <div class="cap">${m.title}
-        <span class="meta">${[m.year, m.registered ? "▣ 已登记" : "□ 未登记"].filter(Boolean).join(" · ")}</span>
+        <span class="meta"></span>
       </div>`;
+    const ph = card.querySelector(".ph");
+    if (m.registered) {
+      const art = document.createElement("span");
+      art.className = "art";
+      art.innerHTML = `<span class="art-grad"></span><span class="label">海报</span>`;
+      ph.replaceWith(art);
+    } else {
+      ph.append(icon("image", "icon-lg"));
+    }
+    const meta = card.querySelector(".meta");
+    if (m.year) meta.append(document.createTextNode(m.year));
+    meta.append(icon(m.registered ? "circle-check" : "circle", "icon"));
+    meta.append(document.createTextNode(m.registered ? "已登记" : "未登记"));
     wall.append(card);
   }
   return section(
     "c-media", "媒体卡片 🔆", "海报墙：图片零主题处理；暗色靠容器描边分层；登记状态 ▣/□ 双编码",
-    "media-card",
+    { tag: "media-card" },
     panel(wall, note("demo 海报为渐变假图（占位演示）；真实海报在任何主题下原图呈现")),
   );
 }
@@ -112,29 +125,43 @@ function demoBadge() {
     badge("◐", "降级", "warning", true),
     badge("○", "不可用", "neutral", true),
   );
-  return section("c-badge", "状态徽章", "形状符 + 中文标签双编码；tone 五值；compact 无底变体", "status-badge", panel(row));
+  return section("c-badge", "状态徽章", "Lucide 风格图标 + 中文标签双编码；tone 五值；compact 无底变体；字形符为降级通道", "status-badge", panel(row));
 }
 
 function demoTimeline() {
   const stages = [
-    { stage: "发现", state: "done", glyph: "●", meta: "14:02 · 已发现 2 个文件" },
-    { stage: "识别", state: "done", glyph: "●", meta: "14:03 · 候选《沙丘 2》0.92" },
-    { stage: "文件操作", state: "failed", glyph: "▲", meta: "14:05 · 失败：目标路径已存在", detail: "已完成：0 项 · 未执行：2 项 —— <span class='mono'>inbox/dune2-cn.mkv → 隔离区/冲突/</span>" },
-    { stage: "NFO", state: "todo", glyph: "○", meta: "未开始" },
-    { stage: "完成", state: "todo", glyph: "○", meta: "未开始" },
+    { stage: "发现", state: "done", icon: "circle-check", meta: "14:02 · 已发现 2 个文件" },
+    { stage: "识别", state: "done", icon: "circle-check", meta: "14:03 · 候选《沙丘 2》0.92" },
+    { stage: "文件操作", state: "failed", icon: "triangle-alert", meta: "14:05 · 失败：目标路径已存在", detail: "已完成：0 项 · 未执行：2 项 —— <span class='mono'>inbox/dune2-cn.mkv → 隔离区/冲突/</span>" },
+    { stage: "NFO", state: "todo", icon: "circle-ring", meta: "未开始" },
+    { stage: "完成", state: "todo", icon: "circle-ring", meta: "未开始" },
   ];
   const ol = document.createElement("ol");
   ol.className = "timeline";
   ol.append(...stages.map((s) => {
     const li = document.createElement("li");
     if (s.state === "done") li.className = "done";
-    li.innerHTML = `
-      <i class="tl-node ${s.state === "failed" ? "" : ""}" aria-hidden="true">${s.glyph}</i>
-      <div class="tl-head"><span class="tl-stage">${s.stage}</span><span class="tl-meta">${s.meta}</span></div>
-      ${s.detail ? `<div class="tl-detail">${s.detail}<br>唯一主操作：${""}</div>` : ""}`;
+    if (s.state === "failed") li.className = "failed";
+    const node = document.createElement("span");
+    node.className = "tl-node";
+    node.setAttribute("aria-hidden", "true");
+    node.append(icon(s.icon));
+    const head = document.createElement("div");
+    head.className = "tl-head";
+    const stageEl = document.createElement("span");
+    stageEl.className = "tl-stage";
+    stageEl.textContent = s.stage;
+    const metaEl = document.createElement("span");
+    metaEl.className = "tl-meta";
+    metaEl.textContent = s.meta;
+    head.append(stageEl, metaEl);
+    li.append(node, head);
     if (s.detail) {
-      const btn = button("从安全检查点重试", "primary", "btn-compact");
-      li.querySelector(".tl-detail").append(btn);
+      const detail = document.createElement("div");
+      detail.className = "tl-detail";
+      detail.innerHTML = `${s.detail}<br>唯一主操作：`;
+      detail.append(button("从安全检查点重试", "primary", "btn-compact"));
+      li.append(detail);
     }
     return li;
   }));
@@ -153,7 +180,7 @@ function demoPlan({ fixtures }) {
   for (const group of plan.groups) {
     const head = document.createElement("div");
     head.className = "plan-group";
-    head.textContent = `→ ${group.target}`;
+    head.append(icon("folder", "icon-sm"), document.createTextNode(group.target));
     p.append(head);
     for (const op of group.ops) {
       const row = document.createElement("div");
@@ -164,7 +191,7 @@ function demoPlan({ fixtures }) {
       from.textContent = op.from;
       const arrow = document.createElement("span");
       arrow.className = "plan-arrow";
-      arrow.textContent = "→";
+      arrow.append(icon("arrow-right"));
       const to = document.createElement("span");
       to.className = "plan-path";
       to.textContent = op.to;
@@ -184,12 +211,13 @@ function demoApproval() {
   const p = panel();
   p.innerHTML = `
     <div class="approval-banner" role="alert">
-      <span aria-hidden="true">⚖</span>
+      <span class="banner-icon" aria-hidden="true"></span>
       <div class="ab-text">
         <div class="ab-title">1 个整理计划等待审批</div>
         <div class="ab-summary">task-1043 · 计划 v7：2 项移动 · 1 项隔离</div>
       </div>
     </div>`;
+  p.querySelector(".banner-icon").append(icon("scale", "icon-lg"));
   p.querySelector(".approval-banner").append(button("查看完整计划并审批", "primary"), button("稍后处理", "link"));
   return section("c-approval", "审批横幅", "唯一权威审批入口；版本绑定；会话内不出现审批按钮", "approval-banner", p);
 }
@@ -200,25 +228,35 @@ function demoSession({ fixtures }) {
   for (const m of fixtures.session) {
     const div = document.createElement("div");
     div.className = `msg ${m.role === "user" ? "msg-user" : "msg-ai"}`;
-    div.innerHTML = `<span class="role">${m.role === "user" ? "你" : "AI 助手"}</span>${m.text}`;
+    const avatar = document.createElement("span");
+    avatar.className = "avatar";
+    avatar.setAttribute("aria-hidden", "true");
+    avatar.append(icon(m.role === "user" ? "user" : "sparkles"));
+    const body = document.createElement("div");
+    body.className = "msg-body";
+    const roleEl = document.createElement("span");
+    roleEl.className = "role";
+    roleEl.textContent = m.role === "user" ? "你" : "AI 助手";
+    body.append(roleEl, document.createTextNode(m.text));
     if (m.well) {
       const well = document.createElement("div");
       well.className = "well";
       well.textContent = m.well;
-      div.append(well);
+      body.append(well);
     }
     if (m.link) {
       const a = document.createElement("a");
       a.className = "msg-link";
       a.href = m.link.href;
       a.textContent = m.link.label;
-      div.append(document.createElement("br"), a);
+      body.append(document.createElement("br"), a);
     }
+    div.append(avatar, body);
     box.append(div);
   }
   return section(
     "c-session", "会话消息 🔆", "脱敏摘要 + 可跳转核对 + 六态尾注；无审批按钮（红线）",
-    "session-message",
+    { tag: "session-message" },
     panel(box, note("路径只显示相对路径；结论必附深链；脱敏规则见规格 §3")),
   );
 }
@@ -230,13 +268,14 @@ function demoNotification({ fixtures }) {
     const item = document.createElement("div");
     item.className = `notice-item${n.unread ? " unread" : ""}`;
     item.innerHTML = `
-      <span class="notice-kind">${n.kind}</span>
+      <span class="notice-kind"></span>
       <p style="margin:.35rem 0 .2rem;font-weight:${n.unread ? "600" : "400"}">${n.title}</p>
       <p style="margin:0 0 .35rem;color:var(--mfd-color-text-secondary);font-size:var(--mfd-font-size-sm)">${n.body}</p>
       <div class="demo-row" style="justify-content:space-between">
         <span class="notice-time">${n.time}</span>
         <span class="demo-row" style="gap:var(--mfd-space-2)"></span>
       </div>`;
+    item.querySelector(".notice-kind").append(icon("bell"), document.createTextNode(n.kind));
     item.querySelector(".demo-row:last-child").append(button("查看任务", "link"), button("标记已读", "secondary", "btn-compact"));
     if (!n.unread) item.querySelector(".btn-secondary").disabled = true;
     list.append(item);
@@ -255,7 +294,7 @@ function demoNavigation() {
     </div>`;
   return section(
     "c-navigation", "导航", "本站侧栏即 navigation 规格实例（inverse 深底 + 角标 + 图标化中宽档 + 移动底部）",
-    "navigation",
+    { tag: "navigation" },
     nav,
     note("调整窗口宽度观察三档：≥64rem 文字侧栏 / 48–64rem 图标列 / <48rem 顶栏形态"),
   );
@@ -263,13 +302,13 @@ function demoNavigation() {
 
 function demoStates() {
   const STATES = [
-    ["loading", "◌", "正在加载任务列表…", "保留导航与骨架，避免跳动", null],
-    ["empty", "▢", "暂无正式媒体记录", "完成待确认任务后即可建立。", "查看待确认任务"],
-    ["error", "{!}", "任务列表加载失败", "task 列表在获取阶段失败：连接超时。下一步：稍后重试。", "重试"],
-    ["offline", "⌁", "无法连接 MediaFlow 服务", "正在显示 5 分钟前的数据；需服务端确认的操作已禁用。", "重试"],
-    ["conflict", "⚖", "计划与已存在文件冲突", "inbox/dune2-cn.mkv 与目标指纹相同。下一步：修正规则或目标。", "查看冲突详情"],
-    ["partial", "◐", "整理部分完成", "3 项已完成，1 项未完成：NFO 写入失败。下一步：只重试未完成步骤。", "重试未完成步骤"],
-    ["success", "✓", "整理完成", "文件操作、NFO 与媒体记录均完成。", "查看结果"],
+    ["loading", "loader", "正在加载任务列表…", "保留导航与骨架，避免跳动", null],
+    ["empty", "inbox", "暂无正式媒体记录", "完成待确认任务后即可建立。", "查看待确认任务"],
+    ["error", "octagon-alert", "任务列表加载失败", "task 列表在获取阶段失败：连接超时。下一步：稍后重试。", "重试"],
+    ["offline", "zap-off", "无法连接 MediaFlow 服务", "正在显示 5 分钟前的数据；需服务端确认的操作已禁用。", "重试"],
+    ["conflict", "scale", "计划与已存在文件冲突", "inbox/dune2-cn.mkv 与目标指纹相同。下一步：修正规则或目标。", "查看冲突详情"],
+    ["partial", "circle-half", "整理部分完成", "3 项已完成，1 项未完成：NFO 写入失败。下一步：只重试未完成步骤。", "重试未完成步骤"],
+    ["success", "circle-check", "整理完成", "文件操作、NFO 与媒体记录均完成。", "查看结果"],
   ];
   const grid = document.createElement("div");
   grid.className = "demo-grid";
@@ -278,9 +317,10 @@ function demoStates() {
     box.className = "state-box";
     box.dataset.state = state;
     box.innerHTML = `
-      <span class="state-icon${state === "loading" ? " spin" : ""}" aria-hidden="true">${glyph}</span>
+      <span class="state-icon"></span>
       <span class="state-title">${title}</span>
       <span class="state-body">${body}</span>`;
+    box.querySelector(".state-icon").append(icon(glyph));
     if (action) {
       const actions = document.createElement("div");
       actions.className = "state-actions";
@@ -294,13 +334,11 @@ function demoStates() {
 
 export async function renderComponentsView({ fixtures }) {
   const frag = document.createDocumentFragment();
-  const h1 = document.createElement("h1");
-  h1.className = "page-title";
-  h1.textContent = "组件规格";
-  const desc = document.createElement("p");
-  desc.className = "page-desc";
-  desc.textContent = "12 件组件 demo × 状态矩阵；右上角切换主题，全部 demo 双主题可查；🔆 = 主题敏感组件（暗色表现见规格 §5）";
-  frag.append(h1, desc);
+  frag.append(hero(
+    "Components",
+    '十二件组件，<em>双主题</em>矩阵',
+    "全部 demo 由 token 驱动渲染；切换侧栏主题双主题可查；🔆 = 主题敏感组件（暗色表现见规格 §5）。",
+  ));
   frag.append(
     demoButton(),
     demoForm(),

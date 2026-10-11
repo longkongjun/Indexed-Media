@@ -1,45 +1,83 @@
-// Tokens 展示页：数据驱动渲染全部语义 token（浅/暗双值并排）+ 尺寸类可视化。
+// Tokens 展示页：数据驱动渲染全部语义 token——双值 swatch（点击复制 + 对白/对黑对比度徽章）
+// + 字体/间距/圆角/阴影/常数可视化。对比度计算与 scripts/check-contrast.mjs 同公式。
 
-const cssVar = (name) => `var(--mfd-${name})`;
+import { section, hero } from "../demo-kit.mjs";
 
-function section(id, title, desc, specLink, ...body) {
-  const section = document.createElement("section");
-  section.className = "section";
-  section.id = id;
-  const h2 = document.createElement("h2");
-  h2.className = "section-title";
-  h2.textContent = title;
-  section.append(h2);
-  if (desc) {
-    const p = document.createElement("p");
-    p.className = "section-desc";
-    p.textContent = desc;
-    section.append(p);
+function luminance([r, g, b]) {
+  const lin = (v8) => {
+    const c = v8 / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+}
+
+function parseHex(input) {
+  const m = input.match(/^#([0-9a-f]{6})$/i);
+  if (!m) return null;
+  const h = m[1];
+  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+}
+
+function ratioTo(fg, bgRgb) {
+  const l1 = luminance(fg);
+  const l2 = luminance(bgRgb);
+  const [hi, lo] = l1 >= l2 ? [l1, l2] : [l2, l1];
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+const WHITE = [255, 255, 255];
+const BLACK = [0, 0, 0];
+
+function chip(value, label, ratioNote) {
+  const div = document.createElement("div");
+  div.className = "chip";
+  const rgb = parseHex(value);
+  div.style.background = value;
+  div.style.color = rgb && ratioTo(rgb, BLACK) >= ratioTo(rgb, WHITE) ? "#000000" : "#ffffff";
+  div.textContent = label;
+  if (ratioNote) {
+    const r = document.createElement("span");
+    r.className = "ratio";
+    r.textContent = ratioNote;
+    div.append(r);
   }
-  if (specLink) {
-    const a = document.createElement("a");
-    a.className = "spec-link";
-    a.href = specLink;
-    a.textContent = "规格文档 →";
-    section.append(a);
-  }
-  section.append(...body);
-  return section;
+  return div;
 }
 
 function swatchGrid(entries) {
   const grid = document.createElement("div");
   grid.className = "swatch-grid";
-  for (const { name, token, desc, light, dark } of entries) {
-    const card = document.createElement("div");
+  for (const { name, desc, light, dark } of entries) {
+    const card = document.createElement("button");
+    card.type = "button";
     card.className = "swatch";
-    card.innerHTML = `
-      <div class="chip light-value" style="--swatch:${light}" title="浅色值">${light}</div>
-      <div class="chip dark-value" style="--swatch-dark:${dark}" title="暗色值">${dark}</div>
-      <span class="swatch-name">${name}</span>
-      <span class="swatch-label">${desc}</span>`;
-    // name/desc 为受控文本，直接 innerHTML 无注入面；token 变量供复制检查
-    card.dataset.token = token;
+    card.setAttribute("aria-label", `复制 ${name} 的 token 值`);
+    const chips = document.createElement("div");
+    chips.className = "chips";
+    for (const [value, label] of [[light, "light"], [dark, "dark"]]) {
+      const rgb = parseHex(value);
+      const note = rgb ? `白 ${ratioTo(rgb, WHITE).toFixed(1)}·黑 ${ratioTo(rgb, BLACK).toFixed(1)}` : null;
+      chips.append(chip(value, label, note));
+    }
+    const body = document.createElement("span");
+    body.className = "swatch-body";
+    const nm = document.createElement("span");
+    nm.className = "swatch-name";
+    nm.textContent = name;
+    const lbl = document.createElement("span");
+    lbl.className = "swatch-label";
+    lbl.textContent = desc;
+    body.append(nm, lbl);
+    card.append(chips, body);
+    card.addEventListener("click", () => {
+      const text = `--mfd-${name}: ${light} / ${dark}`;
+      navigator.clipboard?.writeText(text).catch(() => {});
+      const overlay = document.createElement("span");
+      overlay.className = "copied";
+      overlay.textContent = "已复制 token";
+      card.append(overlay);
+      setTimeout(() => overlay.remove(), 900);
+    });
     grid.append(card);
   }
   return grid;
@@ -51,7 +89,7 @@ function collectColorTokens(tokens, group) {
     for (const [key, value] of Object.entries(node)) {
       if (key.startsWith("_")) continue;
       if (typeof value === "object" && !("light" in value)) walk(value, `${prefix}${key}-`);
-      else entries.push({ name: `${prefix}${key}`, token: `--mfd-color-${prefix}${key}`, desc: value.desc ?? "", light: value.light, dark: value.dark });
+      else entries.push({ name: `color-${prefix}${key}`, desc: value.desc ?? "", light: value.light, dark: value.dark });
     }
   };
   walk(tokens.semantic.color[group], "");
@@ -61,62 +99,71 @@ function collectColorTokens(tokens, group) {
 export async function renderTokensView({ tokens }) {
   const frag = document.createDocumentFragment();
 
-  const h1 = document.createElement("h1");
-  h1.className = "page-title";
-  h1.textContent = "设计 Tokens";
-  const desc = document.createElement("p");
-  desc.className = "page-desc";
-  desc.textContent = `MediaFlow Design v${tokens.version} · 唯一源 tokens/tokens.json · 每个语义 token 双主题双值 · 对比度 62 必检对双主题全过（WCAG 2.2 AA）`;
-  frag.append(h1, desc);
+  frag.append(hero(
+    "Design Tokens",
+    '常青色板，<em>双主题</em>语义',
+    `MediaFlow Design v${tokens.version} · 唯一源 tokens/tokens.json · 每个语义 token 浅/暗双值 · 点击色卡复制 token · 色角标注对白/对黑对比度（WCAG 公式）· 62 必检对双主题全过 AA。`,
+  ));
 
-  for (const [group, title, blurb] of [
-    ["bg", "背景", "容器层级：canvas → surface → raised/sunken；inverse 为侧栏深底"],
-    ["text", "文字", "主/次/弱 + 反色区/操作底文字 + 链接"],
-    ["border", "边框", "strong/focus 为交互识别边界（≥3:1）；default/subtle 为装饰级"],
-    ["action", "操作", "主操作暗色为亮绿底+深字（D-0005）"],
-    ["state", "状态", "成功/待处理/失败/进行中四语义 × 前景/底/描边"],
-    ["media", "媒体", "海报角标深底恒定；图片本体零主题处理（dark-media-principles）"],
-    ["chart", "图表", "五系列色 + 网格/轴（ECharts 按需消费）"],
+  for (const [group, title, blurb, tag] of [
+    ["bg", "背景色", "容器层级：canvas → surface → raised/sunken；inverse 为侧栏深底", "surface"],
+    ["text", "文字色", "主/次/弱 + 反色区/操作底文字 + 链接", "content"],
+    ["border", "边框色", "strong/focus 为交互识别边界（≥3:1）；default/subtle 为装饰级", "line"],
+    ["action", "操作色", "主操作暗色为亮绿底+深字（D-0005）；gradient 为可选品牌瞬间", "action"],
+    ["state", "状态色", "成功/待处理/失败/进行中四语义 × 前景/底/描边", "status"],
+    ["media", "媒体色", "海报角标深底恒定；图片本体零主题处理", "media"],
+    ["chart", "图表色", "五系列色 + 网格/轴（ECharts 按需消费）", "chart"],
   ]) {
-    frag.append(section(`token-${group}`, `${title}色`, blurb, null, swatchGrid(collectColorTokens(tokens, group))));
+    frag.append(section(`token-${group}`, title, blurb, { tag }, swatchGrid(collectColorTokens(tokens, group))));
   }
 
   // 字体
   const typeDemo = document.createElement("div");
-  typeDemo.className = "type-demo panel";
-  const scale = tokens.semantic.font.size;
-  for (const [key, item] of Object.entries(scale)) {
+  typeDemo.className = "specimen type-demo";
+  for (const [key, item] of Object.entries(tokens.semantic.font.size)) {
     if (key.startsWith("_")) continue;
     const p = document.createElement("p");
     p.style.fontSize = item.value;
     p.style.lineHeight = "var(--mfd-font-line-height-tight)";
-    p.innerHTML = `<span class="tag">font-size-${key} · ${item.value} · ${item.desc}</span>媒体库的安静管理者 MediaFlow`;
+    const tagEl = document.createElement("span");
+    tagEl.className = "tag";
+    tagEl.textContent = `font-size-${key} · ${item.value} · ${item.desc}`;
+    const sample = document.createElement("span");
+    sample.textContent = "媒体库的安静管理者 MediaFlow";
+    p.append(tagEl, sample);
     typeDemo.append(p);
   }
   const mono = document.createElement("p");
-  mono.innerHTML = `<span class="tag">font-family-mono · 路径与技术标识</span><span style="font-family:var(--mfd-font-family-mono)">媒体库/电影/沙丘 2 (2024)/dune2.part.mkv</span>`;
+  const monoTag = document.createElement("span");
+  monoTag.className = "tag";
+  monoTag.textContent = "font-family-mono · 路径与技术标识";
+  const monoSample = document.createElement("span");
+  monoSample.style.fontFamily = "var(--mfd-font-family-mono)";
+  monoSample.textContent = "媒体库/电影/沙丘 2 (2024)/dune2.mkv";
+  mono.append(monoTag, monoSample);
   typeDemo.append(mono);
-  frag.append(section("token-type", "字体阶梯", "Inter + 系统回退；管理表格 14px 档；等宽用于路径/规则/ID", null, typeDemo));
+  frag.append(section("token-type", "字体阶梯", "Inter + 系统回退；管理表格 14px 档；等宽用于路径/规则/ID；display 档用于展示级标题", { tag: "type" }, typeDemo));
 
   // 间距
   const spaceScale = document.createElement("div");
-  spaceScale.className = "space-scale panel";
+  spaceScale.className = "specimen space-scale";
   for (const [key, item] of Object.entries(tokens.semantic.space)) {
     if (key.startsWith("_")) continue;
     const row = document.createElement("div");
-    const bar = document.createElement("div");
-    bar.style.width = item.value;
     const tag = document.createElement("span");
     tag.className = "tag";
     tag.textContent = `space-${key} · ${item.value} · ${item.desc}`;
+    const bar = document.createElement("div");
+    bar.className = "bar";
+    bar.style.width = item.value;
     row.append(tag, bar);
     spaceScale.append(row);
   }
-  frag.append(section("token-space", "间距（4pt 基）", "space-1 至 space-16", null, spaceScale));
+  frag.append(section("token-space", "间距（4pt 基）", "space-1 至 space-16", { tag: "space" }, spaceScale));
 
   // 圆角
   const radiusDemo = document.createElement("div");
-  radiusDemo.className = "radius-demo panel";
+  radiusDemo.className = "specimen radius-demo";
   for (const [key, item] of Object.entries(tokens.semantic.radius)) {
     if (key.startsWith("_")) continue;
     const box = document.createElement("div");
@@ -124,29 +171,29 @@ export async function renderTokensView({ tokens }) {
     box.title = `radius-${key} · ${item.value}`;
     radiusDemo.append(box);
   }
-  frag.append(section("token-radius", "圆角", "xs → full 六档", null, radiusDemo));
+  frag.append(section("token-radius", "圆角", "xs → 2xl → full 七档", { tag: "radius" }, radiusDemo));
 
   // 阴影
   const shadowDemo = document.createElement("div");
   shadowDemo.className = "demo-grid shadow-demo";
   for (const key of ["1", "2", "3"]) {
     const box = document.createElement("div");
-    box.className = "panel";
-    box.style.boxShadow = cssVar(`shadow-${key}`);
+    box.className = "specimen cell";
+    box.style.boxShadow = `var(--mfd-shadow-${key})`;
     box.textContent = `shadow-${key}`;
     shadowDemo.append(box);
   }
-  frag.append(section("token-shadow", "海拔（阴影）", "暗色下阴影加深并由描边补偿层级", null, shadowDemo));
+  frag.append(section("token-shadow", "海拔（分层阴影）", "v1.1 起为双层叠加阴影；暗色加深并由描边补偿层级", { tag: "elevation" }, shadowDemo));
 
-  // 断点与动效（文本表）
+  // 常数
   const misc = document.createElement("div");
-  misc.className = "panel";
+  misc.className = "specimen";
   misc.innerHTML = `
     <p><strong>断点</strong>：sm ${tokens.semantic.breakpoint.sm.value}（移动/桌面）· md ${tokens.semantic.breakpoint.md.value}（侧栏图标化）· lg ${tokens.semantic.breakpoint.lg.value}（宽屏上限）</p>
     <p><strong>动效</strong>：fast ${tokens.semantic.motion.duration.fast.value} 微交互 · base ${tokens.semantic.motion.duration.base.value} 容器 · slow ${tokens.semantic.motion.duration.slow.value} 主题过渡；easing standard / in-out；respect prefers-reduced-motion</p>
-    <p><strong>图标</strong>：sm ${tokens.semantic.icon.size.sm.value} / md ${tokens.semantic.icon.size.md.value} / lg ${tokens.semantic.icon.size.lg.value}；触达下限 ${tokens.semantic.icon["size-touch-min"].value}</p>
+    <p><strong>图标</strong>：sm ${tokens.semantic.icon.size.sm.value} / md ${tokens.semantic.icon.size.md.value} / lg ${tokens.semantic.icon.size.lg.value}；触达下限 ${tokens.semantic.icon["size-touch-min"].value}；本站图标为 Lucide 风格线性 SVG（字形符为降级通道）</p>
     <p><strong>描边</strong>：hair ${tokens.semantic.stroke.hair.value} · focus-ring ${tokens.semantic.stroke["focus-ring"].value} · strong ${tokens.semantic.stroke.strong.value}</p>`;
-  frag.append(section("token-misc", "断点 · 动效 · 图标 · 描边", "布局与运动常数", null, misc));
+  frag.append(section("token-misc", "断点 · 动效 · 图标 · 描边", "布局与运动常数", { tag: "constants" }, misc));
 
   return frag;
 }

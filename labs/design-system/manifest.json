@@ -1,9 +1,12 @@
 {
   "name": "mediaflow-design",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "MediaFlow 设计语言（MediaFlow Design）的唯一权威源：设计 tokens、组件规格、交互模式与风格指南站。",
   "theme_policy": {
-    "modes": ["light", "dark"],
+    "modes": [
+      "light",
+      "dark"
+    ],
     "canonical": "light",
     "rule": "每个语义 token 双主题双值；暗色不二次调暗媒体内容（docs/dark-media-principles.md）"
   },
@@ -13,7 +16,7 @@
   "artifacts": {
     "planned": {},
     "generated": [
-      "site/assets/tokens.css（scripts/build-tokens.mjs 生成；49 不变 + 53 双主题 token，双主题变量组 + 跟随系统媒体查询）",
+      "site/assets/tokens.css（scripts/build-tokens.mjs 生成；51 不变 + 56 双主题 token，双主题变量组 + 跟随系统媒体查询）",
       "site/assets/tokens.json（站点自包含副本）",
       "docs/mappings/tailwind-4.md（Tailwind 4 @theme 映射，前瞻/可选路径）",
       "docs/mappings/compose-material3.md（Material 3 ColorScheme + 扩展槽映射）",
@@ -22,9 +25,12 @@
       "docs/components/（12 件组件规格 + 统一模板 + 清单）",
       "docs/patterns/（9 件交互模式）",
       "site/（零依赖风格指南站：三视图 + 三态主题切换 + scripts/check-site.mjs 自动检查 + docs/screenshots 自检截图）",
-      "docs/adoption-roadmap.md（三方采纳路线图）"
+      "docs/adoption-roadmap.md（三方采纳路线图）",
+      "docs/screenshots/*-v1.1.png（v1.1 视觉升级自检截图：tokens 浅色 / components 暗色）"
     ]
   },
-  "breaking_changes": []
+  "breaking_changes": [
+    "v1.1.0：shadow-1/2/3 值改为双层叠加阴影（消费方若依赖逐字阴影值需重新快照；语义与层级不变）",
+    "v1.1.0：新增 font-size-display / radius-2xl / color-action-gradient / color-action-gradient-text / color-bg-highlight（additive，无破坏）"
+  ]
 }
-
