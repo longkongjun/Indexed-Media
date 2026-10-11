@@ -391,6 +391,8 @@ async fn delete_device(
                 state.service.audit_denial("csrf").await?;
                 return Err(error);
             }
+            // 未知设备对管理员返回 404；幂等撤销只保留给重复点击同一台设备。
+            state.service.device(device_id).await?;
             state
                 .service
                 .revoke_device(device_id, "administrator")

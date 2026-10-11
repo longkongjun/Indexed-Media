@@ -330,6 +330,21 @@ async fn device_revocation_by_admin_and_self_logout_are_enforced() {
         StatusCode::UNAUTHORIZED
     );
 
+    // 管理员吊销未知设备返回 404（幂等撤销只保留给重复点击同一台设备）。
+    let unknown = app
+        .clone()
+        .oneshot(
+            Request::delete("/api/v1/devices/00000000-0000-7000-8000-0000000000ff")
+                .header(header::COOKIE, &cookie)
+                .header(header::ORIGIN, "http://127.0.0.1:3000")
+                .header("x-csrf-token", &csrf)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(unknown.status(), StatusCode::NOT_FOUND);
+
     // 设备自删（移动端登出）。
     let second_id: Vec<u8> = sqlx::query_scalar(
         "SELECT id FROM identity_devices ORDER BY created_at_us LIMIT 1 OFFSET 1",
