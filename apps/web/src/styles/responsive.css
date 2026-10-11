@@ -4,7 +4,7 @@
   dl > div { grid-template-columns: 1fr; gap: .25rem; }
   [data-wide-results] { display: none; }
   .mobile-result-list { display: grid; gap: .75rem; padding: 0; list-style: none; }
-  .mobile-result-list li { display: grid; gap: .35rem; padding: 1rem; border: 1px solid var(--border); border-radius: var(--radius); background: white; }
+  .mobile-result-list li { display: grid; gap: .35rem; padding: 1rem; border: 1px solid var(--mfd-color-border-default); border-radius: var(--mfd-radius-lg); background: var(--mfd-color-bg-surface); }
   .detail-actions > *, .cursor-pager > *, .filter-bar > * { min-height: 2.75rem; }
   [data-task-center], .task-card-list, .task-card-list .resource-card, .compact-facts { min-width: 0; max-width: 100%; }
   .task-filter, .compact-facts { grid-template-columns: 1fr; }

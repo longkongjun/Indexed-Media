@@ -36,12 +36,12 @@ async function retry(): Promise<void> {
 </template>
 
 <style>
-:root { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color-scheme: light; }
+:root { font-family: var(--mfd-font-family-ui); }
 body { margin: 0; }
 button, input { font: inherit; }
 .app-frame { min-height: 100vh; }
 .connection-state { display: grid; align-content: center; justify-items: start; min-height: 100vh; box-sizing: border-box; max-width: 42rem; margin: auto; padding: 2rem; }
-.state-label { color: #28684d; font-weight: 750; }
-.connection-state button { min-height: 2.75rem; padding: .7rem 1rem; border: 0; border-radius: .5rem; background: #176b49; color: white; font-weight: 700; }
-.connection-state button:focus-visible { outline: 3px solid #0b7a50; outline-offset: 3px; }
+.state-label { color: var(--mfd-color-text-secondary); font-weight: 750; }
+.connection-state button { min-height: 2.75rem; padding: .7rem 1rem; border: 0; border-radius: .5rem; background: var(--mfd-color-action-primary); color: var(--mfd-color-text-on-action); font-weight: 700; }
+.connection-state button:focus-visible { outline: 3px solid var(--mfd-color-border-focus); outline-offset: 3px; }
 </style>

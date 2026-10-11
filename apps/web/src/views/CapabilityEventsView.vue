@@ -50,7 +50,7 @@ onMounted(() => {
     <p class="page-help">AI 通道（media-capability.v1）事件流的脱敏只读投影；能力调用与审批由对应任务页承载。</p>
     <AsyncState :state="activity.state.value" :error-message="activity.errorMessage.value" empty-message="暂无 AI 能力活动" @retry="() => { void activity.load(); }">
         <table class="activity-table">
-          <caption class="sr-only">AI 能力通道事件（最新在前）</caption>
+          <caption class="visually-hidden">AI 能力通道事件（最新在前）</caption>
           <thead>
             <tr>
               <th scope="col">序号</th>
@@ -90,10 +90,10 @@ onMounted(() => {
 
 <style scoped>
 .capability-events { display: grid; gap: 1rem; }
-.page-help { margin: 0; color: #3d5a4d; }
-.activity-table { width: 100%; border-collapse: collapse; background: white; border: 1px solid #b9c9c1; border-radius: .75rem; overflow: hidden; }
-.activity-table th, .activity-table td { padding: .6rem .8rem; border-bottom: 1px solid #dce7e1; text-align: left; font-size: .9rem; }
-.activity-table th { background: #eef5f1; }
+.page-help { margin: 0; color: var(--mfd-color-text-secondary); }
+.activity-table { width: 100%; border-collapse: collapse; background: var(--mfd-color-bg-surface); border: 1px solid var(--mfd-color-border-default); border-radius: .75rem; overflow: hidden; }
+.activity-table th, .activity-table td { padding: .6rem .8rem; border-bottom: 1px solid var(--mfd-color-border-subtle); text-align: left; font-size: .9rem; }
+.activity-table th { background: var(--mfd-color-bg-surface-sunken); }
 .activity-table code { font-size: .8rem; }
-.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
 </style>

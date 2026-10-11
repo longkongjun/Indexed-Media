@@ -78,12 +78,12 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.ai-session-panel { margin-top: auto; padding: .75rem .5rem .25rem; border-top: 1px solid #1c4937; display: grid; gap: .4rem; }
+.ai-session-panel { margin-top: auto; padding: .75rem .5rem .25rem; border-top: 1px solid var(--mfd-color-bg-inverse-hover); display: grid; gap: .4rem; }
 .ai-session-panel h2 { margin: 0; font-size: .8rem; font-weight: 650; letter-spacing: .02em; }
 .panel-hint { margin: 0; font-size: .75rem; opacity: .8; }
 .session-list { margin: 0; padding: 0; list-style: none; display: grid; gap: .25rem; }
 .session-item { display: flex; width: 100%; justify-content: space-between; align-items: baseline; gap: .5rem; padding: .3rem .4rem; border: 0; border-radius: .45rem; background: transparent; color: inherit; font: inherit; font-size: .78rem; text-align: left; cursor: pointer; }
-.session-item:hover, .session-item:focus-visible { background: #1c4937; outline: none; }
+.session-item:hover, .session-item:focus-visible { background: var(--mfd-color-bg-inverse-hover); outline: none; }
 .session-item--plain { cursor: default; }
 .session-type { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .session-meta { flex: none; opacity: .7; font-size: .7rem; }

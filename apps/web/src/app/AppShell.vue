@@ -1,9 +1,9 @@
 <script setup lang="ts">
 /**
- * 已认证的响应式应用外壳，提供主导航、账户身份信息和退出登录功能。
+ * 已认证的响应式应用外壳，提供主导航、账户身份信息、外观偏好和退出登录功能。
  *
  * 组件没有 props、发出事件或暴露的实例方法。它读取会话 store，在本地切换账户面板；退出登录会清除会话状态
- * 并导航到登录页。
+ * 并导航到登录页。外观偏好经 app/theme 控制器落 data-theme/data-skin 属性与本地记忆。
  */
 import { computed, inject, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
@@ -12,6 +12,7 @@ import { identityClientKey } from "./client";
 import { useMediaFlowClient } from "../components/injectedClient";
 import { useSessionStore } from "./session";
 import { useJellyfin } from "../features/jellyfin/useJellyfin";
+import { applySkinChoice, applyThemeChoice, readSkinChoice, readThemeChoice, type SkinChoice, type ThemeChoice } from "./theme";
 
 const router = useRouter();
 const client = inject(identityClientKey, null);
@@ -27,6 +28,29 @@ const jellyfinHealthLabel = computed(() => {
   if (health === "degraded") return "待复检";
   return "未配置";
 });
+
+const themeChoice = ref<ThemeChoice>(readThemeChoice());
+const skinChoice = ref<SkinChoice>(readSkinChoice());
+const themeChoices: ReadonlyArray<{ value: ThemeChoice; label: string }> = [
+  { value: "system", label: "跟随系统" },
+  { value: "light", label: "浅色" },
+  { value: "dark", label: "暗色" },
+];
+const skinChoices: ReadonlyArray<{ value: SkinChoice; label: string }> = [
+  { value: "evergreen", label: "常青" },
+  { value: "aurora", label: "极光" },
+  { value: "sepia", label: "胶片" },
+];
+
+function chooseTheme(value: ThemeChoice): void {
+  themeChoice.value = value;
+  applyThemeChoice(value);
+}
+
+function chooseSkin(value: SkinChoice): void {
+  skinChoice.value = value;
+  applySkinChoice(value);
+}
 
 async function logout(): Promise<void> {
   await session.logout(router, client?.deleteSession.bind(client));
@@ -75,6 +99,33 @@ onMounted(() => {
             data-jellyfin-home-link
           >打开 Jellyfin 首页</a>
         </p>
+        <fieldset class="appearance-field" data-appearance>
+          <legend>外观</legend>
+          <div class="appearance-group" role="radiogroup" aria-label="主题">
+            <label v-for="choice in themeChoices" :key="choice.value" class="appearance-option">
+              <input
+                type="radio"
+                name="theme-choice"
+                :value="choice.value"
+                :checked="themeChoice === choice.value"
+                @change="chooseTheme(choice.value)"
+              />
+              <span>{{ choice.label }}</span>
+            </label>
+          </div>
+          <div class="appearance-group" role="radiogroup" aria-label="皮肤">
+            <label v-for="choice in skinChoices" :key="choice.value" class="appearance-option">
+              <input
+                type="radio"
+                name="skin-choice"
+                :value="choice.value"
+                :checked="skinChoice === choice.value"
+                @change="chooseSkin(choice.value)"
+              />
+              <span>{{ choice.label }}</span>
+            </label>
+          </div>
+        </fieldset>
         <button type="button" @click="logout">退出登录</button>
       </section>
       <RouterView />
@@ -92,25 +143,32 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.app-shell { min-height: 100vh; background: #f4f7f5; color: #12231c; }
-.sidebar { position: fixed; inset: 0 auto 0 0; width: 15rem; box-sizing: border-box; padding: 1.5rem; background: #10251d; color: white; }
-.brand { display: block; margin-bottom: 2rem; color: white; font-size: 1.25rem; font-weight: 750; text-decoration: none; }
+.app-shell { min-height: 100vh; background: var(--mfd-color-bg-canvas); color: var(--mfd-color-text-primary); }
+.sidebar { position: fixed; inset: 0 auto 0 0; width: 15rem; box-sizing: border-box; padding: 1.5rem; background: var(--mfd-color-bg-inverse); color: var(--mfd-color-text-inverse); }
+.brand { display: block; margin-bottom: 2rem; color: var(--mfd-color-text-inverse); font-size: 1.25rem; font-weight: 750; text-decoration: none; }
 nav { display: flex; gap: .5rem; }
 .sidebar nav { flex-direction: column; }
 nav a, nav button { min-height: 2.75rem; box-sizing: border-box; padding: .75rem 1rem; border: 0; border-radius: .6rem; background: transparent; color: inherit; font: inherit; text-align: left; text-decoration: none; }
-nav a:hover, nav a:focus-visible, nav button:hover, nav button:focus-visible, nav a.router-link-active { outline: 3px solid #7de0af; outline-offset: 1px; background: #1c4937; }
+nav a:hover, nav a:focus-visible, nav button:hover, nav button:focus-visible, nav a.router-link-active { outline: var(--mfd-stroke-focus-ring) solid var(--mfd-color-border-focus); outline-offset: 1px; background: var(--mfd-color-bg-inverse-hover); }
 .content { min-height: 100vh; margin-left: 15rem; box-sizing: border-box; padding: 2rem; }
-.account-panel { margin-bottom: 1.5rem; padding: 1rem; border: 1px solid #b9c9c1; border-radius: .75rem; background: white; }
+.account-panel { margin-bottom: 1.5rem; padding: 1rem; border: 1px solid var(--mfd-color-border-default); border-radius: var(--mfd-radius-lg); background: var(--mfd-color-bg-surface); }
 .account-panel h2 { margin-top: 0; }
-.account-panel button { min-height: 2.75rem; padding: .65rem 1rem; border: 1px solid #8b2a2a; border-radius: .5rem; background: white; color: #7b2020; }
-.account-panel button:focus-visible { outline: 3px solid #0b7a50; outline-offset: 2px; }
+.account-panel button { min-height: 2.75rem; padding: .65rem 1rem; border: 1px solid var(--mfd-color-action-danger); border-radius: .5rem; background: var(--mfd-color-action-secondary-bg); color: var(--mfd-color-action-danger); }
+.account-panel button:focus-visible { outline: 3px solid var(--mfd-color-border-focus); outline-offset: 2px; }
+.appearance-field { margin: 0; padding: 0; border: 0; display: grid; gap: .5rem; }
+.appearance-field legend { padding: 0; font-weight: 700; }
+.appearance-group { display: flex; flex-wrap: wrap; gap: .5rem; }
+.appearance-option { display: inline-flex; align-items: center; gap: .4rem; min-height: 2.75rem; box-sizing: border-box; padding: .3rem .7rem; border: 1px solid var(--mfd-color-border-default); border-radius: .5rem; background: var(--mfd-color-action-secondary-bg); cursor: pointer; }
+.appearance-option:has(input:checked) { border-color: var(--mfd-color-action-primary); background: var(--mfd-color-bg-selected); font-weight: 650; }
+.appearance-option input { min-height: 0; width: auto; margin: 0; accent-color: var(--mfd-color-action-primary); }
+.appearance-option:focus-within { outline: 3px solid var(--mfd-color-border-focus); outline-offset: 2px; }
 .mobile-nav { display: none; }
 @media (max-width: 48rem) {
   .sidebar { position: static; width: auto; height: 4rem; padding: 1rem; }
   .sidebar nav { display: none; }
   .brand { margin: 0; }
   .content { min-height: calc(100vh - 8.5rem); margin-left: 0; padding: 1.25rem 1rem 5.5rem; }
-  .mobile-nav { position: fixed; z-index: 5; inset: auto 0 0; display: grid; grid-template-columns: repeat(7, 1fr); padding: .5rem max(.5rem, env(safe-area-inset-right)) max(.5rem, env(safe-area-inset-bottom)) max(.5rem, env(safe-area-inset-left)); background: #10251d; color: white; }
+  .mobile-nav { position: fixed; z-index: 5; inset: auto 0 0; display: grid; grid-template-columns: repeat(7, 1fr); padding: .5rem max(.5rem, env(safe-area-inset-right)) max(.5rem, env(safe-area-inset-bottom)) max(.5rem, env(safe-area-inset-left)); background: var(--mfd-color-bg-inverse); color: var(--mfd-color-text-inverse); }
   .mobile-nav a, .mobile-nav button { min-width: 0; padding: .5rem .2rem; font-size: .75rem; line-height: 1.2; text-align: center; white-space: nowrap; }
 }
 </style>

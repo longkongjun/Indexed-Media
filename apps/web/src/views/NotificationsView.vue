@@ -90,18 +90,18 @@ onMounted(() => {
 
 <style scoped>
 .notifications-page { display: grid; gap: 1rem; }
-.page-help { margin: 0; color: #3d5a4d; }
+.page-help { margin: 0; color: var(--mfd-color-text-secondary); }
 .toolbar { display: flex; gap: 1rem; align-items: center; }
-.toolbar button { padding: .45rem .8rem; border: 1px solid #2c5a46; border-radius: .5rem; background: white; color: #12231c; }
+.toolbar button { padding: .45rem .8rem; border: 1px solid var(--mfd-color-border-default); border-radius: .5rem; background: var(--mfd-color-action-secondary-bg); color: var(--mfd-color-text-primary); }
 .toolbar button:disabled { opacity: .5; }
 .notification-list { margin: 0; padding: 0; list-style: none; display: grid; gap: .6rem; }
-.notification-list li { display: flex; justify-content: space-between; gap: 1rem; padding: .8rem 1rem; border: 1px solid #b9c9c1; border-radius: .75rem; background: white; }
-.notification-list li.unread { border-color: #2c7a55; box-shadow: inset 3px 0 0 #2c7a55; }
-.kind { display: inline-block; margin-right: .5rem; padding: .1rem .5rem; border-radius: .4rem; background: #eef5f1; font-size: .78rem; }
+.notification-list li { display: flex; justify-content: space-between; gap: 1rem; padding: .8rem 1rem; border: 1px solid var(--mfd-color-border-default); border-radius: var(--mfd-radius-lg); background: var(--mfd-color-bg-surface); }
+.notification-list li.unread { border-color: var(--mfd-color-action-primary); box-shadow: inset 3px 0 0 var(--mfd-color-action-primary); }
+.kind { display: inline-block; margin-right: .5rem; padding: .1rem .5rem; border-radius: .4rem; background: var(--mfd-color-bg-surface-sunken); font-size: .78rem; }
 .title { font-weight: 650; }
-.body { margin: .3rem 0; color: #3d5a4d; font-size: .9rem; }
-time { color: #6b8078; font-size: .78rem; }
+.body { margin: .3rem 0; color: var(--mfd-color-text-secondary); font-size: .9rem; }
+time { color: var(--mfd-color-text-muted); font-size: .78rem; }
 .notification-actions { display: flex; flex-direction: column; gap: .4rem; align-items: flex-end; }
-.notification-actions button { padding: .3rem .7rem; border: 1px solid #2c5a46; border-radius: .45rem; background: white; font-size: .82rem; }
-.link-button { color: #0b6a45; }
+.notification-actions button { padding: .3rem .7rem; border: 1px solid var(--mfd-color-border-default); border-radius: .45rem; background: var(--mfd-color-action-secondary-bg); font-size: .82rem; }
+.link-button { color: var(--mfd-color-text-link); }
 </style>

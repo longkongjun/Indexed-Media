@@ -3,8 +3,25 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#10251d" />
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f4f7f5" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0c1310" />
     <title>MediaFlow</title>
+    <script>
+      // 防闪：首帧前按本地记忆设置主题与皮肤（theme-switching 模式 §1；皮肤见设计系统 docs/skins.md）。
+      (function () {
+        var saved = null, skin = null;
+        try {
+          saved = localStorage.getItem("mfd-theme");
+          skin = localStorage.getItem("mfd-skin");
+        } catch (e) {}
+        if (saved === "light" || saved === "dark") {
+          document.documentElement.dataset.theme = saved;
+        }
+        if (skin === "aurora" || skin === "sepia") {
+          document.documentElement.dataset.skin = skin;
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="app"></div>
