@@ -22,6 +22,8 @@ import kotlinx.coroutines.delay
  *
  * 用法：`just client-fixture-server`（默认 0.0.0.0:8642）。
  * 凭据：任意非空用户名 + 密码 `fixture`（其余 401）。
+ * 设备通道（第二批）：enrollment 接受任意 8 位配对码或密码 `fixture`，返回固定
+ * `mfdev_` 样例令牌；轮换/自吊销恒成功。
  */
 fun main() {
     val port = System.getenv("FIXTURE_PORT")?.toIntOrNull() ?: 8642
@@ -51,6 +53,29 @@ fun main() {
                         HttpStatusCode.Unauthorized,
                     )
                 }
+            }
+            post("/api/v1/devices/enrollment") {
+                // 设备 enrollment（第二批）：配对码模式接受任意非空 8 位码；
+                // 凭据模式与其他端点同口径（密码 fixture）。令牌为固定样例值。
+                val body = runCatching { call.receiveText() }.getOrNull() ?: ""
+                val pairingMode = body.contains("pairing_code")
+                val emptyCode = body.contains(""""pairing_code":""") || body.contains(""""pairing_code":null""")
+                val ok = if (pairingMode) !emptyCode else body.contains("fixture")
+                if (ok) {
+                    call.respondText(fixture("device-enrollment"), ContentType.Application.Json, HttpStatusCode.Created)
+                } else {
+                    call.respondText(
+                        """{"error":{"code":"auth.invalid_credentials","message":"bad credentials","request_id":"fx-2"}}""",
+                        ContentType.Application.Json,
+                        HttpStatusCode.Unauthorized,
+                    )
+                }
+            }
+            post("/api/v1/devices/current/token-rotation") {
+                call.respondText(fixture("device-token-rotation"), ContentType.Application.Json)
+            }
+            delete("/api/v1/devices/{id}") {
+                call.respondText("", status = HttpStatusCode.NoContent)
             }
             get("/api/v1/session") {
                 call.respondText(fixture("identity-session"), ContentType.Application.Json)
