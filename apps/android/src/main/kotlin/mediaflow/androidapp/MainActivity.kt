@@ -36,10 +36,12 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.launch
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 
@@ -57,11 +59,19 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun AppRoot(container: SdkContainer) {
     val factory = remember { VmFactory(container) }
+    val scope = rememberCoroutineScope()
     val login: LoginViewModel = viewModel(factory = factory)
     val loggedIn by login.loggedIn.collectAsState()
     var backStack by remember { mutableStateOf(listOf<Screen>()) }
 
     LaunchedEffect(Unit) { container.warmUp() }
+    // 任意屏 401：凭据已被容器清空，统一回登录页。
+    LaunchedEffect(Unit) {
+        container.sessionExpired.collect {
+            login.forceLoggedOut()
+            backStack = listOf()
+        }
+    }
 
     MaterialTheme {
         if (!loggedIn) {
@@ -77,6 +87,11 @@ fun AppRoot(container: SdkContainer) {
                     navigationIcon = {
                         if (backStack.isNotEmpty()) {
                             OutlinedButton(onClick = { backStack = backStack.dropLast(1) }) { Text("返回") }
+                        }
+                    },
+                    actions = {
+                        if (backStack.isEmpty()) {
+                            OutlinedButton(onClick = { scope.launch { container.authRepository.logout() } ; login.forceLoggedOut() }) { Text("退出") }
                         }
                     },
                 )
@@ -136,10 +151,13 @@ private fun TabBar(select: (Screen) -> Unit) {
 @Composable
 fun LoginScreen(vm: LoginViewModel) {
     var baseUrl by remember { mutableStateOf("http://10.0.2.2:8642") }
+    var pairing by remember { mutableStateOf(true) }
+    var code by remember { mutableStateOf("") }
     var name by remember { mutableStateOf("admin") }
     var password by remember { mutableStateOf("") }
     val busy by vm.busy.collectAsState()
     val error by vm.error.collectAsState()
+    val deviceName = remember { android.os.Build.MODEL }
     Column(
         Modifier
             .fillMaxSize()
@@ -148,15 +166,32 @@ fun LoginScreen(vm: LoginViewModel) {
     ) {
         Text("MediaFlow", style = MaterialTheme.typography.headlineMedium)
         OutlinedTextField(value = baseUrl, onValueChange = { baseUrl = it }, label = { Text("服务器地址") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("管理员") }, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text("密码") }, modifier = Modifier.fillMaxWidth())
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(selected = pairing, onClick = { pairing = true }, label = { Text("配对码") })
+            FilterChip(selected = !pairing, onClick = { pairing = false }, label = { Text("管理员密码") })
+        }
+        Text("设备名：$deviceName", style = MaterialTheme.typography.bodySmall)
+        if (pairing) {
+            OutlinedTextField(value = code, onValueChange = { code = it }, label = { Text("8 位配对码（Web 管理页签发）") }, modifier = Modifier.fillMaxWidth())
+        } else {
+            OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("管理员") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text("密码") }, modifier = Modifier.fillMaxWidth())
+        }
         error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         Button(
-            onClick = { vm.login(baseUrl, name, password) },
-            enabled = !busy && baseUrl.isNotBlank() && name.isNotBlank() && password.isNotBlank(),
+            onClick = {
+                if (pairing) {
+                    vm.pair(baseUrl, code.trim(), deviceName)
+                } else {
+                    vm.login(baseUrl, name, password, deviceName)
+                }
+            },
+            enabled =
+                !busy && baseUrl.isNotBlank() &&
+                    if (pairing) code.isNotBlank() else (name.isNotBlank() && password.isNotBlank()),
             modifier = Modifier.fillMaxWidth(),
         ) {
-            if (busy) CircularProgressIndicator(Modifier.height(20.dp)) else Text("登录")
+            if (busy) CircularProgressIndicator(Modifier.height(20.dp)) else Text(if (pairing) "配对并登录" else "登录")
         }
     }
 }

@@ -2,13 +2,12 @@ package mediaflow.androidapp
 
 import android.content.Context
 import app.cash.sqldelight.driver.android.AndroidSqliteDriver
-import java.io.File
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.serialization.json.Json
 import mediaflow.api.apis.DefaultApi
 import mediaflow.client.cache.MediaFlowCache
 import mediaflow.client.core.auth.AuthRepository
-import mediaflow.client.core.auth.DeviceAuthStore
-import mediaflow.client.core.auth.StoredCredentials
+import mediaflow.client.core.auth.KeystoreDeviceAuthStore
 import mediaflow.client.core.cache.MediaCache
 import mediaflow.client.core.events.TaskEventClient
 import mediaflow.client.core.media.MediaRepository
@@ -21,10 +20,11 @@ import mediaflow.client.core.tasks.TaskRepository
 
 /**
  * App 级 SDK 组装点：仓库/传输/SSE/缓存的唯一实例来源。
- * base URL 可在登录页配置（fixture server 或局域 NAS）。
+ * base URL 可在登录页配置（fixture server 或局域 NAS）；凭据经 Android Keystore
+ * 加密落盘（第二批），任意屏 401 经 [sessionExpired] 统一回登录页。
  */
 class SdkContainer(context: Context) {
-    val authStore: DeviceAuthStore = FileDeviceAuthStore(context.filesDir.resolve("session.json"))
+    val authStore = KeystoreDeviceAuthStore(context)
     val authCache: SessionAuthCache = SessionAuthCache()
     val json: Json = MediaFlowApiFactory.defaultJson()
 
@@ -46,6 +46,17 @@ class SdkContainer(context: Context) {
 
     val mediaCache: MediaCache get() = cache
 
+    /** 会话/令牌失效信号（任意屏 401 → 清凭据 → 根路由回登录页）。 */
+    val sessionExpired = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
+    /** 失败结果的统一 401 处理：凭据失效时清本地并发信号；其余失败原样返回。 */
+    suspend fun <T> handleAuthFailure(result: mediaflow.client.core.SdkResult<T>) {
+        if (result is mediaflow.client.core.SdkResult.Failure && result.error.isCredentialExpired()) {
+            authRepository.discardLocalCredentials()
+            sessionExpired.emit(Unit)
+        }
+    }
+
     /** 登录前/切换服务器时重建传输层；幂等。 */
     fun configure(baseUrl: String) {
         val normalized = baseUrl.trimEnd('/')
@@ -55,7 +66,7 @@ class SdkContainer(context: Context) {
         authRepository = AuthRepository(client, authStore, authCache, json)
         mediaRepository = MediaRepository(apiHolder!!, json)
         reviewRepository = ReviewRepository(apiHolder!!, client, authCache, json)
-        taskRepository = TaskRepository(apiHolder!!, authCache, json)
+        taskRepository = TaskRepository(apiHolder!!, client, authCache, json)
         playbackRepository = PlaybackRepository(apiHolder!!, json)
         eventClient =
             TaskEventClient(
@@ -70,22 +81,5 @@ class SdkContainer(context: Context) {
 
     suspend fun warmUp() {
         authCache.load(authStore)
-    }
-}
-
-/** 文件落地凭据存储：第一批直存 JSON（本地文件私有目录）；Keystore 加密随第二批设备认证接入。 */
-class FileDeviceAuthStore(private val file: File) : DeviceAuthStore {
-    private val json = Json { ignoreUnknownKeys = true }
-
-    override suspend fun read(): StoredCredentials? =
-        runCatching { file.takeIf { it.exists() }?.readText()?.let { json.decodeFromString(StoredCredentials.serializer(), it) } }.getOrNull()
-
-    override suspend fun save(credentials: StoredCredentials) {
-        file.parentFile?.mkdirs()
-        file.writeText(json.encodeToString(StoredCredentials.serializer(), credentials))
-    }
-
-    override suspend fun clear() {
-        file.delete()
     }
 }

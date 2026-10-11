@@ -19,19 +19,34 @@ import mediaflow.client.core.events.TaskEventEnvelope
 import mediaflow.client.core.paging.CursorPager
 import mediaflow.client.core.paging.PageState
 
-/** 登录屏状态机。 */
+/** 登录屏状态机：双模式 enrollment（配对码 / 管理员凭据），统一产设备令牌。 */
 class LoginViewModel(private val container: SdkContainer) : ViewModel() {
     val busy = MutableStateFlow(false)
     val error = MutableStateFlow<String?>(null)
     val loggedIn = MutableStateFlow(false)
 
-    fun login(baseUrl: String, name: String, password: String) {
+    /** 配对码模式：Web 管理面签发的一次性码 → 设备令牌。 */
+    fun pair(baseUrl: String, pairingCode: String, deviceName: String) {
+        enroll(baseUrl) { container.authRepository.enrollWithPairingCode(pairingCode, deviceName) }
+    }
+
+    /** 凭据模式：管理员密码直接 enrollment（走登录限流）→ 设备令牌。 */
+    fun login(baseUrl: String, name: String, password: String, deviceName: String) {
+        enroll(baseUrl) { container.authRepository.enrollWithCredentials(name, password, deviceName) }
+    }
+
+    /** 任意屏 401 后的统一出口：清凭据回登录页。 */
+    fun forceLoggedOut() {
+        loggedIn.value = false
+    }
+
+    private fun enroll(baseUrl: String, call: suspend () -> SdkResult<mediaflow.client.core.auth.StoredCredentials>) {
         if (busy.value) return
         busy.value = true
         error.value = null
         viewModelScope.launch {
             container.configure(baseUrl)
-            when (val result = container.authRepository.login(name, password)) {
+            when (val result = call()) {
                 is SdkResult.Success -> loggedIn.value = true
                 is SdkResult.Failure -> error.value = PageVisual.readableMessage(result.error)
             }
@@ -120,13 +135,15 @@ class DetailViewModel(private val container: SdkContainer) : ViewModel() {
                             playbackAvailable = url != null,
                         )
                 }
-                is SdkResult.Failure ->
+                is SdkResult.Failure -> {
+                    container.handleAuthFailure(result)
                     ui.value =
                         ui.value.copy(
                             loading = false,
                             error = PageVisual.readableMessage(result.error),
                             offline = result.error.isOffline(),
                         )
+                }
             }
         }
     }
@@ -186,7 +203,10 @@ class ConfirmViewModel(private val container: SdkContainer) : ViewModel() {
         viewModelScope.launch {
             when (val result = container.reviewRepository.reviewCase(reviewCaseId)) {
                 is SdkResult.Success -> ui.value = Ui(loading = false, case = result.value)
-                is SdkResult.Failure -> ui.value = Ui(loading = false, error = PageVisual.readableMessage(result.error))
+                is SdkResult.Failure -> {
+                    container.handleAuthFailure(result)
+                    ui.value = Ui(loading = false, error = PageVisual.readableMessage(result.error))
+                }
             }
         }
     }
@@ -200,8 +220,10 @@ class ConfirmViewModel(private val container: SdkContainer) : ViewModel() {
             ui.value =
                 when (result) {
                     is SdkResult.Success -> ui.value.copy(searching = false, candidates = result.value)
-                    is SdkResult.Failure ->
+                    is SdkResult.Failure -> {
+                        container.handleAuthFailure(result)
                         ui.value.copy(searching = false, error = PageVisual.readableMessage(result.error))
+                    }
                 }
         }
     }
@@ -260,8 +282,10 @@ class ConfirmViewModel(private val container: SdkContainer) : ViewModel() {
             ui.value =
                 when (result) {
                     is SdkResult.Success -> ui.value.copy(submitting = false, submitted = result.value)
-                    is SdkResult.Failure ->
+                    is SdkResult.Failure -> {
+                        container.handleAuthFailure(result)
                         ui.value.copy(submitting = false, error = PageVisual.readableMessage(result.error))
+                    }
                 }
         }
     }
@@ -306,7 +330,10 @@ class TasksViewModel(private val container: SdkContainer) : ViewModel() {
         viewModelScope.launch {
             when (val result = container.taskRepository.cancel(taskId, "android-cancel-${UUID.randomUUID()}")) {
                 is SdkResult.Success -> pager?.reload()
-                is SdkResult.Failure -> error.value = PageVisual.readableMessage(result.error)
+                is SdkResult.Failure -> {
+                    container.handleAuthFailure(result)
+                    error.value = PageVisual.readableMessage(result.error)
+                }
             }
             cancelling.value = cancelling.value - taskId
         }
