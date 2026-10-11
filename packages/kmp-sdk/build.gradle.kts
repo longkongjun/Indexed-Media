@@ -104,6 +104,9 @@ val openApiGenerate =
         inputs.file(contract)
         outputs.dir(output)
         // 参数经 provider 延迟求值，配置缓存下不序列化脚本状态。
+        // typeMappings integer=Long：契约的 integer 上限是 JS 安全整数（2^53）且无
+        // format 标注，默认 Int 会溢出（fixtures 中 size_bytes=4294967296 实测抓到）；
+        // 全量 Long 换取无溢出（契约值域全部可容纳）。
         argumentProviders.add(
             CommandLineArgumentProvider {
                 listOf(
@@ -115,6 +118,8 @@ val openApiGenerate =
                     "-o",
                     output.get().asFile.absolutePath,
                     "--library=multiplatform",
+                    "--type-mappings",
+                    "integer=kotlin.Long",
                     "--additional-properties=" +
                         listOf(
                             "packageName=mediaflow.api",
