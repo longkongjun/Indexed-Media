@@ -45,6 +45,9 @@
   --mfd-icon-size-md: 1.25rem;
   --mfd-icon-size-lg: 1.5rem;
   --mfd-icon-size-touch-min: 2.75rem;
+  --mfd-stroke-hair: 1px;
+  --mfd-stroke-focus-ring: 3px;
+  --mfd-stroke-strong: 2px;
   --mfd-z-nav: 100;
   --mfd-z-overlay: 400;
   --mfd-z-modal: 500;
