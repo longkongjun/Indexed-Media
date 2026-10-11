@@ -501,6 +501,14 @@ check:
     @just test-rust-doc
     @just check-rust-deps
 
+# 一键自检：环境探测 + 全量门禁 + 静态部署边界（实机验收前的单命令确认）。
+selfcheck:
+    @./tools/selfcheck/selfcheck.sh
+
+# 一键自检（离线模式：跳过 cargo-deny advisory 在线拉取）。
+selfcheck-offline:
+    @./tools/selfcheck/selfcheck.sh --offline
+
 # 本地一键全量门禁聚合（与远端 CI 同构）：check 全量 + 容器/Compose/NAS 静态门禁。
 check-all:
     @just check
