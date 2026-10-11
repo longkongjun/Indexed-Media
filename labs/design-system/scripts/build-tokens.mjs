@@ -71,6 +71,8 @@ lines.push("");
 
 mkdirSync(outDir, { recursive: true });
 writeFileSync(outPath, lines.join("\n"), "utf8");
+// 站点自包含：tokens.json 副本供风格指南运行时读取（服务目录可为 site/ 本身）
+writeFileSync(join(outDir, "tokens.json"), readFileSync(tokensPath, "utf8"), "utf8");
 
 const count = { invariant: invariant.length, themed: lightColors.length };
 console.log(`tokens v${version}: ${count.invariant} invariant + ${count.themed} dual-theme tokens -> ${outPath}`);

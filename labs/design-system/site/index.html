@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MediaFlow Design · 风格指南</title>
+    <script>
+      // 防闪：首帧前按本地记忆设置主题（theme-switching 模式 §1）
+      (function () {
+        var saved = null;
+        try { saved = localStorage.getItem("mfd-theme"); } catch (e) {}
+        if (saved === "light" || saved === "dark") {
+          document.documentElement.dataset.theme = saved;
+        }
+      })();
+    </script>
+    <link rel="stylesheet" href="assets/tokens.css" />
+    <link rel="stylesheet" href="assets/site.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">跳到主内容</a>
+    <div class="shell">
+      <aside class="sidebar" aria-label="风格指南导航">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">◆</span>
+          <span class="brand-name">MediaFlow Design</span>
+        </div>
+        <nav class="side-nav" id="side-nav" aria-label="章节"></nav>
+        <div class="theme-box" role="group" aria-label="主题选择">
+          <span class="theme-box-label">主题</span>
+          <div class="seg" role="radiogroup" aria-label="外观">
+            <button type="button" class="seg-btn" data-theme-choice="system" role="radio" aria-checked="true">跟随系统</button>
+            <button type="button" class="seg-btn" data-theme-choice="light" role="radio" aria-checked="false">浅色</button>
+            <button type="button" class="seg-btn" data-theme-choice="dark" role="radio" aria-checked="false">暗色</button>
+          </div>
+        </div>
+      </aside>
+      <main class="main" id="main" tabindex="-1"></main>
+    </div>
+    <script type="module" src="src/app.mjs"></script>
+  </body>
+</html>

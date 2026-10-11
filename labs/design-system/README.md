@@ -22,17 +22,28 @@ labs/design-system/
 └── site/              风格指南静态站（D4 起；python3 -m http.server 预览）
 ```
 
-## 运行（D4 站点就位后）
+## 运行
 
 ```bash
+# 风格指南站（D4 已就位）
 python3 -m http.server 4174 --directory labs/design-system/site
-# 生成 tokens 产物（D1 起）
+# 浏览器打开 http://127.0.0.1:4174/ —— 侧栏底部三态切换浅/暗主题
+
+# 生成 tokens 产物（tokens.css + 站点自包含 tokens.json 副本）
 node labs/design-system/scripts/build-tokens.mjs
-# 对比度检查（D1 起）
+# 双主题对比度验证（WCAG 2.2 AA）
 node labs/design-system/scripts/check-contrast.mjs
+# 站点自动检查（语法/import/资源/var 引用/无字面色）
+node labs/design-system/scripts/check-site.mjs
 ```
+
+## 浏览器自检记录（2026-10-11）
+
+- 自动检查全过 + 本地服务全资源 200；三视图（tokens/components/patterns）渲染齐全（组件页 12 区段实测）。
+- 交互实测：六态切换（error 态切换成功）、主题三态（data-theme=dark、localStorage 持久化、aria-checked 联动）。
+- 截图存档：`docs/screenshots/components-dark.png`（组件页暗色）、`docs/screenshots/patterns-light.png`（模式页浅色）。
 
 ## 状态
 
-- v1.0.0 tokens —— D1 完成（2026-10-11）：99 个语义 token（46 不变 + 53 双主题）；生成链 `scripts/build-tokens.mjs`（JSON → `site/assets/tokens.css`，双主题变量组 + 跟随系统媒体查询）；对比度验证 `scripts/check-contrast.mjs` 双主题 62 必检对全过（WCAG 2.2 AA）；三端映射表 `docs/mappings/`；暗色媒体处理原则 `docs/dark-media-principles.md`。
-- v0.1 —— D0 骨架（2026-10-11）：目录规划与本 README；设计语言提案见 StudySpace 任务目录 `workflow-state/mediaflow/dev/ui-design/audit.md` §6。
+- v1.0.0 风格指南站 —— D4 完成（2026-10-11）：零依赖静态站（原生 ES Modules + fetch 本地 tokens.json）；三视图（tokens 数据驱动展示 / 12 组件 demo×状态矩阵 / 交互模式演示含可切换六态与审批链故事板）；浅/暗/跟随系统三态主题切换（防闪脚本 + localStorage）；自动检查 `scripts/check-site.mjs`。
+- v1.0.0 tokens（D1）与组件规格（D2）、模式集（D3）见 manifest 与 docs/。
