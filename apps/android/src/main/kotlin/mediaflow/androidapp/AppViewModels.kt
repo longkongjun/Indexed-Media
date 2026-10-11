@@ -25,6 +25,9 @@ class LoginViewModel(private val container: SdkContainer) : ViewModel() {
     val error = MutableStateFlow<String?>(null)
     val loggedIn = MutableStateFlow(false)
 
+    /** 登录页地址预填：上次成功登录的地址（无则编译期默认值）。 */
+    val initialBaseUrl: String get() = container.lastKnownBaseUrl() ?: "http://10.0.2.2:8642"
+
     /** 配对码模式：Web 管理面签发的一次性码 → 设备令牌。 */
     fun pair(baseUrl: String, pairingCode: String, deviceName: String) {
         enroll(baseUrl) { container.authRepository.enrollWithPairingCode(pairingCode, deviceName) }

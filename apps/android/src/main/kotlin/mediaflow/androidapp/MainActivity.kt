@@ -152,7 +152,7 @@ private fun TabBar(select: (Screen) -> Unit) {
 
 @Composable
 fun LoginScreen(vm: LoginViewModel) {
-    var baseUrl by remember { mutableStateOf("http://10.0.2.2:8642") }
+    var baseUrl by remember { mutableStateOf(vm.initialBaseUrl) }
     var pairing by remember { mutableStateOf(true) }
     var code by remember { mutableStateOf("") }
     var name by remember { mutableStateOf("admin") }

@@ -91,6 +91,9 @@ class SdkContainer(context: Context) {
         prefs.edit().putString("base-url", baseUrl.trimEnd('/')).apply()
     }
 
+    /** 上次成功登录的地址（401 登出回登录页时预填，避免退回编译期默认值）。 */
+    fun lastKnownBaseUrl(): String? = prefs.getString("base-url", null)
+
     /**
      * 冷启动恢复：Keystore 有凭据且上次登录地址在档则直接接线进入
      * （不做网络验证，首个请求自然校验；401 统一回登录页）。
