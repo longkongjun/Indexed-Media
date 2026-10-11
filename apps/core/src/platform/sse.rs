@@ -17,7 +17,9 @@ use crate::discovery::capability::{DeploymentRootSet, DeploymentRootsFingerprint
 use crate::identity::service::IdentityService;
 use crate::platform::db::Db;
 use crate::platform::outbox::{MAX_PUBLIC_EVENT_ID, OutboxNotifier, OutboxReader};
-use crate::platform::request_security::{SessionGuard, session_token, validate_same_origin};
+use crate::platform::request_security::{
+    SessionGuard, bearer_token, session_token, validate_same_origin,
+};
 use crate::shared::error::{AppError, ErrorCode};
 use crate::tasks::events::TaskEventEnvelope;
 
@@ -268,15 +270,34 @@ async fn events(
     headers: HeaderMap,
 ) -> Result<Response, AppError> {
     state.ensure_ready().await?;
-    SessionGuard::authenticate_without_sliding(&headers, &state.identity).await?;
+    let principal = SessionGuard::authenticate_without_sliding(&headers, &state.identity).await?;
     if let Err(error) = validate_same_origin(&headers, &state.config.public_origin) {
         state.identity.audit_denial("origin").await?;
         return Err(error);
     }
     let cursor = parse_last_event_id(&headers)?;
-    let raw_token = session_token(&headers)
-        .ok_or_else(|| AppError::new(ErrorCode::SessionExpired, "session cookie missing"))?
-        .to_owned();
+    // 重认证沿用认证时的通道：会话 Cookie 走会话校验，Bearer 走设备令牌校验；
+    // 两通道互不可替换，流中途吊销/过期都会终止流。
+    let credentials = if let Some(token) = session_token(&headers) {
+        StreamCredentials::Session(token.to_owned())
+    } else if let Some(token) = bearer_token(&headers) {
+        StreamCredentials::Device(token.to_owned())
+    } else {
+        return Err(AppError::new(
+            ErrorCode::SessionExpired,
+            "session cookie or device token missing",
+        ));
+    };
+    debug_assert!(matches!(
+        (&credentials, &principal.principal),
+        (
+            StreamCredentials::Session(_),
+            crate::identity::model::Principal::Session { .. }
+        ) | (
+            StreamCredentials::Device(_),
+            crate::identity::model::Principal::Device { .. }
+        )
+    ));
 
     // 在首次数据库检查前订阅。广播仅是唤醒提示；重放和实时投递始终从 SQLite 读取已提交的行。
     let receiver = state.notifier.subscribe();
@@ -284,7 +305,7 @@ async fn events(
         state.reader.clone(),
         receiver,
         state.identity.clone(),
-        raw_token,
+        credentials,
         cursor,
         state.options,
         state.observer.clone(),
@@ -330,11 +351,19 @@ fn invalid_cursor() -> AppError {
     )
 }
 
+/// SSE 流的周期重认证凭据：通道由建立连接时的凭据位置决定，重认证不可换通道。
+enum StreamCredentials {
+    /// 会话 Cookie 通道。
+    Session(String),
+    /// 设备令牌 Bearer 通道。
+    Device(String),
+}
+
 struct StreamState {
     reader: OutboxReader,
     receiver: watch::Receiver<u64>,
     identity: IdentityService,
-    raw_token: String,
+    credentials: StreamCredentials,
     cursor: Option<i64>,
     options: SseOptions,
     observer: SseObserver,
@@ -352,7 +381,7 @@ impl StreamState {
         reader: OutboxReader,
         receiver: watch::Receiver<u64>,
         identity: IdentityService,
-        raw_token: String,
+        credentials: StreamCredentials,
         cursor: Option<i64>,
         options: SseOptions,
         observer: SseObserver,
@@ -362,7 +391,7 @@ impl StreamState {
             reader,
             receiver,
             identity,
-            raw_token,
+            credentials,
             cursor,
             options,
             observer,
@@ -381,12 +410,17 @@ impl StreamState {
     }
 
     async fn revalidate_session(&mut self) -> bool {
-        if self
-            .identity
-            .authenticate_without_sliding(&self.raw_token)
-            .await
-            .is_err()
-        {
+        let still_valid = match &self.credentials {
+            StreamCredentials::Session(token) => self
+                .identity
+                .authenticate_without_sliding(token)
+                .await
+                .is_ok(),
+            StreamCredentials::Device(token) => {
+                self.identity.authenticate_device(token).await.is_ok()
+            }
+        };
+        if !still_valid {
             self.observer.report(SseFailureCode::SessionClosed);
             self.mark_terminal();
             return false;

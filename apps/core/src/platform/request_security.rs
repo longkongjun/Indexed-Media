@@ -11,53 +11,82 @@ use url::Url;
 
 /// 保存原始管理员会话令牌的安全仅主机 Cookie 名称。
 pub const SESSION_COOKIE_NAME: &str = "__Host-mediaflow_session";
-/// 用于管理员会话 Cookie 的无状态提取器/认证器。
+/// 设备令牌 `Authorization` 方案前缀；移动端凭据通道（M5 第二批）。
+pub const DEVICE_TOKEN_SCHEME: &str = "Bearer";
+/// 用于管理员会话 Cookie 与设备令牌的无状态提取器/认证器。
 pub struct SessionGuard;
 /// 用于绑定会话 CSRF 响应头的无状态常数时间验证器。
 pub struct CsrfGuard;
 
 impl SessionGuard {
-    /// 认证会话 Cookie 并滚动延长其空闲过期时间。
+    /// 认证请求凭据并滚动延长会话空闲过期时间。
+    ///
+    /// 通道由凭据位置决定：会话 Cookie 优先；无 Cookie 时回退到
+    /// `Authorization: Bearer` 设备令牌（无空闲语义，仅节流更新 `last_used_at`）。
+    /// 两通道不可互换——会话令牌放入 Authorization 头查设备表无果，反之亦然。
     ///
     /// # Errors
     ///
-    /// Cookie 缺失或会话无效时返回 [`ErrorCode::SessionExpired`]；数据库失败会按其 [`AppError`] 返回。
+    /// 两种凭据均缺失或对应凭据无效时返回 [`ErrorCode::SessionExpired`]；数据库失败会按其 [`AppError`] 返回。
     pub async fn authenticate(
         headers: &HeaderMap,
         service: &IdentityService,
     ) -> Result<AuthenticatedSession, AppError> {
-        let token = session_token(headers)
-            .ok_or_else(|| AppError::new(ErrorCode::SessionExpired, "session cookie missing"))?;
-        service.authenticate(token).await
+        if let Some(token) = session_token(headers) {
+            return service.authenticate(token).await;
+        }
+        if let Some(token) = bearer_token(headers) {
+            return service.authenticate_device(token).await;
+        }
+        Err(AppError::new(
+            ErrorCode::SessionExpired,
+            "session cookie or device token missing",
+        ))
     }
 
-    /// 认证会话 Cookie，但不改变空闲过期时间或最近使用时间。
+    /// 认证请求凭据，但不改变会话空闲过期时间或最近使用时间。
+    ///
+    /// 通道选择与 [`SessionGuard::authenticate`] 一致；设备通道本无空闲语义，
+    /// 差异仅体现在会话通道。
     ///
     /// # Errors
     ///
-    /// Cookie 缺失或会话无效时返回 [`ErrorCode::SessionExpired`]；数据库失败会按其 [`AppError`] 返回。
+    /// 两种凭据均缺失或对应凭据无效时返回 [`ErrorCode::SessionExpired`]；数据库失败会按其 [`AppError`] 返回。
     pub async fn authenticate_without_sliding(
         headers: &HeaderMap,
         service: &IdentityService,
     ) -> Result<AuthenticatedSession, AppError> {
-        let token = session_token(headers)
-            .ok_or_else(|| AppError::new(ErrorCode::SessionExpired, "session cookie missing"))?;
-        service.authenticate_without_sliding(token).await
+        if let Some(token) = session_token(headers) {
+            return service.authenticate_without_sliding(token).await;
+        }
+        if let Some(token) = bearer_token(headers) {
+            return service.authenticate_device(token).await;
+        }
+        Err(AppError::new(
+            ErrorCode::SessionExpired,
+            "session cookie or device token missing",
+        ))
     }
 }
 impl CsrfGuard {
     /// 以常数时间比较 `x-csrf-token` 与已认证会话摘要。
     ///
+    /// 设备令牌通道按"令牌即写证明"豁免 CSRF（显式附加的 Bearer 令牌按构造免疫
+    /// 环境凭据型 CSRF），主体无摘要时直接放行。
+    ///
     /// # Errors
     ///
-    /// 响应头缺失、非文本或不匹配时返回 [`ErrorCode::CsrfInvalid`]。
+    /// 会话通道下响应头缺失、非文本或不匹配时返回 [`ErrorCode::CsrfInvalid`]。
     pub fn validate(headers: &HeaderMap, session: &AuthenticatedSession) -> Result<(), AppError> {
+        let Some(expected) = session.csrf_sha256 else {
+            return Ok(());
+        };
         let supplied = headers
             .get("x-csrf-token")
             .and_then(|value| value.to_str().ok())
             .ok_or_else(|| AppError::new(ErrorCode::CsrfInvalid, "csrf header missing"))?;
         if random::sha256(supplied.as_bytes())
-            .ct_eq(&session.csrf_sha256)
+            .ct_eq(&expected)
             .unwrap_u8()
             == 1
         {
@@ -75,10 +104,17 @@ impl CsrfGuard {
 /// Origin 组件按协议、主机和有效端口比较。若存在 `Sec-Fetch-Site`，其必须为 `same-origin`；
 /// 否则需要 Origin 或 Referer 证明。
 ///
+/// 携带 `Authorization: Bearer` 头的请求直接放行：浏览器跨站请求无法附加自定义
+/// Authorization 头（触发 CORS 预检且非同源不通过），携带该头的请求按构造不可能是
+/// cookie 环境凭据型 CSRF——即"设备令牌即写证明"豁免（M5 第二批）。
+///
 /// # Errors
 ///
 /// 证明响应头缺失、格式错误、不透明（`null`）、跨域或互相矛盾时返回 [`ErrorCode::OriginUntrusted`]。
 pub fn validate_same_origin(headers: &HeaderMap, expected: &Url) -> Result<(), AppError> {
+    if bearer_token(headers).is_some() {
+        return Ok(());
+    }
     if let Some(supplied) = headers
         .get(header::ORIGIN)
         .and_then(|value| value.to_str().ok())
@@ -153,6 +189,15 @@ pub(crate) fn session_token(headers: &HeaderMap) -> Option<&str> {
             item.strip_prefix(SESSION_COOKIE_NAME)
                 .and_then(|rest| rest.strip_prefix('='))
         })
+}
+pub(crate) fn bearer_token(headers: &HeaderMap) -> Option<&str> {
+    let value = headers.get(header::AUTHORIZATION)?.to_str().ok()?;
+    let (scheme, rest) = value.split_once(' ')?;
+    if !scheme.eq_ignore_ascii_case(DEVICE_TOKEN_SCHEME) {
+        return None;
+    }
+    let token = rest.trim();
+    if token.is_empty() { None } else { Some(token) }
 }
 fn untrusted_origin() -> AppError {
     AppError::new(ErrorCode::OriginUntrusted, "same-origin proof rejected")

@@ -221,13 +221,13 @@ impl IdentityStore {
             .try_into()
             .map_err(|_| AppError::new(ErrorCode::Internal, "invalid csrf digest"))?;
         Ok(AuthenticatedSession {
-            session_id,
             account: AccountSummary {
                 id: Uuid::from_slice(&account_bytes)
                     .map_err(|error| AppError::new(ErrorCode::Internal, error.to_string()))?,
                 administrator_name: display_name,
             },
-            csrf_sha256,
+            csrf_sha256: Some(csrf_sha256),
+            principal: crate::identity::model::Principal::Session { session_id },
         })
     }
 
@@ -430,4 +430,312 @@ impl IdentityStore {
         }
         Ok(())
     }
+}
+
+/// 设备行中需要暴露给管理面或认证结果的结构化材料。
+pub struct DeviceRecord {
+    /// 设备稳定 UUID。
+    pub id: Uuid,
+    /// 拥有设备的账户 UUID。
+    pub account_id: Uuid,
+    /// enrollment 时提供的显示名称。
+    pub display_name: String,
+    /// 令牌绝对过期时间（微秒）。
+    pub absolute_expires_at_us: i64,
+    /// 创建时间（微秒）。
+    pub created_at_us: i64,
+    /// 最近一次认证时间（微秒）；从未使用为 `None`。
+    pub last_used_at_us: Option<i64>,
+    /// 撤销时间（微秒）；未撤销为 `None`。
+    pub revoked_at_us: Option<i64>,
+}
+
+impl IdentityStore {
+    #[allow(clippy::too_many_arguments)]
+    /// 插入新设备行；仅存令牌 SHA-256 摘要。
+    ///
+    /// # Errors
+    ///
+    /// `SQLite` 拒绝插入时返回 [`AppError`]。
+    pub async fn insert_device(
+        &self,
+        id: Uuid,
+        account_id: Uuid,
+        display_name: &str,
+        token_hash: &[u8],
+        credential_version: i64,
+        absolute_expires_at_us: i64,
+        now_us: i64,
+    ) -> Result<(), AppError> {
+        sqlx::query(
+            "INSERT INTO identity_devices
+             (id,account_id,display_name,token_sha256,credential_version,absolute_expires_at_us,created_at_us)
+             VALUES (?,?,?,?,?,?,?)",
+        )
+        .bind(id.as_bytes().as_slice())
+        .bind(account_id.as_bytes().as_slice())
+        .bind(display_name)
+        .bind(token_hash)
+        .bind(credential_version)
+        .bind(absolute_expires_at_us)
+        .bind(now_us)
+        .execute(&self.pool)
+        .await
+        .map_err(|error| AppError::with_source(ErrorCode::Internal, error))?;
+        Ok(())
+    }
+
+    /// 以令牌摘要认证设备并更新 `last_used_at_us`（60 秒节流，避免高频认证/SSE 周期
+    /// 重认证造成写放大）。
+    ///
+    /// 设备令牌无空闲过期：仅检查未撤销、未到绝对过期、账户活跃且凭据版本一致
+    /// （管理员改密后设备需重新配对）。
+    ///
+    /// # Errors
+    ///
+    /// 无匹配的有效设备时返回 [`ErrorCode::SessionExpired`]；查询失败或持久化字节格式
+    /// 错误时返回内部 [`AppError`]。
+    pub async fn authenticate_device(
+        &self,
+        token_hash: &[u8],
+        now_us: i64,
+    ) -> Result<crate::identity::model::AuthenticatedSession, AppError> {
+        const TOUCH_INTERVAL_US: i64 = 60 * 1_000_000;
+        let row = sqlx::query(
+            "UPDATE identity_devices
+             SET last_used_at_us=CASE
+                 WHEN last_used_at_us IS NULL OR ?-last_used_at_us>=? THEN ?
+                 ELSE last_used_at_us END
+             WHERE token_sha256=? AND revoked_at_us IS NULL AND absolute_expires_at_us>?
+               AND EXISTS (
+                 SELECT 1 FROM identity_accounts a
+                 WHERE a.id=identity_devices.account_id AND a.status='active'
+                   AND a.credential_version=identity_devices.credential_version
+               )
+             RETURNING id,account_id",
+        )
+        .bind(now_us)
+        .bind(TOUCH_INTERVAL_US)
+        .bind(now_us)
+        .bind(token_hash)
+        .bind(now_us)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|error| AppError::with_source(ErrorCode::Internal, error))?
+        .ok_or_else(|| {
+            AppError::new(ErrorCode::SessionExpired, "device token is no longer valid")
+        })?;
+        session_from_device_row(&self.pool, row).await
+    }
+
+    /// 读取单个设备行（含已撤销）；管理面与自撤销/自轮换使用。
+    ///
+    /// # Errors
+    ///
+    /// 设备不存在或数据库失败时返回 [`AppError`]。
+    pub async fn device(&self, device_id: Uuid) -> Result<DeviceRecord, AppError> {
+        let row = sqlx::query(
+            "SELECT id,account_id,display_name,absolute_expires_at_us,created_at_us,last_used_at_us,revoked_at_us
+             FROM identity_devices WHERE id=?",
+        )
+        .bind(device_id.as_bytes().as_slice())
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|error| AppError::with_source(ErrorCode::Internal, error))?
+        .ok_or_else(|| AppError::new(ErrorCode::NotFound, "device not found"))?;
+        device_record_from_row(&row)
+    }
+
+    /// 列出全部设备（含已撤销），按创建时间升序。
+    ///
+    /// # Errors
+    ///
+    /// 数据库失败时返回 [`AppError`]。
+    pub async fn list_devices(&self) -> Result<Vec<DeviceRecord>, AppError> {
+        let rows = sqlx::query(
+            "SELECT id,account_id,display_name,absolute_expires_at_us,created_at_us,last_used_at_us,revoked_at_us
+             FROM identity_devices ORDER BY created_at_us",
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|error| AppError::with_source(ErrorCode::Internal, error))?;
+        rows.iter().map(device_record_from_row).collect()
+    }
+
+    /// 撤销设备令牌（幂等；已撤销的行保持原撤销时间）。
+    ///
+    /// # Errors
+    ///
+    /// `SQLite` 无法执行更新时返回 [`AppError`]。
+    pub async fn revoke_device(
+        &self,
+        device_id: Uuid,
+        now_us: i64,
+        reason: &str,
+    ) -> Result<(), AppError> {
+        sqlx::query(
+            "UPDATE identity_devices SET revoked_at_us=?,revoked_reason=?
+             WHERE id=? AND revoked_at_us IS NULL",
+        )
+        .bind(now_us)
+        .bind(reason)
+        .bind(device_id.as_bytes().as_slice())
+        .execute(&self.pool)
+        .await
+        .map_err(|error| AppError::with_source(ErrorCode::Internal, error))?;
+        Ok(())
+    }
+
+    /// 原子替换未撤销、未过期设备的令牌摘要并延长绝对过期。
+    ///
+    /// # Errors
+    ///
+    /// 设备缺失、已撤销或已过期时返回 [`ErrorCode::SessionExpired`]；数据库失败返回
+    /// 内部 [`AppError`]。
+    pub async fn rotate_device_token(
+        &self,
+        device_id: Uuid,
+        new_token_hash: &[u8],
+        new_absolute_expires_at_us: i64,
+    ) -> Result<(), AppError> {
+        let result = sqlx::query(
+            "UPDATE identity_devices
+             SET token_sha256=?,absolute_expires_at_us=?
+             WHERE id=? AND revoked_at_us IS NULL AND absolute_expires_at_us>?",
+        )
+        .bind(new_token_hash)
+        .bind(new_absolute_expires_at_us)
+        .bind(device_id.as_bytes().as_slice())
+        .bind(chrono::Utc::now().timestamp_micros())
+        .execute(&self.pool)
+        .await
+        .map_err(|error| AppError::with_source(ErrorCode::Internal, error))?;
+        if result.rows_affected() != 1 {
+            return Err(AppError::new(
+                ErrorCode::SessionExpired,
+                "device token is no longer valid",
+            ));
+        }
+        Ok(())
+    }
+
+    /// 插入一次性配对码；仅存规范化码的 SHA-256 摘要。
+    ///
+    /// # Errors
+    ///
+    /// `SQLite` 拒绝插入时返回 [`AppError`]。
+    pub async fn insert_pairing_code(
+        &self,
+        id: Uuid,
+        account_id: Uuid,
+        code_hash: &[u8],
+        now_us: i64,
+        expires_at_us: i64,
+    ) -> Result<(), AppError> {
+        sqlx::query(
+            "INSERT INTO identity_pairing_codes (id,account_id,code_sha256,created_at_us,expires_at_us)
+             VALUES (?,?,?,?,?)",
+        )
+        .bind(id.as_bytes().as_slice())
+        .bind(account_id.as_bytes().as_slice())
+        .bind(code_hash)
+        .bind(now_us)
+        .bind(expires_at_us)
+        .execute(&self.pool)
+        .await
+        .map_err(|error| AppError::with_source(ErrorCode::Internal, error))?;
+        Ok(())
+    }
+
+    /// 原子消费一次性配对码：仅当未使用且未过期时置 `used_at_us` 并返回签发账户。
+    ///
+    /// # Errors
+    ///
+    /// 码未知、已使用或已过期时返回 [`ErrorCode::InvalidCredentials`]；数据库失败返回
+    /// 内部 [`AppError`]。
+    pub async fn consume_pairing_code(
+        &self,
+        code_hash: &[u8],
+        now_us: i64,
+    ) -> Result<Uuid, AppError> {
+        let row = sqlx::query(
+            "UPDATE identity_pairing_codes SET used_at_us=?
+             WHERE code_sha256=? AND used_at_us IS NULL AND expires_at_us>?
+             RETURNING account_id",
+        )
+        .bind(now_us)
+        .bind(code_hash)
+        .bind(now_us)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|error| AppError::with_source(ErrorCode::Internal, error))?
+        .ok_or_else(|| {
+            AppError::new(
+                ErrorCode::InvalidCredentials,
+                "pairing code is unknown, expired, or already used",
+            )
+        })?;
+        let account_bytes: Vec<u8> = row.get("account_id");
+        Uuid::from_slice(&account_bytes)
+            .map_err(|error| AppError::new(ErrorCode::Internal, error.to_string()))
+    }
+
+    /// 读取账户当前的凭据版本；账户不存在或非活跃时为 `None`。
+    ///
+    /// # Errors
+    ///
+    /// 数据库失败时返回 [`AppError`]。
+    pub async fn account_credential_version(
+        &self,
+        account_id: Uuid,
+    ) -> Result<Option<i64>, AppError> {
+        sqlx::query_scalar::<_, i64>(
+            "SELECT credential_version FROM identity_accounts WHERE id=? AND status='active'",
+        )
+        .bind(account_id.as_bytes().as_slice())
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|error| AppError::with_source(ErrorCode::Internal, error))
+    }
+}
+
+async fn session_from_device_row(
+    pool: &SqlitePool,
+    row: sqlx::sqlite::SqliteRow,
+) -> Result<crate::identity::model::AuthenticatedSession, AppError> {
+    let device_bytes: Vec<u8> = row.get("id");
+    let account_bytes: Vec<u8> = row.get("account_id");
+    let device_id = Uuid::from_slice(&device_bytes)
+        .map_err(|error| AppError::new(ErrorCode::Internal, error.to_string()))?;
+    let display_name: String =
+        sqlx::query_scalar("SELECT display_name FROM identity_accounts WHERE id=?")
+            .bind(&account_bytes)
+            .fetch_one(pool)
+            .await
+            .map_err(|error| AppError::with_source(ErrorCode::Internal, error))?;
+    Ok(crate::identity::model::AuthenticatedSession {
+        account: crate::identity::model::AccountSummary {
+            id: Uuid::from_slice(&account_bytes)
+                .map_err(|error| AppError::new(ErrorCode::Internal, error.to_string()))?,
+            administrator_name: display_name,
+        },
+        csrf_sha256: None,
+        principal: crate::identity::model::Principal::Device { device_id },
+    })
+}
+
+fn device_record_from_row(row: &sqlx::sqlite::SqliteRow) -> Result<DeviceRecord, AppError> {
+    let id: Vec<u8> = row.get("id");
+    let account_id: Vec<u8> = row.get("account_id");
+    Ok(DeviceRecord {
+        id: Uuid::from_slice(&id)
+            .map_err(|error| AppError::new(ErrorCode::Internal, error.to_string()))?,
+        account_id: Uuid::from_slice(&account_id)
+            .map_err(|error| AppError::new(ErrorCode::Internal, error.to_string()))?,
+        display_name: row.get("display_name"),
+        absolute_expires_at_us: row.get("absolute_expires_at_us"),
+        created_at_us: row.get("created_at_us"),
+        last_used_at_us: row.get("last_used_at_us"),
+        revoked_at_us: row.get("revoked_at_us"),
+    })
 }

@@ -5,13 +5,22 @@ use subtle::ConstantTimeEq;
 use uuid::Uuid;
 
 use crate::identity::model::{
-    AccountSummary, AuthenticatedSession, BootstrapCommand, LoginCommand, NewSession,
+    AccountSummary, AuthenticatedSession, BootstrapCommand, DeviceView, LoginCommand, NewSession,
 };
-use crate::identity::store::IdentityStore;
+use crate::identity::store::{DeviceRecord, IdentityStore};
 use crate::platform::password::{PasswordEngine, configured_time_cost};
 use crate::platform::{audit, random};
 use crate::shared::error::{AppError, ErrorCode};
 use crate::shared::id::new_id;
+
+/// 设备令牌原始形式的前缀；仅用于日志辨识与跨通道防呆，不参与摘要。
+pub const DEVICE_TOKEN_PREFIX: &str = "mfdev_";
+/// 一次性配对码有效期（微秒）。
+const PAIRING_CODE_TTL_US: i64 = 10 * 60 * 1_000_000;
+/// 配对码熵（5 字节 = 8 个 base32 字符 = 40 bit）。
+const PAIRING_CODE_BYTES: usize = 5;
+/// RFC 4648 base32 字母表；无 `0`/`1`，人工输入歧义有限。
+const BASE32_ALPHABET: &[u8; 32] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 
 #[async_trait]
 /// 涉及安全性的管理员引导和会话操作。
@@ -404,5 +413,350 @@ mod tests {
         .unwrap();
         assert_eq!(secret, "file-secret");
         assert_eq!(selected.as_deref(), Some(explicit.as_path()));
+    }
+}
+
+/// enrollment 成功结果；原始设备令牌仅向 HTTP 层返回一次。
+///
+/// 仅持久化 `raw_token` 的 SHA-256 摘要；`Debug` 隐藏该值。
+pub struct NewDevice {
+    /// 新注册设备的公开表示。
+    pub device: DeviceView,
+    /// `Authorization: Bearer` 使用的原始令牌（`mfdev_` 前缀）。
+    pub raw_token: String,
+}
+
+impl std::fmt::Debug for NewDevice {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("NewDevice")
+            .field("device", &self.device)
+            .field("raw_token", &"[REDACTED]")
+            .finish()
+    }
+}
+
+impl IdentityService {
+    /// 为管理员签发一次性配对码（10 分钟有效、仅存摘要），并尽力清理过期码行。
+    ///
+    /// # Errors
+    ///
+    /// 安全随机数失败或数据库失败时返回 [`AppError`]。
+    pub async fn issue_pairing_code(&self, account_id: Uuid) -> Result<(String, i64), AppError> {
+        let mut bytes = [0_u8; PAIRING_CODE_BYTES];
+        getrandom::fill(&mut bytes)
+            .map_err(|error| AppError::new(ErrorCode::Internal, error.to_string()))?;
+        let code = encode_pairing_code(bytes);
+        let now = chrono::Utc::now().timestamp_micros();
+        let expires = now + PAIRING_CODE_TTL_US;
+        self.store
+            .insert_pairing_code(
+                new_id(),
+                account_id,
+                &random::sha256(code.as_bytes()),
+                now,
+                expires,
+            )
+            .await?;
+        audit::record(
+            self.store.pool(),
+            "device-pairing-code",
+            "success",
+            Some(&account_id.to_string()),
+        )
+        .await?;
+        let _ = sqlx::query("DELETE FROM identity_pairing_codes WHERE expires_at_us<?")
+            .bind(now)
+            .execute(self.store.pool())
+            .await;
+        Ok((code, expires))
+    }
+
+    /// 以一次性配对码完成设备 enrollment，签发设备令牌。
+    ///
+    /// 错码按来源限流（15 分钟窗 5 次失败锁 5 分钟，与登录限流同表同策略）。
+    ///
+    /// # Errors
+    ///
+    /// 限流激活、配对码未知/过期/已使用、设备名无效或数据库失败时返回 [`AppError`]。
+    pub async fn enroll_with_pairing_code(
+        &self,
+        pairing_code: &str,
+        device_name: &str,
+        source_key: &str,
+    ) -> Result<NewDevice, AppError> {
+        let candidate = random::domain_digest(b"device-enrollment", source_key.as_bytes());
+        let source = random::domain_digest(b"device-enrollment-source", b"pairing-code");
+        let now = chrono::Utc::now().timestamp_micros();
+        if let Some(retry) = self.store.throttle_state(&candidate, &source, now).await? {
+            audit::record(self.store.pool(), "device-enrollment", "rate_limited", None).await?;
+            return Err(rate_limited(retry, now));
+        }
+        let normalized = normalize_pairing_code(pairing_code);
+        let account_id = match self
+            .store
+            .consume_pairing_code(&random::sha256(normalized.as_bytes()), now)
+            .await
+        {
+            Ok(value) => value,
+            Err(error) => {
+                let _ = audit::record(self.store.pool(), "device-enrollment", "denied", None).await;
+                if let Some(retry) = self.store.record_failure(&candidate, &source, now).await? {
+                    audit::record(self.store.pool(), "device-enrollment", "rate_limited", None)
+                        .await?;
+                    return Err(rate_limited(retry, now));
+                }
+                return Err(error);
+            }
+        };
+        self.store.clear_throttle(&candidate, &source).await?;
+        self.enroll(account_id, device_name).await
+    }
+
+    /// 以管理员凭据完成设备 enrollment（移动端登录页凭据模式），签发设备令牌。
+    ///
+    /// 与 Web 登录共用候选项/来源限流与 dummy-hash 防时序侧信道。
+    ///
+    /// # Errors
+    ///
+    /// 限流激活、凭据无效、设备名无效或数据库失败时返回 [`AppError`]。
+    pub async fn enroll_with_credentials(
+        &self,
+        administrator_name: &str,
+        password: &str,
+        device_name: &str,
+        source_key: &str,
+    ) -> Result<NewDevice, AppError> {
+        let normalized = normalize_name(administrator_name);
+        let candidate = random::domain_digest(b"login-candidate", normalized.as_bytes());
+        let source = random::domain_digest(b"login-source", source_key.as_bytes());
+        let now = chrono::Utc::now().timestamp_micros();
+        if let Some(retry) = self.store.throttle_state(&candidate, &source, now).await? {
+            audit::record(self.store.pool(), "device-enrollment", "rate_limited", None).await?;
+            return Err(rate_limited(retry, now));
+        }
+        let account = self.store.account_credential(&normalized).await?;
+        let phc = match &account {
+            Some(account) => account.password_phc.clone(),
+            None => self.passwords.dummy_phc(),
+        };
+        let valid = self.passwords.verify(password.to_owned(), phc).await?;
+        let Some(account) = account.filter(|_| valid) else {
+            let _ = audit::record(self.store.pool(), "device-enrollment", "denied", None).await;
+            if let Some(retry) = self.store.record_failure(&candidate, &source, now).await? {
+                audit::record(self.store.pool(), "device-enrollment", "rate_limited", None).await?;
+                return Err(rate_limited(retry, now));
+            }
+            return Err(AppError::new(
+                ErrorCode::InvalidCredentials,
+                "credential verification failed",
+            ));
+        };
+        self.store.clear_throttle(&candidate, &source).await?;
+        self.enroll(account.id, device_name).await
+    }
+
+    /// 认证原始设备令牌（仅摘要查表），并按 60 秒节流更新 `last_used_at`。
+    ///
+    /// # Errors
+    ///
+    /// 令牌未知、已撤销、已过期或账户凭据版本已变化时返回 [`ErrorCode::SessionExpired`]。
+    pub async fn authenticate_device(
+        &self,
+        raw_token: &str,
+    ) -> Result<AuthenticatedSession, AppError> {
+        self.store
+            .authenticate_device(
+                &random::sha256(raw_token.as_bytes()),
+                chrono::Utc::now().timestamp_micros(),
+            )
+            .await
+    }
+
+    /// 自轮换设备令牌：同事务原子替换摘要，旧令牌立即失效。
+    ///
+    /// # Errors
+    ///
+    /// 设备缺失、已撤销或已过期时返回 [`ErrorCode::SessionExpired`]；安全随机数或数据库
+    /// 失败返回 [`AppError`]。
+    pub async fn rotate_device_token(&self, device_id: Uuid) -> Result<(String, i64), AppError> {
+        let (raw, digest) = fresh_device_token()?;
+        let expires = device_absolute_expiry();
+        self.store
+            .rotate_device_token(device_id, &digest, expires)
+            .await?;
+        audit::record(
+            self.store.pool(),
+            "device-rotation",
+            "success",
+            Some(&device_id.to_string()),
+        )
+        .await?;
+        Ok((raw, expires))
+    }
+
+    /// 撤销设备令牌并记录审计；幂等。
+    ///
+    /// # Errors
+    ///
+    /// 数据库失败时返回 [`AppError`]。
+    pub async fn revoke_device(&self, device_id: Uuid, reason: &str) -> Result<(), AppError> {
+        self.store
+            .revoke_device(device_id, chrono::Utc::now().timestamp_micros(), reason)
+            .await?;
+        audit::record(
+            self.store.pool(),
+            "device-revocation",
+            "success",
+            Some(&device_id.to_string()),
+        )
+        .await
+    }
+
+    /// 读取单个设备的公开表示。
+    ///
+    /// # Errors
+    ///
+    /// 设备不存在或数据库失败时返回 [`AppError`]。
+    pub async fn device(&self, device_id: Uuid) -> Result<DeviceView, AppError> {
+        let record = self.store.device(device_id).await?;
+        Ok(device_view(&record))
+    }
+
+    /// 列出全部设备（含已撤销）的公开表示。
+    ///
+    /// # Errors
+    ///
+    /// 数据库失败时返回 [`AppError`]。
+    pub async fn list_devices(&self) -> Result<Vec<DeviceView>, AppError> {
+        let records = self.store.list_devices().await?;
+        Ok(records.iter().map(device_view).collect())
+    }
+
+    async fn enroll(&self, account_id: Uuid, device_name: &str) -> Result<NewDevice, AppError> {
+        let name = device_name.trim();
+        if name.is_empty() || name.chars().count() > 64 {
+            return Err(AppError::new(
+                ErrorCode::ValidationFailed,
+                "device name is invalid",
+            ));
+        }
+        let credential = self
+            .store
+            .account_credential_version(account_id)
+            .await?
+            .ok_or_else(|| AppError::new(ErrorCode::InvalidCredentials, "account is not active"))?;
+        let (raw, digest) = fresh_device_token()?;
+        let now = chrono::Utc::now().timestamp_micros();
+        let expires = device_absolute_expiry();
+        let id = new_id();
+        self.store
+            .insert_device(id, account_id, name, &digest, credential, expires, now)
+            .await?;
+        audit::record(
+            self.store.pool(),
+            "device-enrollment",
+            "success",
+            Some(&id.to_string()),
+        )
+        .await?;
+        Ok(NewDevice {
+            device: DeviceView {
+                id,
+                display_name: name.to_owned(),
+                created_at: micros_to_rfc3339(now),
+                last_used_at: None,
+                expires_at: micros_to_rfc3339(expires),
+                revoked_at: None,
+            },
+            raw_token: raw,
+        })
+    }
+}
+
+fn fresh_device_token() -> Result<(String, [u8; 32]), AppError> {
+    let raw = format!("{DEVICE_TOKEN_PREFIX}{}", random::random_token()?);
+    let digest = random::sha256(raw.as_bytes());
+    Ok((raw, digest))
+}
+
+fn device_absolute_expiry() -> i64 {
+    let days = std::env::var("MEDIAFLOW_DEVICE_TOKEN_DAYS")
+        .ok()
+        .and_then(|value| value.trim().parse::<i64>().ok())
+        .filter(|days| (1..=3650).contains(days))
+        .unwrap_or(180);
+    chrono::Utc::now().timestamp_micros() + days * 24 * 60 * 60 * 1_000_000
+}
+
+fn micros_to_rfc3339(micros: i64) -> String {
+    chrono::TimeZone::timestamp_micros(&chrono::Utc, micros)
+        .single()
+        .map(|value| value.to_rfc3339_opts(chrono::SecondsFormat::Micros, true))
+        .unwrap_or_default()
+}
+
+fn normalize_pairing_code(input: &str) -> String {
+    input
+        .chars()
+        .filter(|c| *c != '-' && *c != ' ')
+        .map(|c| c.to_ascii_uppercase())
+        .collect()
+}
+
+fn encode_pairing_code(bytes: [u8; PAIRING_CODE_BYTES]) -> String {
+    let mut code = String::with_capacity(8);
+    let mut buffer = 0_u64;
+    let mut bits = 0_u32;
+    for &byte in &bytes {
+        buffer = (buffer << 8) | u64::from(byte);
+        bits += 8;
+        while bits >= 5 {
+            let index = ((buffer >> (bits - 5)) & 0x1f) as usize;
+            code.push(BASE32_ALPHABET[index] as char);
+            bits -= 5;
+        }
+    }
+    code
+}
+
+fn device_view(record: &DeviceRecord) -> DeviceView {
+    DeviceView {
+        id: record.id,
+        display_name: record.display_name.clone(),
+        created_at: micros_to_rfc3339(record.created_at_us),
+        last_used_at: record.last_used_at_us.map(micros_to_rfc3339),
+        expires_at: micros_to_rfc3339(record.absolute_expires_at_us),
+        revoked_at: record.revoked_at_us.map(micros_to_rfc3339),
+    }
+}
+
+#[cfg(test)]
+mod device_service_tests {
+    use super::{BASE32_ALPHABET, encode_pairing_code, normalize_pairing_code};
+
+    #[test]
+    fn pairing_code_is_eight_base32_characters() {
+        assert_eq!(
+            encode_pairing_code([0x00, 0x00, 0x00, 0x00, 0x00]),
+            "AAAAAAAA"
+        );
+        assert_eq!(
+            encode_pairing_code([0xff, 0xff, 0xff, 0xff, 0xff]),
+            "77777777"
+        );
+        assert!(
+            encode_pairing_code([0x5a, 0xc3, 0x71, 0x0f, 0xb9])
+                .bytes()
+                .all(|byte| BASE32_ALPHABET.contains(&byte))
+        );
+    }
+
+    #[test]
+    fn pairing_code_normalization_ignores_case_and_separators() {
+        assert_eq!(
+            normalize_pairing_code(" abcd-wxyz "),
+            normalize_pairing_code("ABCDWXYZ")
+        );
     }
 }
