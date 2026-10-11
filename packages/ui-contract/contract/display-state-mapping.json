@@ -1,0 +1,65 @@
+{
+  "contract": "mediaflow.ui-contract.display-state-mapping",
+  "version": "1.0.0",
+  "title": "页面五态 ↔ 设计系统状态容器的分层映射",
+  "layers": {
+    "page-state": "数据投影的异步生命周期（权威定义见 page-states.json；web TaskCenterState / SDK PageState）。",
+    "display-state": "设计系统六态容器 + Success（规格：labs/design-system/docs/components/state-container.md v1.0）：承载展示重点与唯一主操作，是渲染层语义。"
+  },
+  "display_states": [
+    {
+      "id": "loading",
+      "driven_by": "page-state",
+      "page_states": ["loading"],
+      "operation_semantics": null
+    },
+    {
+      "id": "empty",
+      "driven_by": "page-state",
+      "page_states": ["empty"],
+      "operation_semantics": null
+    },
+    {
+      "id": "error",
+      "driven_by": "page-state",
+      "page_states": ["error"],
+      "operation_semantics": null
+    },
+    {
+      "id": "offline",
+      "driven_by": "page-state",
+      "page_states": ["offline"],
+      "operation_semantics": null
+    },
+    {
+      "id": "conflict",
+      "driven_by": "operation",
+      "page_states": null,
+      "operation_semantics": "操作与既有事实冲突：请求级 409（现状：表单草稿保留 + 冲突提示）、计划冲突（审批链 UI 的 plan-preview 差异对照）。禁止『强制继续』类绕过授权路径的主操作。"
+    },
+    {
+      "id": "partial",
+      "driven_by": "operation",
+      "page_states": null,
+      "operation_semantics": "批量/多步操作部分成功：任务数据的 partial-success 状态（徽章/筛选项）与页面级操作结果汇总共用此展示态；主操作为『只重试未完成部分』。"
+    },
+    {
+      "id": "success",
+      "driven_by": "operation",
+      "page_states": null,
+      "operation_semantics": "操作完成确认：非数据获取态，不自动消失；主操作为『完成（关闭/返回）』。"
+    }
+  ],
+  "composition_rules": [
+    "page-state 直映射：loading/empty/error/offline 四个页面态分别驱动同名展示态容器；content 不渲染状态容器。",
+    "operation 叠加：conflict/partial/success 由操作结果驱动，与 content 共存（叠加层或结果区），不替代页面态。",
+    "stale 组合：loading/offline/error 且 stale=true 时，状态容器与旧内容共存；旧内容降低对比呈现并禁用全部交互。",
+    "空数据 + 失败 = 纯态容器全屏（无 stale 共存）。",
+    "每个展示态至多一个主操作（设计原则『单一主操作』）；主操作与状态词表见 copy-templates.json。"
+  ],
+  "stale_presentation": {
+    "opacity": "0.55",
+    "interaction": "inert（移出 Tab 序 + pointer-events none）",
+    "note": "呈现细则以 state-container 规格 §1/§3 为准；本文件只钉语义。"
+  }
+}

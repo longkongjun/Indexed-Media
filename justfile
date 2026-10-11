@@ -378,10 +378,10 @@ check-api-client-dart:
     @printf '未初始化：packages/api-client-dart\n' >&2
     @exit 2
 
-# 检查 UI Contract；当前模块未初始化，因此返回状态 2。
+# 检查 UI Contract：类型层 typecheck + 定本结构校验（零依赖）。
 check-ui-contract:
-    @printf '未初始化：packages/ui-contract\n' >&2
-    @exit 2
+    @pnpm exec tsc --noEmit -p packages/ui-contract
+    @node packages/ui-contract/scripts/check.mjs
 
 # 检查 Test Fixtures。
 check-test-fixtures:

@@ -1,0 +1,63 @@
+{
+  "contract": "mediaflow.ui-contract.page-states",
+  "version": "1.0.0",
+  "title": "页面状态语义权威（五态 + stale）",
+  "layer": "page-state：数据投影的异步生命周期。与展示态（display-state）分层，映射见 display-state-mapping.json。",
+  "implementations": [
+    {
+      "platform": "web",
+      "path": "apps/web/src/features/processing-tasks/model.ts",
+      "symbol": "TaskCenterState"
+    },
+    {
+      "platform": "kmp-sdk",
+      "path": "packages/kmp-sdk/src/commonMain/kotlin/mediaflow/client/core/paging/PageState.kt",
+      "symbol": "PageState"
+    }
+  ],
+  "states": [
+    {
+      "id": "loading",
+      "stale": true,
+      "meaning": "投影正在加载（首次加载或刷新）。",
+      "stale_semantics": "stale=true 表示上一次成功数据仍在屏：加载指示与旧内容共存，旧内容只读呈现。",
+      "exit": "成功进入 content 或 empty；失败进入 error 或 offline。"
+    },
+    {
+      "id": "content",
+      "stale": false,
+      "meaning": "加载完成且有内容；内容本体由列表/详情容器持有，状态只表达语义。",
+      "stale_semantics": "不适用：content 无 stale 载体。",
+      "exit": "重新加载时回到 loading（stale=true）。"
+    },
+    {
+      "id": "empty",
+      "stale": false,
+      "meaning": "加载完成且无内容（『没有数据』，与『取不到数据』的 error 严格区分）。",
+      "stale_semantics": "不适用：empty 无 stale 载体。",
+      "exit": "数据出现后进入 content。"
+    },
+    {
+      "id": "offline",
+      "stale": true,
+      "meaning": "网络连接类错误（连接建立失败/DNS 失败）；判定对齐 web apiErrors.isOffline 与 SDK MediaFlowError.isOffline。",
+      "stale_semantics": "stale=true 表示正在显示上一次成功数据；旧内容可读不可操作。",
+      "exit": "网络恢复或用户重试成功后进入 content/empty。"
+    },
+    {
+      "id": "error",
+      "stale": true,
+      "meaning": "非离线类加载失败；错误信息供 UI 展示可读原因与重试入口。",
+      "stale_semantics": "stale=true 表示正在显示上一次成功数据；旧内容可读不可操作。",
+      "exit": "重试成功后进入 content/empty；继续失败停留 error。"
+    }
+  ],
+  "invariants": [
+    "五态互斥：页面投影任一时刻处于且仅处于一种状态。",
+    "stale 仅在 loading/offline/error 三态有载体；content/empty 无 stale 语义。",
+    "stale 表示仍可展示上一次成功数据：离线与常规失败不得清空已有投影；空数据时无 stale，纯态全屏呈现。",
+    "offline 专属网络连接类错误，其余一切失败归 error；两者不得互换。",
+    "empty 与 error 不得互换：『没有数据』≠『取不到数据』（文案禁区见 copy-templates.json）。",
+    "实现可自行扩展请求未发起前的起始态（web AsyncState 的 idle、SDK 调用方的惰性初始化），它不属于本权威五态。"
+  ]
+}

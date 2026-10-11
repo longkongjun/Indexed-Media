@@ -6,6 +6,9 @@ export type TaskCenterContext = ProcessingTaskListOptions;
 /**
  * 可复用的异步投影展示状态。
  *
+ * 语义权威：`packages/ui-contract`（contract/page-states.json，五态 + stale）；
+ * 本类型是其在 apps/web 的实现锚点（KMP 侧对应 PageState）。
+ *
  * `stale` 表示仍可展示上一次成功数据；离线和常规失败均不应借此清空已有投影。
  */
 export type TaskCenterState =
