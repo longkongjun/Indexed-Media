@@ -76,8 +76,13 @@ kotlin {
 
 // 客户端测试统一走 kotlin multiplatform test（jvm + iosSimulator），不注册 android 单测变体。
 
-// SQLDelight：C1 引入缓存 schema 与迁移；插件先接入验证工具链（无数据库注册）。
+// SQLDelight：媒体墙/详情离线读缓存 + 键值（事件游标）。
 sqldelight {
+    databases {
+        create("MediaFlowCache") {
+            packageName.set("mediaflow.client.cache")
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

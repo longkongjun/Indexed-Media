@@ -1,0 +1,49 @@
+--
+-- MediaFlow 客户端本地缓存（v1）：媒体墙离线读 + 详情快照 + 少量键值（事件游标）。
+-- 只做读缓存：真源永远是服务端，缓存条目随权威刷新整体替换。
+CREATE TABLE media_item_cache (
+    id TEXT NOT NULL PRIMARY KEY,
+    type TEXT NOT NULL,
+    library_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    year INTEGER,
+    local_status TEXT NOT NULL,
+    artwork_state TEXT,
+    updated_at TEXT NOT NULL,
+    cached_at INTEGER NOT NULL
+);
+
+CREATE TABLE media_detail_cache (
+    media_item_id TEXT NOT NULL PRIMARY KEY,
+    payload TEXT NOT NULL,
+    cached_at INTEGER NOT NULL
+);
+
+CREATE TABLE sdk_key_value (
+    key TEXT NOT NULL PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
+clearWall:
+DELETE FROM media_item_cache;
+
+insertWallItem:
+INSERT OR REPLACE INTO media_item_cache
+    (id, type, library_id, title, year, local_status, artwork_state, updated_at, cached_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectWall:
+SELECT * FROM media_item_cache ORDER BY title;
+
+putDetail:
+INSERT OR REPLACE INTO media_detail_cache (media_item_id, payload, cached_at)
+VALUES (?, ?, ?);
+
+selectDetail:
+SELECT payload FROM media_detail_cache WHERE media_item_id = ?;
+
+putValue:
+INSERT OR REPLACE INTO sdk_key_value (key, value) VALUES (?, ?);
+
+selectValue:
+SELECT value FROM sdk_key_value WHERE key = ?;
