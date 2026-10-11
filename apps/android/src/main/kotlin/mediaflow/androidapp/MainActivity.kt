@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Arrangement
@@ -68,6 +69,7 @@ fun AppRoot(container: SdkContainer) {
             return@MaterialTheme
         }
         val screen = backStack.lastOrNull() ?: Screen.Wall
+        BackHandler(enabled = backStack.isNotEmpty()) { backStack = backStack.dropLast(1) }
         Scaffold(
             topBar = {
                 TopAppBar(

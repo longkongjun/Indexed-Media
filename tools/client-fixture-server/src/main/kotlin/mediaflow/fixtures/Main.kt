@@ -38,7 +38,7 @@ fun main() {
             post("/api/v1/sessions") {
                 // 简化登录：body 含 "password":"fixture" 即通过（不做 JSON 解析依赖）。
                 val body = runCatching { call.receiveText() }.getOrNull() ?: ""
-                if (body.contains("\"fixture\"")) {
+                if (body.contains("fixture")) {
                     call.response.header(
                         "Set-Cookie",
                         "__Host-mediaflow_session=fixture-session-value; Secure; HttpOnly; SameSite=Strict; Path=/",
