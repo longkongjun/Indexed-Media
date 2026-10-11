@@ -239,6 +239,21 @@ async fn webhook_configuration_requires_https_and_stays_redacted() {
         .unwrap();
     assert_eq!(insecure.status(), StatusCode::UNPROCESSABLE_ENTITY);
 
+    // SA-3-001：探测端点与保存路径同校验——http:// 目标不得成为 SSRF 探测原语。
+    let insecure_probe = app
+        .clone()
+        .oneshot(write(
+            &cookie,
+            &csrf,
+            "POST",
+            "/api/v1/notification-webhooks/connection-tests",
+            json!({ "target_url": "http://192.0.2.10/private", "display_name": null, "enabled": true }),
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(insecure_probe.status(), StatusCode::UNPROCESSABLE_ENTITY);
+
     let listed = json_body(
         app.clone()
             .oneshot(get(&cookie, "/api/v1/notification-webhooks"))

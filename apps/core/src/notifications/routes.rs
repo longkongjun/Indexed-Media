@@ -210,7 +210,13 @@ async fn test_webhook(
     Json(input): Json<WebhookInput>,
 ) -> Result<Json<Value>, AppError> {
     state.guard_write(&headers).await?;
-    let _ = state.webhooks; // 测试不落盘：直接对候选目标探测。
+    // 探测端点与保存路径同校验（SA-3-001）：拒绝 http:// 内网目标被当作 SSRF 探测原语。
+    if !input.target_url.starts_with("https://") || input.target_url.len() > 2048 {
+        return Err(AppError::new(
+            ErrorCode::ValidationFailed,
+            "webhook target must be an https URL",
+        ));
+    }
     crate::notifications::webhook::test_delivery(&input.target_url).await?;
     Ok(Json(serde_json::json!({ "delivered": true })))
 }
