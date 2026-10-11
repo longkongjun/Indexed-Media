@@ -345,6 +345,94 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List newest-first in-app notifications */
+        get: operations["listNotifications"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notifications/read-markers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark one or all notifications as read */
+        post: operations["markNotificationsRead"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notification-webhooks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List redacted outbound webhook configurations */
+        get: operations["listNotificationWebhooks"];
+        put?: never;
+        /** Save an outbound webhook configuration */
+        post: operations["createNotificationWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notification-webhooks/{webhookId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                webhookId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove an outbound webhook configuration */
+        delete: operations["deleteNotificationWebhook"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/notification-webhooks/connection-tests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Non-persistent outbound webhook probe */
+        post: operations["testNotificationWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/integrations/jellyfin": {
         parameters: {
             query?: never;
@@ -2042,6 +2130,67 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
         };
+        /** @description One in-app notification; never carries paths or credentials. */
+        Notification: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {unknown} */
+            kind: "review.waiting" | "organization.paused" | "organization.rolled-back" | "system.notice";
+            title: string;
+            body: string;
+            /** Format: uuid */
+            task_id: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            read_at: string | null;
+        };
+        /** @description Newest-first notification page with unread count. */
+        NotificationPage: {
+            items: components["schemas"]["Notification"][];
+            next_cursor: string | null;
+            unread_count: number;
+        };
+        /** @description Mark one (notification_id) or all (absent) notifications as read. */
+        NotificationReadMarker: {
+            /** Format: uuid */
+            notification_id: string | null;
+        };
+        /** @description How many notifications were marked read. */
+        NotificationReadReceipt: {
+            marked_read: number;
+        };
+        /** @description Redacted outbound webhook configuration. */
+        NotificationWebhook: {
+            /** Format: uuid */
+            id: string;
+            target_url: string;
+            display_name: string | null;
+            enabled: boolean;
+            config_version: number;
+            /** @enum {unknown} */
+            health: "unconfigured" | "healthy" | "degraded" | "unavailable" | "unauthorized";
+            /** Format: date-time */
+            last_delivery_at: string | null;
+        };
+        /** @description Webhook configuration list. */
+        NotificationWebhookPage: {
+            items: components["schemas"]["NotificationWebhook"][];
+        };
+        /** @description Candidate outbound webhook; probes never persist and never echo secrets. */
+        NotificationWebhookInput: {
+            target_url: string;
+            display_name: string | null;
+            enabled: boolean;
+        };
+        /** @description Saved webhook version receipt. */
+        NotificationWebhookAccepted: {
+            config_version: number;
+        };
+        /** @description Non-persistent probe acceptance. */
+        NotificationWebhookProbeReceipt: {
+            delivered: boolean;
+        };
         /** @description Redacted Jellyfin connection; independent of MediaFlow libraries and never a task dependency. */
         JellyfinIntegration: {
             /** @constant */
@@ -2835,6 +2984,42 @@ export interface components {
                 "application/json": components["schemas"]["ProcessingTaskOrganization"];
             };
         };
+        /** @description Newest-first in-app notifications */
+        NotificationPage: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["NotificationPage"];
+            };
+        };
+        /** @description Read marker receipt */
+        NotificationReadReceipt: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["NotificationReadReceipt"];
+            };
+        };
+        /** @description Redacted webhook configurations */
+        NotificationWebhookPage: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["NotificationWebhookPage"];
+            };
+        };
+        /** @description Webhook saved */
+        NotificationWebhookAccepted: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["NotificationWebhookAccepted"];
+            };
+        };
         /** @description Redacted Jellyfin connection projection */
         JellyfinIntegration: {
             headers: {
@@ -3484,6 +3669,138 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    listNotifications: {
+        parameters: {
+            query?: {
+                unread_only?: boolean;
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["NotificationPage"];
+            401: components["responses"]["Unauthorized"];
+            422: components["responses"]["ValidationFailed"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    markNotificationsRead: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["NotificationReadMarker"];
+            };
+        };
+        responses: {
+            200: components["responses"]["NotificationReadReceipt"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    listNotificationWebhooks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["NotificationWebhookPage"];
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    createNotificationWebhook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationWebhookInput"];
+            };
+        };
+        responses: {
+            200: components["responses"]["NotificationWebhookAccepted"];
+            401: components["responses"]["Unauthorized"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    deleteNotificationWebhook: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Decimal configuration version expected by the caller. */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                webhookId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Webhook removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    testNotificationWebhook: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NotificationWebhookInput"];
+            };
+        };
+        responses: {
+            /** @description Probe accepted by the target */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationWebhookProbeReceipt"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            422: components["responses"]["ValidationFailed"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };

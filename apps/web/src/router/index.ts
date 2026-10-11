@@ -31,6 +31,7 @@ import OrganizationTargetsView from "../views/OrganizationTargetsView.vue";
 import OrganizationTargetDetailView from "../views/OrganizationTargetDetailView.vue";
 import AutomationSourcesView from "../views/AutomationSourcesView.vue";
 import CapabilityEventsView from "../views/CapabilityEventsView.vue";
+import NotificationsView from "../views/NotificationsView.vue";
 import AutomationSourceDetailView from "../views/AutomationSourceDetailView.vue";
 import AutomationEventDetailView from "../views/AutomationEventDetailView.vue";
 
@@ -65,6 +66,7 @@ const routes: RouteRecordRaw[] = [
       { path: "downloads/:id", name: "download-task", component: DownloadTaskDetailView, meta: { requiresAuth: true } },
       { path: "automation/sources", name: "automation-sources", component: AutomationSourcesView, meta: { requiresAuth: true } },
     { path: "capability-events", name: "capability-events", component: CapabilityEventsView, meta: { requiresAuth: true } },
+    { path: "notifications", name: "notifications", component: NotificationsView, meta: { requiresAuth: true } },
       { path: "automation/sources/:id", name: "automation-source", component: AutomationSourceDetailView, meta: { requiresAuth: true } },
       { path: "automation/events/:id", name: "automation-event", component: AutomationEventDetailView, meta: { requiresAuth: true } },
       { path: "organization/targets", name: "organization-targets", component: OrganizationTargetsView, meta: { requiresAuth: true } },

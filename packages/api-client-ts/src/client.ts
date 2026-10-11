@@ -45,6 +45,10 @@ export type TmdbConnectionTestResult = components["schemas"]["TmdbConnectionTest
 export type JellyfinIntegration = components["schemas"]["JellyfinIntegration"];
 export type JellyfinConnectionTestResult = components["schemas"]["JellyfinConnectionTestResult"];
 export type JellyfinConfigCommand = components["schemas"]["JellyfinConfigCommand"];
+export type Notification = components["schemas"]["Notification"];
+export type NotificationPage = components["schemas"]["NotificationPage"];
+export type NotificationWebhook = components["schemas"]["NotificationWebhook"];
+export type NotificationWebhookInput = components["schemas"]["NotificationWebhookInput"];
 /** 收件目录持续发现和稳定门禁策略。 */
 export type DiscoveryPolicy = components["schemas"]["DiscoveryPolicy"];
 /** 替换持续发现策略的写入体。 */
@@ -168,6 +172,13 @@ export interface DownloadTaskListOptions {
   connectionId?: string;
   status?: DownloadTask["status"];
   query?: string;
+}
+
+/** 应用内通知列表的查询参数。 */
+export interface NotificationListOptions {
+  cursor?: string;
+  limit?: number;
+  unreadOnly?: boolean;
 }
 
 /** AI 能力通道事件列表的分页参数。 */
@@ -322,6 +333,18 @@ export interface MediaFlowClient {
   listCapabilityEvents(options?: CapabilityEventListOptions): Promise<CapabilityActivityPage>;
   /** @returns 独立于资源库的脱敏 Jellyfin 连接投影。 */
   getJellyfinIntegration(): Promise<JellyfinIntegration>;
+  /** @param options - 未读过滤、游标与页大小。@returns 最新在前的应用内通知。 */
+  listNotifications(options?: NotificationListOptions): Promise<NotificationPage>;
+  /** @param notificationId - 指定通知；缺省标记全部已读。@returns 标记数量。 */
+  markNotificationsRead(notificationId?: string): Promise<{ marked_read: number }>;
+  /** @returns 出站 Webhook 配置列表。 */
+  listNotificationWebhooks(): Promise<{ items: NotificationWebhook[] }>;
+  /** @param body - 候选出站配置。@returns 保存后的版本。 */
+  createNotificationWebhook(body: NotificationWebhookInput): Promise<{ config_version: number }>;
+  /** @param id - 配置 UUID。@param version - 当前 `If-Match` 版本。 */
+  deleteNotificationWebhook(id: string, version: number): Promise<void>;
+  /** @param body - 候选出站配置。@returns 探测是否被目标接受。 */
+  testNotificationWebhook(body: NotificationWebhookInput): Promise<{ delivered: boolean }>;
   /** @param body - 候选地址与凭据。@returns 不落盘测试结果。 */
   testJellyfinConnection(body: JellyfinConfigCommand): Promise<JellyfinConnectionTestResult>;
   /** @param body - 完整连接配置。@param version - 当前 `If-Match` 版本。@returns 已保存投影。 */
@@ -414,6 +437,12 @@ const operations = {
   listAutomationEvents: ["GET", "/api/v1/automation-events"],
   listCapabilityEvents: ["GET", "/api/v1/capability-events"],
   getJellyfinIntegration: ["GET", "/api/v1/integrations/jellyfin"],
+  listNotifications: ["GET", "/api/v1/notifications"],
+  markNotificationsRead: ["POST", "/api/v1/notifications/read-markers"],
+  listNotificationWebhooks: ["GET", "/api/v1/notification-webhooks"],
+  createNotificationWebhook: ["POST", "/api/v1/notification-webhooks"],
+  deleteNotificationWebhook: ["DELETE", "/api/v1/notification-webhooks/{webhookId}"],
+  testNotificationWebhook: ["POST", "/api/v1/notification-webhooks/connection-tests"],
   testJellyfinConnection: ["POST", "/api/v1/integrations/jellyfin/connection-tests"],
   putJellyfinIntegration: ["PUT", "/api/v1/integrations/jellyfin"],
   refreshJellyfinHealth: ["POST", "/api/v1/integrations/jellyfin"],
@@ -596,6 +625,19 @@ export function createMediaFlowClient(options: { baseUrl?: string; fetch?: typeo
       query: { limit: options.limit?.toString() },
     }),
     getJellyfinIntegration: () => request("getJellyfinIntegration"),
+    listNotifications: (options = {}) => request("listNotifications", {
+      cursor: options.cursor,
+      query: { unread_only: options.unreadOnly?.toString(), limit: options.limit?.toString() },
+    }),
+    markNotificationsRead: (notificationId) => request("markNotificationsRead", {
+      body: { notification_id: notificationId ?? null },
+    }),
+    listNotificationWebhooks: () => request("listNotificationWebhooks"),
+    createNotificationWebhook: (body) => request("createNotificationWebhook", { body }),
+    deleteNotificationWebhook: (id, version) => request("deleteNotificationWebhook", {
+      path: { webhookId: id }, ifMatch: version,
+    }),
+    testNotificationWebhook: (body) => request("testNotificationWebhook", { body }),
     testJellyfinConnection: (body) => request("testJellyfinConnection", { body }),
     putJellyfinIntegration: (body, version) => request("putJellyfinIntegration", { body, ifMatch: version }),
     refreshJellyfinHealth: () => request("refreshJellyfinHealth"),

@@ -118,6 +118,7 @@ pub fn build_router_with_outbox(
         router = router.merge(identity_router(config.clone(), &db));
         router = merge_connector_routes(router, &config, &db, &notifier);
         router = router.merge(automation_router(config.clone(), &db));
+        router = router.merge(crate::notifications::routes::router(config.clone(), &db));
         router = router.merge(automation_event_router(
             config.clone(),
             &db,

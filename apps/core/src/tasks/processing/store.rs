@@ -1730,6 +1730,18 @@ impl ProcessingStore {
             now_us,
         )
         .await?;
+        // 等待人工审核是管理员必须知道的编排事实：通知与状态转换原子提交。
+        if transition.status == ProcessingStatus::WaitingConfirmation {
+            let _ = crate::notifications::store::NotificationStore::insert_in_transaction(
+                &mut tx,
+                crate::notifications::store::NotificationKind::ReviewWaiting,
+                "任务等待人工审核",
+                "识别结果需要管理员确认后才能继续整理。",
+                Some(lease.task.id),
+                now_us,
+            )
+            .await;
+        }
         tx.commit().await.map_err(internal)?;
         self.notifier.notify_after_commit();
         self.get_by_id(lease.task.id).await
@@ -1858,6 +1870,18 @@ impl ProcessingStore {
             now_us,
         )
         .await?;
+        // 等待人工审核是管理员必须知道的编排事实：通知与状态转换原子提交。
+        if transition.status == ProcessingStatus::WaitingConfirmation {
+            let _ = crate::notifications::store::NotificationStore::insert_in_transaction(
+                &mut tx,
+                crate::notifications::store::NotificationKind::ReviewWaiting,
+                "任务等待人工审核",
+                "识别结果需要管理员确认后才能继续整理。",
+                Some(lease.task.id),
+                now_us,
+            )
+            .await;
+        }
         tx.commit().await.map_err(internal)?;
         self.notifier.notify_after_commit();
         self.get_by_id(lease.task.id).await

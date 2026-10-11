@@ -53,6 +53,7 @@ onMounted(() => {
         <RouterLink to="/connections/downloaders">下载器连接</RouterLink>
         <RouterLink to="/automation/sources">来源自动化</RouterLink>
         <RouterLink to="/capability-events">AI 能力活动</RouterLink>
+        <RouterLink to="/notifications">通知中心</RouterLink>
         <button data-account-toggle type="button" aria-controls="account-panel" :aria-expanded="accountOpen" @click="accountOpen = !accountOpen">账户与系统</button>
       </nav>
       <AiSessionPanel />

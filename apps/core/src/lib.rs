@@ -21,6 +21,8 @@ pub mod discovery;
 pub mod identification;
 /// 单管理员引导、会话认证与凭据持久化。
 pub mod identity;
+/// 应用内通知中心与可选出站 Webhook 边界。
+pub mod notifications;
 /// 版本化整理目标、计划、安全文件操作和可恢复结果。
 pub mod organization;
 /// `SQLite`、文件系统、HTTP、安全、备份、发件箱与运行时适配器。

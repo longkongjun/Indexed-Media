@@ -24,6 +24,8 @@ const client = {
   listCapabilityEvents: vi.fn(async () => ({ items: [], next_cursor: null })),
   getJellyfinIntegration: vi.fn(async () => ({ kind: "jellyfin", configured: false, base_url: null, display_name: null, server_version: null, config_version: 0, health: "unconfigured", failure_code: null, checked_at: null })),
   refreshJellyfinHealth: vi.fn(),
+  listNotifications: vi.fn(async () => ({ items: [], next_cursor: null, unread_count: 0 })),
+  markNotificationsRead: vi.fn(),
 } as unknown as MediaFlowClient;
 
 async function mountWithRouter(component: Component, path: string, api: MediaFlowClient = client) {

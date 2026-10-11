@@ -60,7 +60,7 @@ async fn migration_seeds_one_disabled_strict_path_and_prompt_free_configuration(
             .fetch_one(db.pool())
             .await
             .unwrap(),
-        33
+        34
     );
 }
 

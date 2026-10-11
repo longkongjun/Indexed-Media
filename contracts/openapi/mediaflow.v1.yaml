@@ -301,6 +301,92 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
         '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/notifications:
+    get:
+      operationId: listNotifications
+      summary: List newest-first in-app notifications
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: unread_only, in: query, schema: { type: boolean, default: false } }
+        - { $ref: '#/components/parameters/Cursor' }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '200': { $ref: '#/components/responses/NotificationPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/notifications/read-markers:
+    post:
+      operationId: markNotificationsRead
+      summary: Mark one or all notifications as read
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NotificationReadMarker' }
+      responses:
+        '200': { $ref: '#/components/responses/NotificationReadReceipt' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/notification-webhooks:
+    get:
+      operationId: listNotificationWebhooks
+      summary: List redacted outbound webhook configurations
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/NotificationWebhookPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    post:
+      operationId: createNotificationWebhook
+      summary: Save an outbound webhook configuration
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NotificationWebhookInput' }
+      responses:
+        '200': { $ref: '#/components/responses/NotificationWebhookAccepted' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/notification-webhooks/{webhookId}:
+    parameters: [{ name: webhookId, in: path, required: true, schema: { type: string, format: uuid } }]
+    delete:
+      operationId: deleteNotificationWebhook
+      summary: Remove an outbound webhook configuration
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/IfMatch' }]
+      responses:
+        '204': { description: Webhook removed }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/notification-webhooks/connection-tests:
+    post:
+      operationId: testNotificationWebhook
+      summary: Non-persistent outbound webhook probe
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NotificationWebhookInput' }
+      responses:
+        '200': { description: Probe accepted by the target, content: { application/json: { schema: { $ref: '#/components/schemas/NotificationWebhookProbeReceipt' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
   /api/v1/integrations/jellyfin:
     get:
       operationId: getJellyfinIntegration
@@ -1258,6 +1344,10 @@ components:
     OrganizationTarget: { description: One safe organization target projection, content: { application/json: { schema: { $ref: '#/components/schemas/OrganizationTarget' } } } }
     OrganizationTargetPreflight: { description: Non-persistent organization target preflight, content: { application/json: { schema: { $ref: '#/components/schemas/OrganizationTargetPreflight' } } } }
     ProcessingTaskOrganization: { description: "One task's safe plan, journals, and local result", content: { application/json: { schema: { $ref: '#/components/schemas/ProcessingTaskOrganization' } } } }
+    NotificationPage: { description: Newest-first in-app notifications, content: { application/json: { schema: { $ref: '#/components/schemas/NotificationPage' } } } }
+    NotificationReadReceipt: { description: Read marker receipt, content: { application/json: { schema: { $ref: '#/components/schemas/NotificationReadReceipt' } } } }
+    NotificationWebhookPage: { description: Redacted webhook configurations, content: { application/json: { schema: { $ref: '#/components/schemas/NotificationWebhookPage' } } } }
+    NotificationWebhookAccepted: { description: Webhook saved, content: { application/json: { schema: { $ref: '#/components/schemas/NotificationWebhookAccepted' } } } }
     JellyfinIntegration: { description: Redacted Jellyfin connection projection, content: { application/json: { schema: { $ref: '#/components/schemas/JellyfinIntegration' } } } }
     JellyfinConnectionTestResult: { description: Non-persistent Jellyfin test result, content: { application/json: { schema: { $ref: '#/components/schemas/JellyfinConnectionTestResult' } } } }
     CapabilityActivityPage: { description: Redacted AI capability channel events, content: { application/json: { schema: { $ref: '#/components/schemas/CapabilityActivityPage' } } } }
@@ -2203,6 +2293,85 @@ components:
         projection_version: { type: integer, minimum: 1, maximum: 9007199254740991 }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
+    Notification:
+      description: One in-app notification; never carries paths or credentials.
+      type: object
+      additionalProperties: false
+      required: [id, kind, title, body, task_id, created_at, read_at]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { enum: [review.waiting, organization.paused, organization.rolled-back, system.notice] }
+        title: { type: string, minLength: 1, maxLength: 200 }
+        body: { type: string, minLength: 1, maxLength: 2000 }
+        task_id: { type: [string, 'null'], format: uuid }
+        created_at: { type: string, format: date-time }
+        read_at: { type: [string, 'null'], format: date-time }
+    NotificationPage:
+      description: Newest-first notification page with unread count.
+      type: object
+      additionalProperties: false
+      required: [items, next_cursor, unread_count]
+      properties:
+        items: { type: array, maxItems: 100, items: { $ref: '#/components/schemas/Notification' } }
+        next_cursor: { type: [string, 'null'], maxLength: 512 }
+        unread_count: { type: integer, minimum: 0 }
+    NotificationReadMarker:
+      description: Mark one (notification_id) or all (absent) notifications as read.
+      type: object
+      additionalProperties: false
+      required: [notification_id]
+      properties:
+        notification_id: { type: [string, 'null'], format: uuid }
+    NotificationReadReceipt:
+      description: How many notifications were marked read.
+      type: object
+      additionalProperties: false
+      required: [marked_read]
+      properties:
+        marked_read: { type: integer, minimum: 0 }
+    NotificationWebhook:
+      description: Redacted outbound webhook configuration.
+      type: object
+      additionalProperties: false
+      required: [id, target_url, display_name, enabled, config_version, health, last_delivery_at]
+      properties:
+        id: { type: string, format: uuid }
+        target_url: { type: string, minLength: 8, maxLength: 2048 }
+        display_name: { type: [string, 'null'], minLength: 1, maxLength: 120 }
+        enabled: { type: boolean }
+        config_version: { type: integer, minimum: 1 }
+        health: { enum: [unconfigured, healthy, degraded, unavailable, unauthorized] }
+        last_delivery_at: { type: [string, 'null'], format: date-time }
+    NotificationWebhookPage:
+      description: Webhook configuration list.
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items: { type: array, maxItems: 20, items: { $ref: '#/components/schemas/NotificationWebhook' } }
+    NotificationWebhookInput:
+      description: Candidate outbound webhook; probes never persist and never echo secrets.
+      type: object
+      additionalProperties: false
+      required: [target_url, display_name, enabled]
+      properties:
+        target_url: { type: string, minLength: 8, maxLength: 2048 }
+        display_name: { type: [string, 'null'], minLength: 1, maxLength: 120 }
+        enabled: { type: boolean }
+    NotificationWebhookAccepted:
+      description: Saved webhook version receipt.
+      type: object
+      additionalProperties: false
+      required: [config_version]
+      properties:
+        config_version: { type: integer, minimum: 1 }
+    NotificationWebhookProbeReceipt:
+      description: Non-persistent probe acceptance.
+      type: object
+      additionalProperties: false
+      required: [delivered]
+      properties:
+        delivered: { type: boolean }
     JellyfinIntegration:
       description: Redacted Jellyfin connection; independent of MediaFlow libraries and never a task dependency.
       type: object
