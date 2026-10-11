@@ -6,7 +6,7 @@ use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
-use sqlx::{QueryBuilder, Sqlite, SqlitePool};
+use sqlx::{QueryBuilder, Row as _, Sqlite, SqlitePool};
 use uuid::Uuid;
 
 use crate::connectors::downloader::model::CreateDownloadTaskCommand;
@@ -24,7 +24,7 @@ use super::model::{
     AutomationFailureCode,
 };
 use super::rss::client::FeedClientError;
-use super::rss::poller::{FeedPollCommit, FeedPollCommitPort};
+use super::rss::poller::{FeedPollCommit, FeedPollCommitPort, FeedPollSource};
 
 type EventRow = (
     Vec<u8>,
@@ -825,6 +825,142 @@ impl FeedPollCommitPort for AutomationEventStore {
 }
 
 impl AutomationEventStore {
+    /// 原子领取一个到期启用的 RSS 源：置轮询租约并解密 feed URL 与条件游标。
+    ///
+    /// 返回 `None` 表示当前没有到期源。租约防止并发运行时重复轮询同一源；
+    /// 提交或失败提交会释放租约并推进 `next_poll_at_us`。
+    ///
+    /// # Errors
+    ///
+    /// 数据库、密钥或存储记录损坏时返回稳定错误。
+    pub async fn claim_due_rss_source(
+        &self,
+        now_us: i64,
+        lease_duration_us: i64,
+    ) -> Result<Option<FeedPollSource>, AppError> {
+        let mut tx = self
+            .pool
+            .begin_with("BEGIN IMMEDIATE")
+            .await
+            .map_err(database_error)?;
+        let row = sqlx::query(
+            "SELECT s.id,s.config_version,s.downloader_connection_id,
+                    s.secret_schema_version,s.secret_nonce,s.secret_ciphertext,
+                    r.cursor_schema_version,r.cursor_nonce,r.cursor_ciphertext
+             FROM automation_sources s
+             JOIN automation_source_runtime r ON r.source_id=s.id
+             WHERE s.kind='rss' AND s.enabled=1 AND s.secret_ciphertext IS NOT NULL
+               AND (r.next_poll_at_us IS NULL OR r.next_poll_at_us<=?)
+               AND (r.lease_expires_at_us IS NULL OR r.lease_expires_at_us<=?)
+             ORDER BY COALESCE(r.next_poll_at_us,0),s.created_at_us
+             LIMIT 1",
+        )
+        .bind(now_us)
+        .bind(now_us)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(database_error)?;
+        let Some(row) = row else {
+            return Ok(None);
+        };
+        let source_id =
+            Uuid::from_slice(row.get::<Vec<u8>, _>("id").as_slice()).map_err(invalid_database)?;
+        let config_version: i64 = row.get("config_version");
+        let lease_token = Uuid::now_v7();
+        sqlx::query(
+            "UPDATE automation_source_runtime
+             SET lease_token=?,lease_expires_at_us=?,updated_at_us=?
+             WHERE source_id=? AND (lease_expires_at_us IS NULL OR lease_expires_at_us<=?)",
+        )
+        .bind(lease_token.as_bytes().as_slice())
+        .bind(now_us.saturating_add(lease_duration_us))
+        .bind(now_us)
+        .bind(source_id.as_bytes().as_slice())
+        .bind(now_us)
+        .execute(&mut *tx)
+        .await
+        .map_err(database_error)?;
+        if sqlx::query_scalar::<_, i64>("SELECT changes()")
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(database_error)?
+            != 1
+        {
+            return Ok(None);
+        }
+        tx.commit().await.map_err(database_error)?;
+
+        let schema = u16::try_from(row.get::<i64, _>("secret_schema_version"))
+            .map_err(|_| invalid_database("invalid rss secret schema"))?;
+        let nonce: [u8; 24] = row
+            .get::<Vec<u8>, _>("secret_nonce")
+            .try_into()
+            .map_err(|_| invalid_database("invalid rss secret nonce"))?;
+        let sealed =
+            SealedSecret::from_parts(schema, nonce, row.get::<Vec<u8>, _>("secret_ciphertext"))
+                .map_err(|error| invalid_database(error.to_string()))?;
+        let url = self
+            .key
+            .open(
+                &SecretAad::new(
+                    source_id,
+                    IntegrationKind::AutomationRss,
+                    config_version,
+                    schema,
+                ),
+                &sealed,
+            )
+            .map_err(secret_error)?;
+
+        let cursor = self.open_rss_cursor(source_id, config_version, &row)?;
+        let _ = lease_token;
+        Ok(Some(FeedPollSource {
+            id: source_id,
+            config_version,
+            downloader_connection_id: Uuid::from_slice(
+                row.get::<Vec<u8>, _>("downloader_connection_id").as_slice(),
+            )
+            .map_err(invalid_database)?,
+            feed_url: url,
+            cursor,
+        }))
+    }
+
+    fn open_rss_cursor(
+        &self,
+        source_id: Uuid,
+        config_version: i64,
+        row: &sqlx::sqlite::SqliteRow,
+    ) -> Result<Option<super::rss::client::RssCursor>, AppError> {
+        let cursor_schema: Option<i64> = row.get("cursor_schema_version");
+        let Some(cursor_schema) = cursor_schema else {
+            return Ok(None);
+        };
+        let schema = u16::try_from(cursor_schema)
+            .map_err(|_| invalid_database("invalid rss cursor schema"))?;
+        let nonce: [u8; 24] = row
+            .get::<Vec<u8>, _>("cursor_nonce")
+            .try_into()
+            .map_err(|_| invalid_database("invalid rss cursor nonce"))?;
+        let sealed =
+            SealedSecret::from_parts(schema, nonce, row.get::<Vec<u8>, _>("cursor_ciphertext"))
+                .map_err(|error| invalid_database(error.to_string()))?;
+        let bytes = self
+            .key
+            .open(
+                &SecretAad::new(
+                    source_id,
+                    IntegrationKind::AutomationRssCursor,
+                    config_version,
+                    schema,
+                ),
+                &sealed,
+            )
+            .map_err(secret_error)?;
+        serde_json::from_slice(bytes.expose())
+            .map_err(|_| invalid_database("invalid rss cursor payload"))
+    }
+
     #[allow(clippy::too_many_lines)]
     async fn commit_rss_poll(
         &self,

@@ -18,6 +18,8 @@ use super::worker::AutomationWorker;
 pub struct AutomationRuntime {
     worker: AutomationWorker,
     completions: DownloadCompletionDispatcher,
+    events: super::event_store::AutomationEventStore,
+    poller: Arc<super::rss::poller::FeedPoller>,
     notified: Arc<Notify>,
     failures: watch::Sender<Option<ErrorCode>>,
 }
@@ -28,6 +30,7 @@ impl AutomationRuntime {
     /// # Errors
     ///
     /// Returns a configuration error when an encrypted store cannot open.
+    #[allow(clippy::needless_pass_by_value)]
     pub fn production(
         pool: SqlitePool,
         config_dir: &Path,
@@ -44,14 +47,48 @@ impl AutomationRuntime {
             Arc::new(SystemTaskClock),
             notifier.clone(),
         )?;
-        let completions = DownloadCompletionDispatcher::open(pool, config_dir, notifier)?;
+        let completions =
+            DownloadCompletionDispatcher::open(pool.clone(), config_dir, notifier.clone())?;
+        let events = super::event_store::AutomationEventStore::open_with_notifier(
+            pool.clone(),
+            config_dir,
+            notifier.clone(),
+        )?;
+        let feed_client = super::rss::client::FeedHttpClient::production()
+            .map_err(|error| AppError::with_source(ErrorCode::ConfigInvalid, error))?;
+        let poller = Arc::new(super::rss::poller::FeedPoller::new(
+            Arc::new(feed_client),
+            Arc::new(events.clone()),
+        ));
         let (failures, _) = watch::channel(None);
         Ok(Self {
             worker,
             completions,
+            events,
+            poller,
             notified: Arc::new(Notify::new()),
             failures,
         })
+    }
+
+    /// 轮询至多一个到期 RSS 源并原子提交草稿事件。
+    ///
+    /// # Errors
+    ///
+    /// 数据库、密钥或上游 feed 故障会记录到源的失败提交后返回；提交本身失败向上传播。
+    pub async fn poll_due_rss_source(&self) -> Result<bool, AppError> {
+        let now_us = chrono::Utc::now().timestamp_micros();
+        let Some(source) = self.events.claim_due_rss_source(now_us, 30_000_000).await? else {
+            return Ok(false);
+        };
+        match self.poller.poll(source).await {
+            Ok(result) => {
+                let _ = result;
+                Ok(true)
+            }
+            // poller 在 Err 时已通过 commit port 记录失败并释放租约。
+            Err(_) => Ok(true),
+        }
     }
 
     /// Reclaim all expired event leases before serving traffic.
@@ -76,7 +113,14 @@ impl AutomationRuntime {
         if let Some(dispatch) = self.completions.run_once(now_us).await? {
             return Ok(dispatch.event_id.or(Some(dispatch.download_task_id)));
         }
-        self.worker.run_once().await
+        if let Some(event_id) = self.worker.run_once().await? {
+            return Ok(Some(event_id));
+        }
+        // 事件队列空转时检查一个到期 RSS 源；新事件会唤醒循环继续处理。
+        if self.poll_due_rss_source().await? {
+            return Ok(Some(uuid::Uuid::nil()));
+        }
+        Ok(None)
     }
 
     /// Wake an idle runtime after a new event commit.
