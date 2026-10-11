@@ -530,6 +530,15 @@ client-check-kmp-sdk:
 client-docs-kmp-sdk:
     @./gradlew :packages:kmp-sdk:dokkaGeneratePublicationHtml
 
-# 客户端全量门禁聚合（随 C2/C3 增补 android 与 ios 目标）。
+# Android 应用门禁：构建 + 单元测试。
+client-check-android:
+    @./gradlew :apps:android:assembleDebug :apps:android:testDebugUnitTest
+
+# 启动契约 fixtures 本地服务器（默认 0.0.0.0:8642；FIXTURE_PORT 可覆盖；Ctrl-C 停止）。
+client-fixture-server:
+    @./gradlew :tools:client-fixture-server:run
+
+# 客户端全量门禁聚合（随 C3 增补 ios 目标）。
 client-check:
     @just client-check-kmp-sdk
+    @just client-check-android

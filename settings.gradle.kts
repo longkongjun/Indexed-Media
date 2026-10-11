@@ -25,3 +25,5 @@ dependencyResolutionManagement {
 rootProject.name = "mediaflow-clients"
 
 include(":packages:kmp-sdk")
+include(":apps:android")
+include(":tools:client-fixture-server")

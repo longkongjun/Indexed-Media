@@ -20,7 +20,7 @@ kotlin {
     // org.jetbrains.kotlin.multiplatform 已不兼容，内置 KMP 支持取代两者组合）。
     android {
         namespace = "mediaflow.kmp.sdk"
-        compileSdk = 36
+        compileSdk = 37
         minSdk = 26
     }
     jvm()
@@ -62,7 +62,7 @@ kotlin {
         androidMain {
             dependencies {
                 implementation(libs.ktor.client.okhttp)
-                implementation(libs.sqldelight.driver.android)
+                api(libs.sqldelight.driver.android) // 宿主 App 构造平台驱动（SDK 平台面）
             }
         }
         iosMain {
