@@ -5,14 +5,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import kotlin.time.Clock
 import mediaflow.client.core.SdkResult
-import mediaflow.client.core.getOrNull
 import mediaflow.client.core.apiCall
 import mediaflow.client.core.error.MediaFlowError
 import mediaflow.client.core.events.TaskEventClient
+import mediaflow.client.core.getOrNull
 import mediaflow.client.core.net.MediaFlowApiFactory
 import mediaflow.client.core.net.SessionAuthCache
+import kotlin.time.Clock
 
 /** 单条媒体墙条目的 Swift 友好投影（基本类型，避免泛型/时间类型跨桥）。 */
 data class WallItem(
@@ -24,7 +24,10 @@ data class WallItem(
     val hasArtwork: Boolean,
 )
 
-data class WallPage(val items: List<WallItem>, val nextCursor: String?)
+data class WallPage(
+    val items: List<WallItem>,
+    val nextCursor: String?,
+)
 
 data class DetailUi(
     val id: String,
@@ -50,7 +53,10 @@ data class CandidateUi(
     val mediaTypeRaw: String,
 )
 
-data class ReceiptUi(val stateLabel: String, val caseVersion: Long)
+data class ReceiptUi(
+    val stateLabel: String,
+    val caseVersion: Long,
+)
 
 data class TaskUi(
     val id: String,
@@ -59,25 +65,50 @@ data class TaskUi(
     val cancellable: Boolean,
 )
 
-data class WallOutcome(val page: WallPage?, val error: String?)
+data class WallOutcome(
+    val page: WallPage?,
+    val error: String?,
+)
 
-data class DetailOutcome(val detail: DetailUi?, val error: String?)
+data class DetailOutcome(
+    val detail: DetailUi?,
+    val error: String?,
+)
 
-data class CasesOutcome(val cases: List<ReviewCaseUi>, val error: String?)
+data class CasesOutcome(
+    val cases: List<ReviewCaseUi>,
+    val error: String?,
+)
 
-data class CandidatesOutcome(val candidates: List<CandidateUi>, val error: String?)
+data class CandidatesOutcome(
+    val candidates: List<CandidateUi>,
+    val error: String?,
+)
 
-data class ReceiptOutcome(val receipt: ReceiptUi?, val error: String?)
+data class ReceiptOutcome(
+    val receipt: ReceiptUi?,
+    val error: String?,
+)
 
-data class TasksOutcome(val tasks: List<TaskUi>, val error: String?)
+data class TasksOutcome(
+    val tasks: List<TaskUi>,
+    val error: String?,
+)
 
-data class Outcome(val success: Boolean, val message: String? = null)
+data class Outcome(
+    val success: Boolean,
+    val message: String? = null,
+)
 
 /**
+ * Suppress 说明（TooManyFunctions）：投影门面按六屏一方法收口，方法数与屏数对齐，
+ * 拆分只会把投影逻辑分散。
+ *
  * iOS 接入桥：suspend 函数经 Kotlin/Native 自动导出为 completionHandler 形态；
  * 投影只用基本类型与 List<投影>，避免泛型 StateFlow / kotlinx 时间类型跨桥。
  * SSE 事件经 [setEventHandler] 以契约 type 字符串回调（Swift 侧映射为刷新信号）。
  */
+@Suppress("TooGenericExceptionCaught", "TooManyFunctions")
 class MediaFlowIosBridge {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var cache = SessionAuthCache()
@@ -106,19 +137,37 @@ class MediaFlowIosBridge {
         val transport = MediaFlowApiFactory(normalized, cache, json)
         val client = transport.httpClient()
         val api = mediaflow.api.apis.DefaultApi(baseUrl = normalized, httpClient = transport.httpClient())
-        auth = mediaflow.client.core.auth.AuthRepository(client, mediaflow.client.core.auth.InMemoryDeviceAuthStore(), cache, json)
+        auth =
+            mediaflow.client.core.auth
+                .AuthRepository(
+                    client,
+                    mediaflow.client.core.auth
+                        .InMemoryDeviceAuthStore(),
+                    cache,
+                    json,
+                )
         return when (val result = auth!!.login(name, password)) {
             is SdkResult.Success -> {
-                media = mediaflow.client.core.media.MediaRepository(api, json)
-                review = mediaflow.client.core.review.ReviewRepository(api, client, cache, json)
-                tasks = mediaflow.client.core.tasks.TaskRepository(api, cache, json)
-                playback = mediaflow.client.core.playback.PlaybackRepository(api, json)
+                media =
+                    mediaflow.client.core.media
+                        .MediaRepository(api, json)
+                review =
+                    mediaflow.client.core.review
+                        .ReviewRepository(api, client, cache, json)
+                tasks =
+                    mediaflow.client.core.tasks
+                        .TaskRepository(api, cache, json)
+                playback =
+                    mediaflow.client.core.playback
+                        .PlaybackRepository(api, json)
                 eventClient =
                     TaskEventClient(
                         baseUrl = normalized,
                         authCache = cache,
                         json = json,
-                        engine = mediaflow.client.core.net.platformHttpClientEngine(),
+                        engine =
+                            mediaflow.client.core.net
+                                .platformHttpClientEngine(),
                     )
                 startEvents()
                 Outcome(true)
@@ -301,9 +350,9 @@ class MediaFlowIosBridge {
         when (error) {
             is MediaFlowError.Http ->
                 when (error.status) {
-                    401 -> "登录已过期，请重新登录"
-                    404 -> "内容不存在或已移除"
-                    409 -> "内容已被他人更新，请刷新后重试"
+                    HTTP_UNAUTHORIZED -> "登录已过期，请重新登录"
+                    HTTP_NOT_FOUND -> "内容不存在或已移除"
+                    HTTP_CONFLICT -> "内容已被他人更新，请刷新后重试"
                     else -> error.message.ifBlank { "服务错误（${error.status}）" }
                 }
             is MediaFlowError.Network -> "网络异常或离线"
@@ -311,14 +360,28 @@ class MediaFlowIosBridge {
         }
 }
 
+private const val HTTP_UNAUTHORIZED = 401
+
+private const val HTTP_NOT_FOUND = 404
+
+private const val HTTP_CONFLICT = 409
+
 /** 决定命令的内部判别（桥内避免导出 sealed 泛型）。 */
-private class ReviewCommand(val wrapped: mediaflow.client.core.review.ReviewRepository.ReviewDecisionKind) {
+private class ReviewCommand(
+    val wrapped: mediaflow.client.core.review.ReviewRepository.ReviewDecisionKind,
+) {
     companion object {
         fun candidate(command: mediaflow.api.models.SelectProviderCandidateCommand) =
-            ReviewCommand(mediaflow.client.core.review.ReviewRepository.ReviewDecisionKind.SelectProviderCandidate(command))
+            ReviewCommand(
+                mediaflow.client.core.review.ReviewRepository.ReviewDecisionKind
+                    .SelectProviderCandidate(command),
+            )
 
         fun generic(command: mediaflow.api.models.SelectGenericVideoCommand) =
-            ReviewCommand(mediaflow.client.core.review.ReviewRepository.ReviewDecisionKind.SelectGenericVideo(command))
+            ReviewCommand(
+                mediaflow.client.core.review.ReviewRepository.ReviewDecisionKind
+                    .SelectGenericVideo(command),
+            )
     }
 }
 
