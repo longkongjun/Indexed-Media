@@ -3,7 +3,8 @@ package mediaflow.client.core.paging
 import mediaflow.client.core.error.MediaFlowError
 
 /**
- * 页面状态语义（对齐 ui-contract / Web `TaskCenterState` 模型）。
+ * 页面状态语义（权威定本：packages/ui-contract · contract/page-states.json，五态 + stale；
+ * 本类型为其 KMP 实现锚点，与 Web `TaskCenterState` 逐项一致）。
  *
  * kind ∈ {Loading, Content, Empty, Error, Offline}；`stale=true` 表示已有内容
  * 但正在刷新或刷新失败（UI 保留旧内容并提示）。Offline 是网络连接类错误的
