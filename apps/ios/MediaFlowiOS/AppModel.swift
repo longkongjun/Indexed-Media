@@ -10,6 +10,9 @@ final class AppModel: ObservableObject {
     @Published var baseUrl = "http://127.0.0.1:8642"
     @Published var username = "admin"
     @Published var password = ""
+    /// 登录页模式：配对码（Web 签发的一次性码）或管理员密码，统一产设备令牌。
+    @Published var pairingMode = true
+    @Published var pairingCode = ""
 
     @Published var path: [Screen] = []
     @Published var tab: Tab = .wall
@@ -40,6 +43,19 @@ final class AppModel: ObservableObject {
     private let bridge = MediaFlowIosBridge()
 
     init() {
+        // 任意屏 401：桥内已清 Keychain，统一回登录页。
+        bridge.setCredentialExpiredHandler { [weak self] in
+            Task { @MainActor in
+                self?.loggedIn = false
+                self?.path = []
+            }
+        }
+        // 冷启动恢复：Keychain 有设备令牌则直接进入（首个请求自然校验）。
+        Task { @MainActor in
+            if let outcome = try? await bridge.restore(baseUrl: baseUrl), outcome.success {
+                loggedIn = true
+            }
+        }
         // SSE 事件 → 对应 Tab 的权威刷新（与 Android ProjectionRefresher 同语义）。
         bridge.setEventHandler { [weak self] eventType in
             Task { @MainActor in
@@ -58,24 +74,45 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// 按登录页模式发起 enrollment：配对码或管理员凭据，统一产设备令牌。
     func login() {
         loginBusy = true
         loginError = nil
         let url = baseUrl
+        let mode = pairingMode
+        let code = pairingCode
         let name = username
         let secret = password
         Task { @MainActor in
             do {
-                let outcome = try await bridge.login(baseUrl: url, name: name, password: secret)
+                let outcome: Outcome
+                if mode {
+                    outcome = try await bridge.pair(baseUrl: url, pairingCode: code)
+                } else {
+                    outcome = try await bridge.login(baseUrl: url, name: name, password: secret)
+                }
                 if outcome.success {
                     loggedIn = true
                 } else {
-                    loginError = outcome.message ?? "登录失败"
+                    loginError = outcome.message ?? (mode ? "配对失败" : "登录失败")
                 }
             } catch {
-                loginError = "登录失败"
+                loginError = mode ? "配对失败" : "登录失败"
             }
             loginBusy = false
+        }
+    }
+
+    /// 登出：吊销设备令牌并清 Keychain，回登录页。
+    func logout() {
+        Task { @MainActor in
+            _ = try? await bridge.logout()
+            loggedIn = false
+            path = []
+            tab = .wall
+            wallItems = []
+            cases = []
+            tasks = []
         }
     }
 

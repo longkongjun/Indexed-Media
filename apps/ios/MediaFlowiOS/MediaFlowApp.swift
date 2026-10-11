@@ -77,8 +77,19 @@ struct LoginView: View {
                 TextField("服务器地址", text: $model.baseUrl)
                     .keyboardType(.URL)
                     .textInputAutocapitalization(.never)
-                TextField("管理员", text: $model.username)
-                SecureField("密码", text: $model.password)
+                Picker("模式", selection: $model.pairingMode) {
+                    Text("配对码").tag(true)
+                    Text("管理员密码").tag(false)
+                }
+                .pickerStyle(.segmented)
+                if model.pairingMode {
+                    TextField("8 位配对码（Web 管理页签发）", text: $model.pairingCode)
+                        .textInputAutocapitalization(.characters)
+                        .autocorrectionDisabled()
+                } else {
+                    TextField("管理员", text: $model.username)
+                    SecureField("密码", text: $model.password)
+                }
             }
             if let error = model.loginError {
                 Text(error).foregroundStyle(.red)
@@ -89,10 +100,10 @@ struct LoginView: View {
                 if model.loginBusy {
                     ProgressView()
                 } else {
-                    Text("登录").frame(maxWidth: .infinity)
+                    Text(model.pairingMode ? "配对并登录" : "登录").frame(maxWidth: .infinity)
                 }
             }
-            .disabled(model.loginBusy || model.password.isEmpty)
+            .disabled(model.loginBusy || (model.pairingMode ? model.pairingCode.isEmpty : model.password.isEmpty))
         }
         .navigationTitle("MediaFlow")
     }
@@ -124,6 +135,11 @@ struct WallView: View {
         .refreshable { await model.reloadWall() }
         .overlay { if model.wallMode == .loading(stale: false) { ProgressView("加载中…") } }
         .navigationTitle("媒体库")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("退出") { model.logout() }
+            }
+        }
         .task { await model.reloadWall() }
         .overlay(alignment: .bottom) { StateBanner(mode: model.wallMode) }
     }
