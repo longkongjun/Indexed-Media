@@ -27,3 +27,6 @@ xcuserdata/
 .dart_tool/
 .flutter-plugins
 .flutter-plugins-dependencies
+
+# Android（M5 客户端）
+local.properties

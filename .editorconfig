@@ -1,0 +1,16 @@
+# EditorConfig（新增于 M5 客户端任务；ktlint 读取本文件做规则与豁免配置）。
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{kt,kts}]
+indent_size = 4
+max_line_length = 140
+
+# 生成产物不做 ktlint 检查（ktlint 官方豁免机制；契约一致性由编译 + fixtures 回放保证）。
+[**/build/generated/**/*.kt]
+ktlint = disabled
