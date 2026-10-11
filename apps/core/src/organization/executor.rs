@@ -686,7 +686,13 @@ impl OrganizationExecutor {
             Err(FileOperationError::IoTemporary) => Ok(ExecutionOutcome::RecoveryPending {
                 reason: "organization.io-temporary".to_owned(),
             }),
-            Err(error) => self.manual_review(journal, error.stable_reason()).await,
+            Err(error) => {
+                eprintln!(
+                    "DIAG composite-copy-failed reason={}",
+                    error.stable_reason()
+                );
+                self.manual_review(journal, error.stable_reason()).await
+            }
         }
     }
 
@@ -834,6 +840,20 @@ impl OrganizationExecutor {
             .by_operation(self.account_id, child.plan_id, parent_operation_id)
             .await?
             .ok_or_else(|| AppError::new(ErrorCode::Internal, "move parent journal missing"))?;
+        // 跨设备组合的 quarantine 在来源删除完成后补发恢复清单。
+        if parent.kind == JournalKind::Quarantine {
+            let source = parent
+                .expected_source
+                .as_ref()
+                .and_then(|source| Some((source.clone(), parent.applied.clone()?)));
+            if let Some((source, applied)) = source {
+                let spec =
+                    FileOperationSpec::new(parent.operation_id, source, applied.locator().clone());
+                self.fs
+                    .publish_quarantine_manifest(&spec, &applied)
+                    .map_err(file_operation)?;
+            }
+        }
         self.start_nfo_or_complete(plan, parent, scope).await
     }
 

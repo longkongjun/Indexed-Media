@@ -355,7 +355,9 @@ impl JournalStore {
         parent: &JournalRecord,
         now_us: i64,
     ) -> Result<JournalRecord, AppError> {
-        if parent.kind != JournalKind::Move || parent.status != JournalStatus::Verified {
+        if !matches!(parent.kind, JournalKind::Move | JournalKind::Quarantine)
+            || parent.status != JournalStatus::Verified
+        {
             return Err(conflict("move journal is not ready for source removal"));
         }
         let source = parent
@@ -795,7 +797,9 @@ impl JournalStore {
         parent: &JournalRecord,
         now_us: i64,
     ) -> Result<LocalResultView, AppError> {
-        if parent.kind != JournalKind::Move || parent.status != JournalStatus::Verified {
+        if !matches!(parent.kind, JournalKind::Move | JournalKind::Quarantine)
+            || parent.status != JournalStatus::Verified
+        {
             return Err(conflict("move journal is not verified"));
         }
         sqlx::query(

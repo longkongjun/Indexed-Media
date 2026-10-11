@@ -435,6 +435,18 @@ pub trait OrganizationFs: Send + Sync {
         operation: &FileOperationSpec,
     ) -> Result<AppliedFile, FileOperationError>;
 
+    /// 为跨设备组合完成的 quarantine 发布恢复清单（同盘路径由
+    /// [`Self::quarantine_no_clobber`] 内部完成）。
+    ///
+    /// # Errors
+    ///
+    /// 清单发布失败时返回稳定错误。
+    fn publish_quarantine_manifest(
+        &self,
+        operation: &FileOperationSpec,
+        applied: &AppliedFile,
+    ) -> Result<(), FileOperationError>;
+
     /// 以 1 MiB 上限发布一个原先不存在的 NFO。
     ///
     /// # Errors

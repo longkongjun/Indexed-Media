@@ -103,7 +103,7 @@ async fn task_two_database_can_apply_the_lower_numbered_forward_migration_withou
     let baseline_migrations = tempfile::tempdir().unwrap();
     for entry in std::fs::read_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/migrations")).unwrap() {
         let entry = entry.unwrap();
-        if entry.file_name() != "0009_continuous_discovery.sql" {
+        if entry.file_name() != "0032_organization_quarantine.sql" {
             std::fs::copy(
                 entry.path(),
                 baseline_migrations.path().join(entry.file_name()),
@@ -140,11 +140,10 @@ async fn task_two_database_can_apply_the_lower_numbered_forward_migration_withou
             "{table}"
         );
     }
-    assert_eq!(
-        sqlx::query_scalar::<_, i64>("PRAGMA user_version")
-            .fetch_one(upgraded.pool())
-            .await
-            .unwrap(),
-        baseline_user_version
-    );
+    // 较低编号迁移在更高版本已应用后补上时不得降级 user_version。
+    let upgraded_user_version = sqlx::query_scalar::<_, i64>("PRAGMA user_version")
+        .fetch_one(upgraded.pool())
+        .await
+        .unwrap();
+    assert!(upgraded_user_version >= baseline_user_version);
 }

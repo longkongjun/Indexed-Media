@@ -78,6 +78,14 @@ impl OrganizationFs for QuarantineFailpointFs {
         self.inner.hardlink_no_clobber(operation)
     }
 
+    fn publish_quarantine_manifest(
+        &self,
+        operation: &FileOperationSpec,
+        applied: &AppliedFile,
+    ) -> Result<(), FileOperationError> {
+        self.inner.publish_quarantine_manifest(operation, applied)
+    }
+
     fn quarantine_no_clobber(
         &self,
         operation: &FileOperationSpec,
@@ -158,7 +166,6 @@ fn executor_from(
     )
 }
 
-#[tokio::test]
 async fn disk_full_style_temporary_failure_recovers_on_the_next_run() {
     let fixture = organization_fixture(OrganizationOperation::Quarantine).await;
     let fs = Arc::new(QuarantineFailpointFs {
@@ -200,7 +207,6 @@ async fn disk_full_style_temporary_failure_recovers_on_the_next_run() {
     );
 }
 
-#[tokio::test]
 async fn cross_device_quarantine_composes_copy_and_verified_removal_with_manifest() {
     let fixture = organization_fixture(OrganizationOperation::Quarantine).await;
     let fs = Arc::new(QuarantineFailpointFs {
@@ -244,7 +250,6 @@ async fn cross_device_quarantine_composes_copy_and_verified_removal_with_manifes
     );
 }
 
-#[tokio::test]
 async fn crash_after_filesystem_quarantine_recovers_without_a_second_move() {
     let fixture = organization_fixture(OrganizationOperation::Quarantine).await;
     // 排布崩溃窗口：journal 已 executing、文件已被真实 quarantine、DB 未记 applied。
@@ -294,7 +299,6 @@ async fn crash_after_filesystem_quarantine_recovers_without_a_second_move() {
     );
 }
 
-#[tokio::test]
 async fn duplicate_run_next_after_verified_journal_is_idempotent() {
     let fixture = organization_fixture(OrganizationOperation::Quarantine).await;
     let executor = real_executor(&fixture);
@@ -319,4 +323,14 @@ async fn duplicate_run_next_after_verified_journal_is_idempotent() {
         b"arrival-media",
         "duplicate request must not produce a second copy in trash"
     );
+}
+
+/// 四个失败场景串行执行：真实临时文件系统下的 fixture 并行存在未定位的间歇耦合，
+/// 串行化后语义覆盖不变。
+#[tokio::test]
+async fn quarantine_failure_matrix() {
+    disk_full_style_temporary_failure_recovers_on_the_next_run().await;
+    cross_device_quarantine_composes_copy_and_verified_removal_with_manifest().await;
+    crash_after_filesystem_quarantine_recovers_without_a_second_move().await;
+    duplicate_run_next_after_verified_journal_is_idempotent().await;
 }

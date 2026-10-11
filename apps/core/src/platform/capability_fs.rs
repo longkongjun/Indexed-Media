@@ -814,6 +814,14 @@ impl OrganizationFs for OsCapabilityFs {
         Ok(applied)
     }
 
+    fn publish_quarantine_manifest(
+        &self,
+        operation: &FileOperationSpec,
+        applied: &AppliedFile,
+    ) -> Result<(), FileOperationError> {
+        Self::publish_quarantine_manifest(self, operation, applied)
+    }
+
     fn quarantine_no_clobber(
         &self,
         operation: &FileOperationSpec,

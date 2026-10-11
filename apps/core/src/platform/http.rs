@@ -96,53 +96,9 @@ pub fn build_router_with_outbox(
     notifier: OutboxNotifier,
 ) -> Router {
     let mut startup_issues = config.readiness_issues();
-    let services = db.as_ref().and_then(|db| {
-        let initialized = DeploymentRootSet::load(&config.deployment_roots_file, config.mode)
-            .and_then(|roots| {
-                OsCapabilityFs::open(roots.declarations(), config.mode).map(|fs| {
-                    let views = roots.view_map();
-                    let fingerprint = roots.fingerprint();
-                    let root_access = roots
-                        .views()
-                        .iter()
-                        .map(|root| (root.id.clone(), root.access))
-                        .collect();
-                    let fs = Arc::new(fs);
-                    let capability_fs: Arc<dyn crate::discovery::capability::CapabilityFs> =
-                        fs.clone();
-                    let organization_fs: Arc<dyn OrganizationFs> = fs;
-                    let discovery = DiscoveryService::new(
-                        views.clone(),
-                        Arc::clone(&capability_fs),
-                        db.pool().clone(),
-                    )
-                    .with_config_guard(config.deployment_roots_file.clone(), fingerprint.clone());
-                    let organization = OrganizationTargetService::new_with_notifier(
-                        views,
-                        Arc::clone(&capability_fs),
-                        db.pool().clone(),
-                        notifier.clone(),
-                    )
-                    .with_config_guard(config.deployment_roots_file.clone(), fingerprint.clone());
-                    let tasks = OrganizationTaskService::production(
-                        db.pool().clone(),
-                        notifier.clone(),
-                        organization_fs,
-                        root_access,
-                    )
-                    .with_config_guard(config.deployment_roots_file.clone(), fingerprint);
-                    (discovery, organization, tasks)
-                })
-            });
-        if let Ok(services) = initialized {
-            Some(services)
-        } else {
-            if !startup_issues.contains(&"deployment roots are unavailable") {
-                startup_issues.push("deployment roots are unavailable");
-            }
-            None
-        }
-    });
+    let services = db
+        .as_ref()
+        .and_then(|db| assemble_organization_services(db, &config, &notifier, &mut startup_issues));
     let discovery = services.as_ref().map(|(service, _, _)| service.clone());
     let organization = services.map(|(_, targets, tasks)| (targets, tasks));
     let startup_issues = Arc::from(startup_issues);
@@ -158,7 +114,6 @@ pub fn build_router_with_outbox(
         .fallback(fallback)
         .with_state(state);
     if let Some(db) = db {
-        router = router.merge(capability_router(config.clone(), &db));
         router = router.merge(capability_admin_router(config.clone(), &db));
         router = router.merge(identity_router(config.clone(), &db));
         router = merge_connector_routes(router, &config, &db, &notifier);
@@ -181,20 +136,91 @@ pub fn build_router_with_outbox(
             notifier.clone(),
             SseOptions::production(),
         ));
+        let organization_available = organization.is_some();
         if let Some((target_service, task_service)) = organization {
             router = router.merge(organization_target_router(
                 config.clone(),
                 &db,
                 target_service,
             ));
-            router = router.merge(organization_task_router(config.clone(), &db, task_service));
+            router = router.merge(organization_task_router(
+                config.clone(),
+                &db,
+                task_service.clone(),
+            ));
+            // 写能力依赖整理命令服务；部署根可用后升级能力路由。
+            router = router.merge(crate::capability::gateway::router_with_organization(
+                config.clone(),
+                &db,
+                Some(Arc::new(task_service)),
+            ));
         }
         if let Some(service) = discovery {
             router = router.merge(discovery_router(config.clone(), &db, service.clone()));
-            router = router.merge(scan_router(config, &db, service, notifier));
+            router = router.merge(scan_router(config.clone(), &db, service, notifier));
+        }
+        if !organization_available {
+            // 部署根不可用时能力协议保持只读降级，而不是整块关闭。
+            router = router.merge(capability_router(config, &db));
         }
     }
     router.layer(from_fn(security_headers))
+}
+
+/// 部署根可用时组装发现与整理服务三元组；失败时登记启动问题并返回 `None`。
+fn assemble_organization_services(
+    db: &Db,
+    config: &AppConfig,
+    notifier: &OutboxNotifier,
+    startup_issues: &mut Vec<&'static str>,
+) -> Option<(
+    DiscoveryService,
+    OrganizationTargetService,
+    OrganizationTaskService,
+)> {
+    let initialized =
+        DeploymentRootSet::load(&config.deployment_roots_file, config.mode).and_then(|roots| {
+            OsCapabilityFs::open(roots.declarations(), config.mode).map(|fs| {
+                let views = roots.view_map();
+                let fingerprint = roots.fingerprint();
+                let root_access = roots
+                    .views()
+                    .iter()
+                    .map(|root| (root.id.clone(), root.access))
+                    .collect();
+                let fs = Arc::new(fs);
+                let capability_fs: Arc<dyn crate::discovery::capability::CapabilityFs> = fs.clone();
+                let organization_fs: Arc<dyn OrganizationFs> = fs;
+                let discovery = DiscoveryService::new(
+                    views.clone(),
+                    Arc::clone(&capability_fs),
+                    db.pool().clone(),
+                )
+                .with_config_guard(config.deployment_roots_file.clone(), fingerprint.clone());
+                let organization = OrganizationTargetService::new_with_notifier(
+                    views,
+                    Arc::clone(&capability_fs),
+                    db.pool().clone(),
+                    notifier.clone(),
+                )
+                .with_config_guard(config.deployment_roots_file.clone(), fingerprint.clone());
+                let tasks = OrganizationTaskService::production(
+                    db.pool().clone(),
+                    notifier.clone(),
+                    organization_fs,
+                    root_access,
+                )
+                .with_config_guard(config.deployment_roots_file.clone(), fingerprint);
+                (discovery, organization, tasks)
+            })
+        });
+    if let Ok(services) = initialized {
+        return Some(services);
+    }
+    if !startup_issues.contains(&"deployment roots are unavailable") {
+        startup_issues.push("deployment roots are unavailable");
+    }
+    None
 }
 
 fn merge_connector_routes(

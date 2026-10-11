@@ -494,7 +494,7 @@ async fn plan_preview_without_persisted_plan_reports_needs_input() {
                             Uuid::now_v7(),
                             "media.create-plan",
                             Some(harness.task_id),
-                            json!({ "task_id": harness.task_id.to_string(), "dry_run": true }),
+                            json!({ "task_id": harness.task_id.to_string() }),
                             None,
                         )
                         .to_string(),
@@ -536,6 +536,139 @@ async fn unregistered_and_unimplemented_capabilities_are_rejected() {
             "{capability} must be rejected in A1: {body}"
         );
     }
+}
+
+#[tokio::test]
+async fn write_capabilities_refuse_when_organization_commands_are_unavailable() {
+    let harness = harness(b"a2-write-unavailable.mkv").await;
+    for (capability, revision) in [
+        ("media.apply-plan", "plan.version:1"),
+        ("media.rollback", "result.version:1"),
+    ] {
+        let mut envelope = call_envelope(
+            Uuid::now_v7(),
+            capability,
+            Some(harness.task_id),
+            json!({ "task_id": harness.task_id.to_string() }),
+            Some(revision),
+        );
+        envelope["execution"]["mode"] = json!("reversible-write");
+        let body = json_body(
+            harness
+                .app
+                .clone()
+                .oneshot(
+                    Request::post("/api/capability/v1/calls")
+                        .header(header::AUTHORIZATION, format!("Bearer {TOKEN}"))
+                        .header(header::CONTENT_TYPE, "application/json")
+                        .body(Body::from(envelope.to_string()))
+                        .expect("request"),
+                )
+                .await
+                .expect("response"),
+        )
+        .await;
+        assert_eq!(body["status"], "failed", "{capability}: {body}");
+        let expected_category = if capability == "media.rollback" {
+            "not_found"
+        } else {
+            "precondition"
+        };
+        assert_eq!(
+            body["error"]["category"], expected_category,
+            "{capability} must report its missing precondition structurally: {body}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn approval_capability_reports_missing_task_as_structured_not_found() {
+    let harness = harness(b"a2-approval-missing.mkv").await;
+    let mut envelope = call_envelope(
+        Uuid::now_v7(),
+        "media.request-approval",
+        None,
+        json!({ "task_id": "019f8a30-0000-7000-8000-00000000dead" }),
+        None,
+    );
+    envelope["execution"]["mode"] = json!("approval-required");
+    let body = json_body(
+        harness
+            .app
+            .clone()
+            .oneshot(
+                Request::post("/api/capability/v1/calls")
+                    .header(header::AUTHORIZATION, format!("Bearer {TOKEN}"))
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(envelope.to_string()))
+                    .expect("request"),
+            )
+            .await
+            .expect("response"),
+    )
+    .await;
+    assert_eq!(body["status"], "failed");
+    assert_eq!(body["error"]["category"], "not_found");
+}
+
+#[tokio::test]
+async fn approval_capability_rejects_wrong_execution_mode() {
+    let harness = harness(b"a2-approval-mode.mkv").await;
+    // request-approval 只接受 approval-required；read-only 模式是 precondition 拒绝。
+    let envelope = call_envelope(
+        Uuid::now_v7(),
+        "media.request-approval",
+        None,
+        json!({ "task_id": harness.task_id.to_string() }),
+        None,
+    );
+    let body = json_body(
+        harness
+            .app
+            .clone()
+            .oneshot(
+                Request::post("/api/capability/v1/calls")
+                    .header(header::AUTHORIZATION, format!("Bearer {TOKEN}"))
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(envelope.to_string()))
+                    .expect("request"),
+            )
+            .await
+            .expect("response"),
+    )
+    .await;
+    assert_eq!(body["status"], "rejected");
+    assert_eq!(body["error"]["category"], "precondition");
+}
+
+#[tokio::test]
+async fn dry_run_recalculation_refuses_without_organization_commands() {
+    let harness = harness(b"a2-dryrun-unavailable.mkv").await;
+    let envelope = call_envelope(
+        Uuid::now_v7(),
+        "media.create-plan",
+        Some(harness.task_id),
+        json!({ "task_id": harness.task_id.to_string(), "dry_run": true }),
+        None,
+    );
+    let body = json_body(
+        harness
+            .app
+            .clone()
+            .oneshot(
+                Request::post("/api/capability/v1/calls")
+                    .header(header::AUTHORIZATION, format!("Bearer {TOKEN}"))
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(envelope.to_string()))
+                    .expect("request"),
+            )
+            .await
+            .expect("response"),
+    )
+    .await;
+    // 任务仍处 identification：重算的前置（planning 任务）不满足，是结构化 precondition 失败。
+    assert_eq!(body["status"], "failed");
+    assert_eq!(body["error"]["category"], "precondition", "body: {body}");
 }
 
 #[tokio::test]

@@ -36,6 +36,21 @@ pub const REGISTRY: &[CapabilitySpec] = &[
         allowed_modes: &[CapabilityExecutionMode::PlanOnly],
         input_fields: &["task_id", "dry_run"],
     },
+    CapabilitySpec {
+        name: CapabilityName::MediaRequestApproval,
+        allowed_modes: &[CapabilityExecutionMode::ApprovalRequired],
+        input_fields: &["task_id"],
+    },
+    CapabilitySpec {
+        name: CapabilityName::MediaApplyPlan,
+        allowed_modes: &[CapabilityExecutionMode::ReversibleWrite],
+        input_fields: &["task_id"],
+    },
+    CapabilitySpec {
+        name: CapabilityName::MediaRollback,
+        allowed_modes: &[CapabilityExecutionMode::ReversibleWrite],
+        input_fields: &["task_id"],
+    },
 ];
 
 /// 查找能力描述；未登记能力是稳定拒绝。

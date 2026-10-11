@@ -468,6 +468,14 @@ impl OrganizationFs for FailFirstNfoFs {
         self.inner.hardlink_no_clobber(operation)
     }
 
+    fn publish_quarantine_manifest(
+        &self,
+        operation: &FileOperationSpec,
+        applied: &AppliedFile,
+    ) -> Result<(), FileOperationError> {
+        self.inner.publish_quarantine_manifest(operation, applied)
+    }
+
     fn quarantine_no_clobber(
         &self,
         operation: &FileOperationSpec,
