@@ -5,12 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>MediaFlow Design · 风格指南</title>
     <script>
-      // 防闪：首帧前按本地记忆设置主题（theme-switching 模式 §1）
+      // 防闪：首帧前按本地记忆设置主题与皮肤（theme-switching 模式 §1；皮肤见 docs/skins.md）
       (function () {
-        var saved = null;
-        try { saved = localStorage.getItem("mfd-theme"); } catch (e) {}
+        var saved = null, skin = null;
+        try {
+          saved = localStorage.getItem("mfd-theme");
+          skin = localStorage.getItem("mfd-skin");
+        } catch (e) {}
         if (saved === "light" || saved === "dark") {
           document.documentElement.dataset.theme = saved;
+        }
+        if (skin && skin !== "evergreen") {
+          document.documentElement.dataset.skin = skin;
         }
       })();
     </script>
@@ -24,6 +30,12 @@
         <div class="brand" id="brand"></div>
         <nav class="side-nav" id="side-nav" aria-label="章节"></nav>
         <div class="side-foot">
+          <p class="theme-label" id="skin-label">皮肤</p>
+          <div class="seg" role="radiogroup" aria-label="皮肤" id="skin-seg">
+            <button type="button" class="seg-btn" data-skin-choice="evergreen" role="radio" aria-checked="true"><span class="seg-dot" data-skin-dot="evergreen"></span><span class="seg-label">常青</span></button>
+            <button type="button" class="seg-btn" data-skin-choice="aurora" role="radio" aria-checked="false"><span class="seg-dot" data-skin-dot="aurora"></span><span class="seg-label">极光</span></button>
+            <button type="button" class="seg-btn" data-skin-choice="sepia" role="radio" aria-checked="false"><span class="seg-dot" data-skin-dot="sepia"></span><span class="seg-label">胶片</span></button>
+          </div>
           <p class="theme-label" id="theme-label">主题</p>
           <div class="seg" role="radiogroup" aria-label="外观">
             <button type="button" class="seg-btn" data-theme-choice="system" role="radio" aria-checked="true" title="跟随系统"><span data-icon="monitor"></span><span class="seg-label">跟随系统</span></button>

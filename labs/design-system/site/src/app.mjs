@@ -7,9 +7,10 @@ import { renderPatternsView } from "./views/patterns.mjs";
 import { icon } from "./demo-kit.mjs";
 import { fetchTokens, fixtures } from "./fixtures.mjs";
 
-/* ---------- 主题三态 ---------- */
+/* ---------- 主题三态 + 皮肤二维（docs/skins.md） ---------- */
 
 const THEME_KEY = "mfd-theme";
+const SKIN_KEY = "mfd-skin";
 
 function applyThemeChoice(choice) {
   const root = document.documentElement;
@@ -19,18 +20,36 @@ function applyThemeChoice(choice) {
   for (const btn of document.querySelectorAll("[data-theme-choice]")) {
     btn.setAttribute("aria-checked", String(btn.dataset.themeChoice === choice));
   }
+  document.documentElement.dispatchEvent(new CustomEvent("mfd-theme-change", { detail: { theme: choice } }));
+}
+
+function applySkinChoice(skin) {
+  const root = document.documentElement;
+  if (skin && skin !== "evergreen") root.dataset.skin = skin;
+  else delete root.dataset.skin; // 基线皮肤 = 无属性
+  try { localStorage.setItem(SKIN_KEY, skin); } catch { /* 同上 */ }
+  for (const btn of document.querySelectorAll("[data-skin-choice]")) {
+    btn.setAttribute("aria-checked", String(btn.dataset.skinChoice === skin));
+  }
+  document.documentElement.dispatchEvent(new CustomEvent("mfd-skin-change", { detail: { skin } }));
 }
 
 function initTheme() {
-  let saved = "system";
-  try { saved = localStorage.getItem(THEME_KEY) || "system"; } catch { /* 同上 */ }
+  let saved = "system", skin = "evergreen";
+  try {
+    saved = localStorage.getItem(THEME_KEY) || "system";
+    skin = localStorage.getItem(SKIN_KEY) || "evergreen";
+  } catch { /* 同上 */ }
   if (saved !== "light" && saved !== "dark") saved = "system";
-  // index.html 内联脚本已防闪设了 data-theme；此处对齐控件态并持久化合法值
+  // index.html 内联脚本已防闪；此处对齐控件态并持久化合法值
   if (saved === "system") delete document.documentElement.dataset.theme;
   applyThemeChoice(saved);
+  applySkinChoice(skin);
   document.querySelector(".side-foot").addEventListener("click", (event) => {
-    const btn = event.target.closest("[data-theme-choice]");
-    if (btn) applyThemeChoice(btn.dataset.themeChoice);
+    const themeBtn = event.target.closest("[data-theme-choice]");
+    if (themeBtn) applyThemeChoice(themeBtn.dataset.themeChoice);
+    const skinBtn = event.target.closest("[data-skin-choice]");
+    if (skinBtn) applySkinChoice(skinBtn.dataset.skinChoice);
   });
 }
 
@@ -40,6 +59,7 @@ const ROUTES = [
   { path: "tokens", label: "设计 Tokens", icon: "palette", view: renderTokensView },
   { path: "components", label: "组件规格", icon: "layers", view: renderComponentsView },
   { path: "patterns", label: "交互模式", icon: "workflow", view: renderPatternsView },
+  { path: "platforms", label: "平台 · 手机/TV", icon: "monitor", view: () => import("./views/platforms.mjs").then((m) => m.renderPlatformsView({ fixtures })) },
 ];
 
 let TOKENS_VERSION = "";

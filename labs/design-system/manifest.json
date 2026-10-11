@@ -1,14 +1,19 @@
 {
   "name": "mediaflow-design",
-  "version": "1.1.0",
+  "version": "2.0.0",
   "description": "MediaFlow 设计语言（MediaFlow Design）的唯一权威源：设计 tokens、组件规格、交互模式与风格指南站。",
   "theme_policy": {
-    "modes": [
-      "light",
-      "dark"
+    "dimensions": [
+      "skin",
+      "theme"
     ],
-    "canonical": "light",
-    "rule": "每个语义 token 双主题双值；暗色不二次调暗媒体内容（docs/dark-media-principles.md）"
+    "model": "data-skin × data-theme；皮肤 = 配色家族 + 风格参数，每皮肤双主题双值",
+    "skins": [
+      "evergreen（常青，基线）",
+      "aurora（极光）",
+      "sepia（胶片）"
+    ],
+    "rule": "全部皮肤 × 双主题过 WCAG 2.2 AA（check-contrast.mjs 全组合门禁）；皮肤不改语义结构"
   },
   "a11y_baseline": "WCAG 2.2 AA（正文 ≥4.5:1、非文本 ≥3:1，双主题自动化验证：scripts/check-contrast.mjs）",
   "dependencies": "零 npm 依赖（原生 ES Modules + 本地 fixtures + Node 内置模块）",
@@ -26,10 +31,13 @@
       "docs/patterns/（9 件交互模式）",
       "site/（零依赖风格指南站：三视图 + 三态主题切换 + scripts/check-site.mjs 自动检查 + docs/screenshots 自检截图）",
       "docs/adoption-roadmap.md（三方采纳路线图）",
-      "docs/screenshots/*-v1.1.png（v1.1 视觉升级自检截图：tokens 浅色 / components 暗色）"
+      "docs/screenshots/*-v1.1.png（v1.1 视觉升级自检截图：tokens 浅色 / components 暗色）",
+      "tokens/skins/*.json（skin-gen.mjs 生成：OKLCH tonal palette，M3 机制）",
+      "docs/skins.md（皮肤体系：概念/生成/扩展/消费/红线）"
     ]
   },
   "breaking_changes": [
+    "v2.0.0：tokens 架构引入皮肤层（tokens/skins/*.json + [data-skin] CSS 维度）；消费方 CSS 变量名不变，但自建主题入口需按 docs/skins.md §5 扩展",
     "v1.1.0：shadow-1/2/3 值改为双层叠加阴影（消费方若依赖逐字阴影值需重新快照；语义与层级不变）",
     "v1.1.0：新增 font-size-display / radius-2xl / color-action-gradient / color-action-gradient-text / color-bg-highlight（additive，无破坏）"
   ]

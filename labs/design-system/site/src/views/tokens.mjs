@@ -28,20 +28,31 @@ function ratioTo(fg, bgRgb) {
 const WHITE = [255, 255, 255];
 const BLACK = [0, 0, 0];
 
-function chip(value, label, ratioNote) {
+/** 实时读取当前 皮肤×主题 下某 token 的计算值（皮肤体系的可视化基础）。 */
+function liveValue(name) {
+  return getComputedStyle(document.documentElement)
+    .getPropertyValue(`--mfd-${name}`)
+    .trim();
+}
+
+function chip(name) {
   const div = document.createElement("div");
   div.className = "chip";
-  const rgb = parseHex(value);
-  div.style.background = value;
-  div.style.color = rgb && ratioTo(rgb, BLACK) >= ratioTo(rgb, WHITE) ? "#000000" : "#ffffff";
-  div.textContent = label;
-  if (ratioNote) {
-    const r = document.createElement("span");
-    r.className = "ratio";
-    r.textContent = ratioNote;
-    div.append(r);
-  }
+  div.dataset.token = name;
+  paintChip(div);
   return div;
+}
+
+function paintChip(div) {
+  const value = liveValue(div.dataset.token);
+  div.style.background = value;
+  div.textContent = value || "—";
+  const rgb = parseHex(value);
+  if (rgb) {
+    div.style.color = ratioTo(rgb, BLACK) >= ratioTo(rgb, WHITE) ? "#000000" : "#ffffff";
+    const r = div.querySelector(".ratio") ?? div.appendChild(Object.assign(document.createElement("span"), { className: "ratio" }));
+    r.textContent = `白 ${ratioTo(rgb, WHITE).toFixed(1)}·黑 ${ratioTo(rgb, BLACK).toFixed(1)}`;
+  }
 }
 
 function swatchGrid(entries) {
@@ -54,11 +65,7 @@ function swatchGrid(entries) {
     card.setAttribute("aria-label", `复制 ${name} 的 token 值`);
     const chips = document.createElement("div");
     chips.className = "chips";
-    for (const [value, label] of [[light, "light"], [dark, "dark"]]) {
-      const rgb = parseHex(value);
-      const note = rgb ? `白 ${ratioTo(rgb, WHITE).toFixed(1)}·黑 ${ratioTo(rgb, BLACK).toFixed(1)}` : null;
-      chips.append(chip(value, label, note));
-    }
+    chips.append(chip(name));
     const body = document.createElement("span");
     body.className = "swatch-body";
     const nm = document.createElement("span");
@@ -70,8 +77,8 @@ function swatchGrid(entries) {
     body.append(nm, lbl);
     card.append(chips, body);
     card.addEventListener("click", () => {
-      const text = `--mfd-${name}: ${light} / ${dark}`;
-      navigator.clipboard?.writeText(text).catch(() => {});
+      const text = `--mfd-${name}（值随 皮肤×主题 组合，见 tokens/skins/*.json）`;
+      navigator.clipboard?.writeText(`--mfd-${name}`).catch(() => {});
       const overlay = document.createElement("span");
       overlay.className = "copied";
       overlay.textContent = "已复制 token";
@@ -92,8 +99,28 @@ function collectColorTokens(tokens, group) {
       else entries.push({ name: `color-${prefix}${key}`, desc: value.desc ?? "", light: value.light, dark: value.dark });
     }
   };
-  walk(tokens.semantic.color[group], "");
+  walk(tokens.semantic.color[group], `${group}-`);
   return entries;
+}
+
+let liveRefreshBound = false;
+function bindLiveRefresh(frag) {
+  if (liveRefreshBound) return;
+  liveRefreshBound = true;
+  const refresh = () => {
+    for (const chipEl of document.querySelectorAll(".swatch .chip")) paintChip(chipEl);
+    const ctx = document.querySelector("[data-live-context]");
+    if (ctx) ctx.textContent = currentContextLabel();
+  };
+  document.documentElement.addEventListener("mfd-skin-change", refresh);
+  document.documentElement.addEventListener("mfd-theme-change", refresh);
+}
+
+function currentContextLabel() {
+  const skin = document.documentElement.dataset.skin || "evergreen";
+  const theme = document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark(系统)" : "light(系统)");
+  const LABELS = { evergreen: "常青", aurora: "极光", sepia: "胶片" };
+  return `当前组合：皮肤 ${LABELS[skin] ?? skin} × 主题 ${theme}（色卡为实时计算值）`;
 }
 
 export async function renderTokensView({ tokens }) {
@@ -102,8 +129,15 @@ export async function renderTokensView({ tokens }) {
   frag.append(hero(
     "Design Tokens",
     '常青色板，<em>双主题</em>语义',
-    `MediaFlow Design v${tokens.version} · 唯一源 tokens/tokens.json · 每个语义 token 浅/暗双值 · 点击色卡复制 token · 色角标注对白/对黑对比度（WCAG 公式）· 62 必检对双主题全过 AA。`,
+    `v${tokens.version} · 皮肤（常青/极光/胶片）× 主题（浅/暗）二维体系 · 色卡显示当前组合的实时值并随侧栏切换刷新 · 点击复制 token 名 · 色角为对白/对黑对比度（WCAG 公式）· 每皮肤 62 必检对双主题全过 AA。`,
   ));
+
+  const ctx = document.createElement("p");
+  ctx.className = "eyebrow";
+  ctx.dataset.liveContext = "";
+  ctx.textContent = currentContextLabel();
+  frag.append(ctx);
+  bindLiveRefresh(frag);
 
   for (const [group, title, blurb, tag] of [
     ["bg", "背景色", "容器层级：canvas → surface → raised/sunken；inverse 为侧栏深底", "surface"],

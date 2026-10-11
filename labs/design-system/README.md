@@ -16,7 +16,7 @@ MediaFlow 的设计语言、设计 tokens、组件规范、交互模式与风格
 labs/design-system/
 ├── README.md          本文件
 ├── manifest.json      版本、产物清单、破坏性变更记录
-├── tokens/            tokens.json（唯一源，D1 起）
+├── tokens/            tokens.json（evergreen 基线）+ skins/（皮肤层）
 ├── docs/              设计语言与组件规格文档（D2 起）
 ├── scripts/           生成与检查脚本（tokens→CSS、对比度检查，D1 起）
 └── site/              风格指南静态站（D4 起；python3 -m http.server 预览）
@@ -45,5 +45,6 @@ node labs/design-system/scripts/check-site.mjs
 
 ## 状态
 
+- v2.0.0 皮肤体系与平台覆盖（2026-10-11 深夜二轮）：**皮肤 × 主题二维架构**（常青/极光/胶片，每皮肤双主题全过 AA，共 186 必检对）；皮肤由 `skin-gen.mjs` 按 M3 tonal palette 机制生成（OKLCH 连续 tone 阶 + 语义槽位映射）；站点侧栏皮肤切换 + 色卡实时值；新增"平台 · 手机/TV"视图（设备框真实渲染 + M3 window size classes 对照 + TV 焦点导航演示）。详见 docs/skins.md。
 - v1.1.0 视觉工艺升级（2026-10-11 晚，响应用户"借鉴业内前沿"反馈）：参照 Linear/Geist/Radix 的前沿共性——Lucide 风格线性 SVG 图标系统（字形符降级映射）、hero 排版（mono eyebrow + display 标题 + 展示渐变强调）、specimen 标本框（hairline + 分层阴影 + 顶缘内高光 + 点阵底）、Geist 式 mono 微表头表格、渐变主操作按钮 + 悬浮微交互、品牌辉光画布、侧栏品牌 tile + 版本 chip + 图标主题控件、可复制 swatch（对白/对黑对比度徽章，浏览器内 WCAG 公式实时计算）；tokens v1.1.0（阴影分层化、display 字阶、gradient/gradient-text/highlight、radius-2xl）。截图 `docs/screenshots/*-v1.1.png`。
 - v1.0.0 全套交付（D0–D5，2026-10-11）：tokens / 组件规格 12 件 / 交互模式 9 件 / 零依赖站点 / 采纳路线图。

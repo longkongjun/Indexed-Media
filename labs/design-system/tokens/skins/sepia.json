@@ -1,0 +1,296 @@
+{
+  "name": "sepia",
+  "label": "胶片",
+  "desc": "暖棕主色 + 暖中性；柔和手感（半径更大）",
+  "generator": "scripts/skin-gen.mjs（M3 tonal palette 机制：OKLCH seed → tone 阶 → 语义槽位）",
+  "color": {
+    "bg": {
+      "canvas": {
+        "light": "#f3ede7",
+        "dark": "#030201",
+        "desc": ""
+      },
+      "surface": {
+        "light": "#fefaf6",
+        "dark": "#0a0603",
+        "desc": ""
+      },
+      "surface-raised": {
+        "light": "#fffffd",
+        "dark": "#15100b",
+        "desc": ""
+      },
+      "surface-sunken": {
+        "light": "#eae4df",
+        "dark": "#000000",
+        "desc": ""
+      },
+      "hover": {
+        "light": "rgba(16 37 29 / 0.06)",
+        "dark": "rgba(230 237 232 / 0.06)",
+        "desc": ""
+      },
+      "selected": {
+        "light": "#fad5bd",
+        "dark": "#2a1201",
+        "desc": ""
+      },
+      "inverse": {
+        "light": "#0e0401",
+        "dark": "#000000",
+        "desc": ""
+      },
+      "inverse-hover": {
+        "light": "#2a1201",
+        "dark": "#0e0805",
+        "desc": ""
+      },
+      "scrim": {
+        "light": "rgba(6 12 9 / 0.55)",
+        "dark": "rgba(0 0 0 / 0.65)",
+        "desc": ""
+      },
+      "highlight": {
+        "light": "rgba(255 255 255 / 0.6)",
+        "dark": "rgba(255 255 255 / 0.04)",
+        "desc": ""
+      }
+    },
+    "text": {
+      "primary": {
+        "light": "#060402",
+        "dark": "#eae4df",
+        "desc": ""
+      },
+      "secondary": {
+        "light": "#3c3530",
+        "dark": "#b3aba4",
+        "desc": ""
+      },
+      "muted": {
+        "light": "#443d37",
+        "dark": "#a39a93",
+        "desc": ""
+      },
+      "inverse": {
+        "light": "#f3ede7",
+        "dark": "#f3ede7",
+        "desc": ""
+      },
+      "inverse-muted": {
+        "light": "#b3aba4",
+        "dark": "#a8a099",
+        "desc": ""
+      },
+      "on-action": {
+        "light": "#ffffff",
+        "dark": "#090604",
+        "desc": ""
+      },
+      "on-danger": {
+        "light": "#ffffff",
+        "dark": "#200a0a",
+        "desc": ""
+      },
+      "link": {
+        "light": "#703702",
+        "dark": "#e6a070",
+        "desc": ""
+      }
+    },
+    "border": {
+      "subtle": {
+        "light": "#d6cdc6",
+        "dark": "#120c07",
+        "desc": ""
+      },
+      "default": {
+        "light": "#bfb6af",
+        "dark": "#19130e",
+        "desc": ""
+      },
+      "strong": {
+        "light": "#7c746e",
+        "dark": "#645d56",
+        "desc": ""
+      },
+      "focus": {
+        "light": "#844611",
+        "dark": "#eca676",
+        "desc": ""
+      },
+      "inverse": {
+        "light": "#351a06",
+        "dark": "#15100b",
+        "desc": ""
+      }
+    },
+    "action": {
+      "primary": {
+        "light": "#844611",
+        "dark": "#eca676",
+        "desc": ""
+      },
+      "primary-hover": {
+        "light": "#763d0a",
+        "dark": "#f9b181",
+        "desc": ""
+      },
+      "primary-active": {
+        "light": "#703702",
+        "dark": "#e09b6b",
+        "desc": ""
+      },
+      "secondary-bg": {
+        "light": "#fffffd",
+        "dark": "#120c07",
+        "desc": ""
+      },
+      "danger": {
+        "light": "#7a1b17",
+        "dark": "#f48b7e",
+        "desc": ""
+      },
+      "danger-hover": {
+        "light": "#6e0d0b",
+        "dark": "#fca397",
+        "desc": ""
+      },
+      "gradient": {
+        "light": "linear-gradient(180deg, #8a4c19 0%, #844611 100%)",
+        "dark": "linear-gradient(180deg, #f2ac7b 0%, #eca676 100%)",
+        "desc": ""
+      },
+      "gradient-text": {
+        "light": "linear-gradient(90deg, #9e5d2d 0%, #763d0a 100%)",
+        "dark": "linear-gradient(90deg, #f9b181 0%, #e6a070 100%)",
+        "desc": ""
+      }
+    },
+    "state": {
+      "success": {
+        "light": "#194b14",
+        "dark": "#8ec387",
+        "desc": ""
+      },
+      "success-bg": {
+        "light": "#cbe6c8",
+        "dark": "#0a1e08",
+        "desc": ""
+      },
+      "warning": {
+        "light": "#5d3b05",
+        "dark": "#e6ac60",
+        "desc": ""
+      },
+      "warning-bg": {
+        "light": "#fee0bc",
+        "dark": "#301d02",
+        "desc": ""
+      },
+      "warning-border": {
+        "light": "#875910",
+        "dark": "#986305",
+        "desc": ""
+      },
+      "danger": {
+        "light": "#7a1b17",
+        "dark": "#f48b7e",
+        "desc": ""
+      },
+      "danger-bg": {
+        "light": "#fee3de",
+        "dark": "#360e0b",
+        "desc": ""
+      },
+      "danger-border": {
+        "light": "#a14138",
+        "dark": "#c46055",
+        "desc": ""
+      },
+      "info": {
+        "light": "#04496a",
+        "dark": "#72bceb",
+        "desc": ""
+      },
+      "info-bg": {
+        "light": "#c5e7fe",
+        "dark": "#021b2b",
+        "desc": ""
+      },
+      "info-border": {
+        "light": "#78c1f1",
+        "dark": "#04496a",
+        "desc": ""
+      }
+    },
+    "media": {
+      "placeholder": {
+        "light": "#d6cdc6",
+        "dark": "#120c07",
+        "desc": ""
+      },
+      "badge-bg": {
+        "light": "rgba(12 18 15 / 0.85)",
+        "dark": "rgba(0 0 0 / 0.85)",
+        "desc": ""
+      },
+      "badge-text": {
+        "light": "#ffffff",
+        "dark": "#ffffff",
+        "desc": ""
+      },
+      "scrim-bottom": {
+        "light": "linear-gradient(to top, rgba(11 18 14 / 0.72), transparent)",
+        "dark": "linear-gradient(to top, rgba(0 0 0 / 0.8), transparent)",
+        "desc": ""
+      }
+    },
+    "chart": {
+      "1": {
+        "light": "#844611",
+        "dark": "#eca676",
+        "desc": ""
+      },
+      "2": {
+        "light": "#0b5a81",
+        "dark": "#72bceb",
+        "desc": ""
+      },
+      "3": {
+        "light": "#794e08",
+        "dark": "#e0a65a",
+        "desc": ""
+      },
+      "4": {
+        "light": "#94342c",
+        "dark": "#ee8578",
+        "desc": ""
+      },
+      "5": {
+        "light": "#5f5751",
+        "dark": "#b3aba4",
+        "desc": ""
+      },
+      "grid": {
+        "light": "#d6cdc6",
+        "dark": "#120c07",
+        "desc": ""
+      },
+      "axis": {
+        "light": "#3c3530",
+        "dark": "#b3aba4",
+        "desc": ""
+      }
+    }
+  },
+  "style": {
+    "radius": {
+      "sm": "0.5rem",
+      "md": "0.625rem",
+      "lg": "0.875rem",
+      "xl": "1.125rem",
+      "2xl": "1.375rem"
+    }
+  }
+}

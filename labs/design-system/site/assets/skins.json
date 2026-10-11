@@ -1,0 +1,17 @@
+{
+  "skins": [
+    {
+      "id": "evergreen",
+      "label": "常青",
+      "desc": "绿色系管理台基线（手工精调）"
+    },
+    {
+      "id": "aurora",
+      "label": "极光"
+    },
+    {
+      "id": "sepia",
+      "label": "胶片"
+    }
+  ]
+}
