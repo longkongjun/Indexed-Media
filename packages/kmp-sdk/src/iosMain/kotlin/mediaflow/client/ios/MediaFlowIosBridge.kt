@@ -404,9 +404,16 @@ class MediaFlowIosBridge {
     }
 
     private fun readable(error: MediaFlowError): String {
-        if (error.isCredentialExpired()) {
-            scope.launch { auth?.discardLocalCredentials() }
-            credentialExpiredHandler?.invoke()
+        if (error.isCredentialExpired() && cache.current() != null) {
+            // 仅"已持凭据后失效"触发（登录失败的 401 是凭据错误，不是过期）。
+            // 清理同步执行（Keychain 原语）；Swift 闭包 handler 必须经主队列
+            // 派发——从 Kotlin 协程线程直接 invoke 非 Sendable 闭包会触发
+            // Swift 6 严格并发陷阱（EXC_BREAKPOINT）。
+            runCatching {
+                authStore.syncClear()
+                cache.update(null)
+            }
+            scope.launch { credentialExpiredHandler?.invoke() }
         }
         return when (error) {
             is MediaFlowError.Http ->
@@ -417,7 +424,7 @@ class MediaFlowIosBridge {
                     else -> error.message.ifBlank { "服务错误（${error.status}）" }
                 }
             is MediaFlowError.Network -> "网络异常或离线"
-            else -> "发生错误"
+            else -> "发生错误（${(error as? MediaFlowError.Unexpected)?.cause ?: (error as? MediaFlowError.Serialization)?.cause ?: "未知"}）"
         }
     }
 }

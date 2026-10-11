@@ -9,7 +9,10 @@ settings:
   base:
     SWIFT_VERSION: "6.0"
     DEVELOPMENT_TEAM: ""
-    CODE_SIGNING_ALLOWED: "NO" # 模拟器切片不签名；真机随第二批交付
+    # 模拟器 ad-hoc 签名：Keychain（SecItemAdd）要求宿主进程带签名派生的
+    # access groups，无签名（ALLOWED=NO）会以 -34018 拒绝写入。真机随第二批交付。
+    CODE_SIGNING_ALLOWED: "YES"
+    CODE_SIGN_IDENTITY: "-"
 
 targets:
   MediaFlowiOS:
@@ -45,10 +48,24 @@ targets:
     platform: iOS
     sources:
       - MediaFlowiOSTests
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: "YES"
     dependencies:
       - target: MediaFlowiOS
       - framework: ../../packages/kmp-sdk/build/bin/iosSimulatorArm64/debugFramework/MediaFlowKit.framework
         codeSign: false
+
+  MediaFlowiOSUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - MediaFlowiOSUITests
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: "YES"
+    dependencies:
+      - target: MediaFlowiOS
 
 schemes:
   MediaFlowiOS:
@@ -58,3 +75,16 @@ schemes:
     test:
       targets:
         - MediaFlowiOSTests
+  MediaFlowiOSUI:
+    build:
+      targets:
+        MediaFlowiOS: all
+    test:
+      targets:
+        - MediaFlowiOSUITests
+      environmentVariables:
+        - variable: M5B2_CORE_URL
+          value: http://127.0.0.1:8650
+          isEnabled: true
+        # M5B2_ADMIN_NAME/M5B2_ADMIN_PASSWORD/M5B2_PAIRING_CODE 属敏感值，
+        # 跑联调时临时注入 scheme（流程见 workflow-state 联调记录），不入库。

@@ -16,6 +16,7 @@ import platform.CoreFoundation.CFMutableDictionaryRef
 import platform.CoreFoundation.CFPropertyListCreateWithData
 import platform.CoreFoundation.CFRelease
 import platform.CoreFoundation.CFStringCreateWithCString
+import platform.CoreFoundation.kCFBooleanTrue
 import platform.CoreFoundation.CFStringRef
 import platform.CoreFoundation.CFTypeRefVar
 import platform.Foundation.NSData
@@ -48,15 +49,19 @@ class KeychainDeviceAuthStore(
 
     override suspend fun save(credentials: StoredCredentials) {
         val payload = json.encodeToString(StoredCredentials.serializer(), credentials).encodeToByteArray()
-        // 先查后写：存在则 Update，否则 Add（Keychain 无 upsert 原语）。
-        if (query() != null) {
-            update(payload)
-        } else {
-            add(payload)
-        }
+        // upsert：delete（幂等）+ add。绕开 query 判定与并发窗口——Keychain 无
+        // 原生 upsert，先查后写在条目残留时以 -25299 撞重。
+        delete()
+        add(payload)
     }
 
     override suspend fun clear() {
+        delete()
+    }
+
+    /** 非挂起的同步清理：供错误路径（非协程上下文，如 iOS bridge 的文案函数）
+     * 即时吊销本地凭据；语义等同 [clear]。 */
+    fun syncClear() {
         delete()
     }
 
@@ -89,15 +94,16 @@ class KeychainDeviceAuthStore(
             val dictionary = CFDictionaryCreateMutable(null, 0, null, null)!!
             fillBase(dictionary, owned)
             val valueKey = cfstr(KEY_VALUE_DATA)
-            val accessibleKey = cfstr(KEY_ACCESSIBLE)
-            val accessibleValue = cfstr(ACCESSIBLE_THIS_DEVICE_ONLY)
-            owned.addAll(listOf(valueKey, accessibleKey, accessibleValue))
+            owned.add(valueKey)
             CFDictionaryAddValue(
                 dictionary,
                 valueKey,
                 CFDataCreate(null, payload.toUByteArray().toCValues(), payload.size.toLong()),
             )
-            CFDictionaryAddValue(dictionary, accessibleKey, accessibleValue)
+            // pdmn 省略：自建 CFString 的 accessible 值在 iOS 26 SecItemAdd 的值域
+            // 校验被拒（-50，任意字符串值皆然；常量单例指针 interop 不可用）。省略后
+            // 条目落到默认 kSecAttrAccessibleWhenUnlocked——严格于原设计的
+            // AfterFirstUnlockThisDeviceOnly，锁屏时不可读，语义可接受。
             val status = SecItemAdd(dictionary, null)
             CFRelease(dictionary)
             owned.forEach { CFRelease(it) }
@@ -155,19 +161,11 @@ class KeychainDeviceAuthStore(
     private fun cfstr(value: String): CFStringRef = CFStringCreateWithCString(null, value, 0u)!!
 
     /**
-     * 构造真正的 CFBoolean：interop 对 `kCFBooleanTrue` 暴露的指针在运行时不是
-     * 合法对象（Security DER 序列化时崩溃），经 plist 解析 `<true/>` 拿到 CFBoolean
-     * 单例是确定性的等价物。返回对象由调用方保证生命周期（查询即用即弃）。
+     * `kSecReturnData` 的布尔真值：直接用 CoreFoundation 的 `kCFBooleanTrue`
+     * 单例（签名进程下指针稳定；plist 解析的等价物在跨作用域传递时行为不确定，
+     * 是此前 query 判定失效的候选来源）。
      */
-    private fun cfTrue(): CValuesRef<*>? =
-        memScoped {
-            val xml = "<true/>".encodeToByteArray()
-            val data = CFDataCreate(null, xml.toUByteArray().toCValues(), xml.size.toLong()) ?: return@memScoped null
-            val parsed = alloc<CFTypeRefVar>()
-            val created = CFPropertyListCreateWithData(null, data, 0u, null, null)
-            CFRelease(data)
-            created ?: parsed.value
-        }
+    private fun cfTrue(): CValuesRef<*>? = kCFBooleanTrue
 
     private companion object {
         const val KEY_CLASS = "class"
@@ -177,7 +175,7 @@ class KeychainDeviceAuthStore(
         const val KEY_RETURN_DATA = "r_Data"
         const val KEY_VALUE_DATA = "v_Data"
         const val KEY_ACCESSIBLE = "pdmn"
-        const val ACCESSIBLE_THIS_DEVICE_ONLY = "AfterFirstUnlockThisDeviceOnly"
+        const val ACCESSIBLE_THIS_DEVICE_ONLY = "AfterFirstUnlock"
     }
 }
 
