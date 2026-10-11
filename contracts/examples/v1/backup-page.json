@@ -1,0 +1,22 @@
+{
+  "items": [
+    {
+      "id": "mediaflow-20261011-080000",
+      "manifest": {
+        "schema_version": 36,
+        "sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+        "created_at": "2026-10-11T08:00:00.000001Z",
+        "files": {
+          "database": {
+            "name": "mediaflow-20261011-080000.db",
+            "sha256": "60303ae22b998861bce97b6a11b9492c86b9e5b1a2e10e64e0e2b5b1b8e2b9e1"
+          },
+          "deployment_roots": {
+            "name": "deployment-roots-20261011-080000.json",
+            "sha256": "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae"
+          }
+        }
+      }
+    }
+  ]
+}

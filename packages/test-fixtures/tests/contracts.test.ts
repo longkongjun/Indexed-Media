@@ -95,6 +95,38 @@ describe("M2 contract fixtures", () => {
     }
   });
 
+  it("defines notification, family-member, and backup fixtures without secret projections", () => {
+    const examples = [
+      ["Notification", loadJson("contracts/examples/v1/notification.json")],
+      ["NotificationPage", loadJson("contracts/examples/v1/notification-page.json")],
+      ["NotificationWebhook", loadJson("contracts/examples/v1/notification-webhook.json")],
+      ["FamilyMember", loadJson("contracts/examples/v1/family-member.json")],
+      ["FamilyMemberPage", loadJson("contracts/examples/v1/family-member-page.json")],
+      ["BackupManifest", loadJson("contracts/examples/v1/backup-manifest.json")],
+      ["BackupPage", loadJson("contracts/examples/v1/backup-page.json")],
+      ["BackupCreationReceipt", loadJson("contracts/examples/v1/backup-creation-receipt.json")],
+    ] as const;
+    for (const [schemaName, example] of examples) {
+      const validator = apiAjv.getSchema(`https://mediaflow.local/contracts/openapi/mediaflow.v1.yaml#/components/schemas/${schemaName}`);
+      expect(validator, schemaName).toBeDefined();
+      expect(validator?.(example), `${schemaName}: ${JSON.stringify(validator?.errors)}`).toBe(true);
+    }
+    for (const path of [
+      "/api/v1/notifications",
+      "/api/v1/notifications/read-markers",
+      "/api/v1/notification-webhooks",
+      "/api/v1/family-members",
+      "/api/v1/family-members/{memberId}",
+      "/api/v1/system/backups",
+    ]) {
+      expect((openApi as unknown as { paths: Record<string, unknown> }).paths).toHaveProperty(path);
+    }
+    const serialized = JSON.stringify(examples).toLowerCase();
+    for (const forbidden of ["password", "password_phc", "instance", "secret", "absolute_path"]) {
+      expect(serialized).not.toContain(forbidden);
+    }
+  });
+
   it("accepts every positive example", () => {
     const schemaNames = [
       "BootstrapStatusResponse", "BootstrapRequest", "SessionResponse", "DeploymentRootList",

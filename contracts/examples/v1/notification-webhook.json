@@ -1,0 +1,9 @@
+{
+  "id": "019f8a50-7271-7000-8000-000000000005",
+  "target_url": "https://hooks.example.test/mediaflow",
+  "display_name": "家庭群",
+  "enabled": true,
+  "config_version": 2,
+  "health": "healthy",
+  "last_delivery_at": "2026-10-11T08:10:00.000001Z"
+}

@@ -68,6 +68,50 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/family-members:
+    get:
+      operationId: listFamilyMembers
+      summary: List family member records
+      description: External-player identities only; members never hold MediaFlow sessions or admin surface.
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/FamilyMemberPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    post:
+      operationId: createFamilyMember
+      summary: Create a family member record
+      security: *write-security
+      parameters: *write-parameters
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FamilyMemberInput' }
+      responses:
+        '201': { $ref: '#/components/responses/FamilyMemberCreated' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/family-members/{memberId}:
+    parameters: [{ name: memberId, in: path, required: true, schema: { type: string, format: uuid } }]
+    delete:
+      operationId: deleteFamilyMember
+      summary: Remove a family member record
+      security: *write-security
+      parameters: *write-parameters
+      responses:
+        '204': { description: Family member removed. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
   /api/v1/deployment-roots:
     get:
       operationId: listDeploymentRoots
@@ -300,6 +344,30 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/system/backups:
+    get:
+      operationId: listBackups
+      summary: List backup manifests newest-first
+      description: Redacted backup listing; restore stays an offline runbook operation by design.
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        '200': { $ref: '#/components/responses/BackupPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    post:
+      operationId: createManualBackup
+      summary: Trigger a manual backup
+      description: Reuses the migration-time primitives (schema version, SHA-256 manifest, deployment-roots copy); returns the written manifest.
+      security: *write-security
+      parameters: *write-parameters
+      responses:
+        '200': { $ref: '#/components/responses/BackupCreationReceipt' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '500': { $ref: '#/components/responses/InternalError' }
   /api/v1/notifications:
     get:
@@ -1348,6 +1416,10 @@ components:
     NotificationReadReceipt: { description: Read marker receipt, content: { application/json: { schema: { $ref: '#/components/schemas/NotificationReadReceipt' } } } }
     NotificationWebhookPage: { description: Redacted webhook configurations, content: { application/json: { schema: { $ref: '#/components/schemas/NotificationWebhookPage' } } } }
     NotificationWebhookAccepted: { description: Webhook saved, content: { application/json: { schema: { $ref: '#/components/schemas/NotificationWebhookAccepted' } } } }
+    FamilyMemberPage: { description: Family member records, content: { application/json: { schema: { $ref: '#/components/schemas/FamilyMemberPage' } } } }
+    FamilyMemberCreated: { description: Family member stored, content: { application/json: { schema: { $ref: '#/components/schemas/FamilyMember' } } } }
+    BackupPage: { description: Backup manifests newest-first, content: { application/json: { schema: { $ref: '#/components/schemas/BackupPage' } } } }
+    BackupCreationReceipt: { description: Manual backup written, content: { application/json: { schema: { $ref: '#/components/schemas/BackupCreationReceipt' } } } }
     JellyfinIntegration: { description: Redacted Jellyfin connection projection, content: { application/json: { schema: { $ref: '#/components/schemas/JellyfinIntegration' } } } }
     JellyfinConnectionTestResult: { description: Non-persistent Jellyfin test result, content: { application/json: { schema: { $ref: '#/components/schemas/JellyfinConnectionTestResult' } } } }
     CapabilityActivityPage: { description: Redacted AI capability channel events, content: { application/json: { schema: { $ref: '#/components/schemas/CapabilityActivityPage' } } } }
@@ -2372,6 +2444,77 @@ components:
       required: [delivered]
       properties:
         delivered: { type: boolean }
+    FamilyMember:
+      description: External-player identity; no MediaFlow session or admin surface.
+      type: object
+      additionalProperties: false
+      required: [id, display_name, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        display_name: { type: string, minLength: 1, maxLength: 100 }
+        created_at: { type: string, format: date-time }
+    FamilyMemberPage:
+      description: Family member list.
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/FamilyMember' } }
+    FamilyMemberInput:
+      description: New member record; the password is hashed and never echoed.
+      type: object
+      additionalProperties: false
+      required: [display_name, password]
+      properties:
+        display_name: { type: string, minLength: 1, maxLength: 100 }
+        password: { type: string, minLength: 8, maxLength: 512 }
+    BackupFileEntry:
+      description: Backup file name and its lowercase SHA-256 digest.
+      type: object
+      additionalProperties: false
+      required: [name, sha256]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 128 }
+        sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+    BackupManifest:
+      description: Self-describing backup manifest; restore accepts single-component file names only.
+      type: object
+      additionalProperties: false
+      required: [schema_version, sha256, created_at, files]
+      properties:
+        schema_version: { type: integer, minimum: 1 }
+        sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+        created_at: { type: string, format: date-time }
+        files:
+          type: object
+          additionalProperties: false
+          required: [database, deployment_roots]
+          properties:
+            database: { $ref: '#/components/schemas/BackupFileEntry' }
+            deployment_roots: { $ref: '#/components/schemas/BackupFileEntry' }
+    BackupListItem:
+      description: One listed backup with its manifest.
+      type: object
+      additionalProperties: false
+      required: [id, manifest]
+      properties:
+        id: { type: string, minLength: 1, maxLength: 128 }
+        manifest: { $ref: '#/components/schemas/BackupManifest' }
+    BackupPage:
+      description: Newest-first backup listing.
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/BackupListItem' } }
+    BackupCreationReceipt:
+      description: Manual backup result.
+      type: object
+      additionalProperties: false
+      required: [manifest, created]
+      properties:
+        manifest: { $ref: '#/components/schemas/BackupManifest' }
+        created: { type: boolean }
     JellyfinIntegration:
       description: Redacted Jellyfin connection; independent of MediaFlow libraries and never a task dependency.
       type: object
