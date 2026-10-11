@@ -70,11 +70,15 @@ class RepositoriesTest {
             val (store, cache) = authStack()
             val repo = AuthRepository(HttpClient(engine), store, cache, json)
             val result = repo.login("admin", "secret")
-            val credentials = assertIs<SdkResult.Success<StoredCredentials>>(result).value
+            val credentials =
+                assertIs<SdkResult.Success<StoredCredentials.SessionCookie>>(result).value
             assertEquals("abc123", credentials.sessionCookieValue)
             assertEquals("tok-tok-tok-tok-tok-tok-tok-tok-tok-tok-tok-1", credentials.csrfToken)
-            assertEquals("abc123", cache.current()?.sessionCookieValue)
-            assertEquals("admin", store.read()?.administratorName)
+            assertEquals(
+                "abc123",
+                (cache.current() as StoredCredentials.SessionCookie).sessionCookieValue,
+            )
+            assertEquals("admin", store.read()?.displayName)
         }
 
     @Test
@@ -94,6 +98,137 @@ class RepositoriesTest {
             val repo = AuthRepository(HttpClient(engine), store, cache, json)
             val failure = assertIs<SdkResult.Failure>(repo.login("admin", "wrong"))
             assertEquals(401, (failure.error as mediaflow.client.core.error.MediaFlowError.Http).status)
+        }
+
+    @Test
+    fun pairingEnrollmentStoresDeviceTokenAndInjectsBearer() =
+        runTest {
+            val authHistory = mutableListOf<String?>()
+            val engine =
+                MockEngine { request ->
+                    authHistory.add(request.headers["Authorization"])
+                    if (request.url.encodedPath == "/api/v1/devices/enrollment") {
+                        respond(
+                            content =
+                                """{"device":{"id":"019f8a50-7271-7000-8000-000000000011",""" +
+                                    """"display_name":"Pixel 9","created_at":"2026-10-11T08:00:00.000001Z",""" +
+                                    """"last_used_at":null,"expires_at":"2027-04-10T08:00:00.000001Z",""" +
+                                    """"revoked_at":null},"token":"mfdev_TOKEN43","version":"v1"}""",
+                            status = HttpStatusCode.Created,
+                            headers = okJsonHeaders,
+                        )
+                    } else {
+                        respond(
+                            content = """{"items":[],"next_cursor":null}""",
+                            status = HttpStatusCode.OK,
+                            headers = okJsonHeaders,
+                        )
+                    }
+                }
+            val (store, cache) = authStack()
+            val client =
+                HttpClient(engine) {
+                    install(
+                        mediaflow.client.core.net.AuthHeaderPlugin
+                            .create(cache),
+                    )
+                }
+            val repo = AuthRepository(client, store, cache, json)
+            val result = repo.enrollWithPairingCode("ABCD2345", "Pixel 9")
+            val credentials =
+                assertIs<SdkResult.Success<StoredCredentials.DeviceToken>>(result).value
+            assertEquals("mfdev_TOKEN43", credentials.token)
+            assertEquals("019f8a50-7271-7000-8000-000000000011", credentials.deviceId)
+            assertEquals("Pixel 9", credentials.displayName)
+            // enrollment 请求本身无 Bearer（预认证端点）。
+            assertEquals(1, authHistory.size)
+            assertNull(authHistory.single())
+            // 设备凭据下的业务读：注入 Bearer 而非 cookie。
+            val tasks =
+                TaskRepository(
+                    mediaflow.api.apis.DefaultApi(baseUrl = "https://nas.local", httpClient = client),
+                    client,
+                    cache,
+                    json,
+                ).firstPageOfTasks()
+            assertEquals(200, tasks.status)
+            assertEquals("Bearer mfdev_TOKEN43", authHistory.last())
+            assertIs<StoredCredentials.DeviceToken>(store.read())
+        }
+
+    @Test
+    fun deviceWriteOmitsCsrfBecauseTokenIsTheProof() =
+        runTest {
+            var captured: HttpRequestData? = null
+            val engine =
+                MockEngine { request ->
+                    captured = request
+                    respond(
+                        content =
+                            """{"id":"019f0000-0000-7000-8000-000000000043",""" +
+                                """"inbox_directory_id":"019f0000-0000-7000-8000-000000000002",""" +
+                                """"file_revision_id":"019f0000-0000-7000-8000-000000000044",""" +
+                                """"relative_path":"电影/流浪地球 (2019)/流浪地球 (2019).mkv",""" +
+                                """"status":"waiting-confirmation","stage":"identification",""" +
+                                """"checkpoint":"waiting-confirmation","decision_checkpoint":null,""" +
+                                """"current_task_decision_id":null,"reason":"identification.ambiguous",""" +
+                                """"recovering":false,"attempt_count":1,"next_retry_at":null,""" +
+                                """"allowed_actions":["review","retry","cancel"],""" +
+                                """"updated_at":"2026-07-23T08:00:00Z"}""",
+                        status = HttpStatusCode.OK,
+                        headers = okJsonHeaders,
+                    )
+                }
+            val (_, cache) = authStack()
+            cache.update(StoredCredentials.DeviceToken(token = "mfdev_TOKEN43", deviceId = "019f8a50-7271-7000-8000-000000000011"))
+            val repo = TaskRepository(apiOf(engine), HttpClient(engine), cache, json)
+            val result = repo.cancel("task-1", idempotencyKey = "cancel-key-0001")
+            assertIs<SdkResult.Success<mediaflow.api.models.ProcessingTask>>(result)
+            // 设备令牌通道：幂等键照传，CSRF 头不出现（令牌即写证明）。
+            assertEquals("cancel-key-0001", captured!!.headers["Idempotency-Key"])
+            assertNull(captured!!.headers["X-CSRF-Token"])
+        }
+
+    @Test
+    fun tokenRotationReplacesCredentialAndLogoutRevokesDevice() =
+        runTest {
+            val engine =
+                MockEngine { request ->
+                    when {
+                        request.url.encodedPath == "/api/v1/devices/current/token-rotation" ->
+                            respond(
+                                content =
+                                    """{"token":"mfdev_FRESH43","expires_at":"2027-04-10T09:00:00.000001Z",""" +
+                                        """"version":"v1"}""",
+                                status = HttpStatusCode.OK,
+                                headers = okJsonHeaders,
+                            )
+                        request.url.encodedPath == "/api/v1/devices/019f8a50-7271-7000-8000-000000000011" &&
+                            request.method.value == "DELETE" ->
+                            respond(
+                                content = "",
+                                status = HttpStatusCode.NoContent,
+                                headers = okJsonHeaders,
+                            )
+                        else -> respond(content = "", status = HttpStatusCode.NotFound, headers = okJsonHeaders)
+                    }
+                }
+            val (store, cache) = authStack()
+            cache.update(
+                StoredCredentials.DeviceToken(
+                    token = "mfdev_TOKEN43",
+                    deviceId = "019f8a50-7271-7000-8000-000000000011",
+                ),
+            )
+            store.save(cache.current()!!)
+            val repo = AuthRepository(HttpClient(engine), store, cache, json)
+            val rotated = repo.rotateDeviceToken()
+            assertEquals("mfdev_FRESH43", (rotated as SdkResult.Success<StoredCredentials.DeviceToken>).value.token)
+            assertEquals("mfdev_FRESH43", (store.read() as StoredCredentials.DeviceToken).token)
+            val logout = repo.logout()
+            assertIs<SdkResult.Success<Unit>>(logout)
+            assertNull(store.read())
+            assertNull(cache.current())
         }
 
     @Test
@@ -117,7 +252,7 @@ class RepositoriesTest {
                     )
                 }
             val (_, cache) = authStack()
-            cache.update(StoredCredentials("cookie", "csrf-token-1", null, null))
+            cache.update(StoredCredentials.SessionCookie("cookie", "csrf-token-1"))
             val repo = ReviewRepository(apiOf(engine), HttpClient(engine), cache, json)
             val command =
                 SelectProviderCandidateCommand(
@@ -170,8 +305,8 @@ class RepositoriesTest {
                     )
                 }
             val (_, cache) = authStack()
-            cache.update(StoredCredentials("cookie", "csrf-token-2", null, null))
-            val repo = TaskRepository(apiOf(engine), cache, json)
+            cache.update(StoredCredentials.SessionCookie("cookie", "csrf-token-2"))
+            val repo = TaskRepository(apiOf(engine), HttpClient(engine), cache, json)
             val result = repo.cancel("task-1", idempotencyKey = "cancel-key-0001")
             val task = assertIs<SdkResult.Success<mediaflow.api.models.ProcessingTask>>(result).value
             assertEquals("waiting-confirmation", task.status.toString())

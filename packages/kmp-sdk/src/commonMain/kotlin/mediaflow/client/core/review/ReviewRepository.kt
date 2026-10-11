@@ -87,13 +87,14 @@ class ReviewRepository(
         command: ReviewDecisionKind,
     ): SdkResult<TaskDecisionReceipt> =
         try {
-            val csrf = authCache.current()?.csrfToken
+            val session = authCache.current() as? mediaflow.client.core.auth.StoredCredentials.SessionCookie
             val response =
                 httpClient.post("/api/v1/review-cases/$reviewCaseId/decisions") {
                     contentType(ContentType.Application.Json)
                     header("Idempotency-Key", idempotencyKey)
                     header("If-Match", caseVersion.toString())
-                    if (csrf != null) header("X-CSRF-Token", csrf)
+                    // CSRF 仅 cookie 会话通道需要；设备令牌通道豁免（令牌即写证明）。
+                    if (session != null) header("X-CSRF-Token", session.csrfToken)
                     setBody(encodeCommand(command))
                 }
             if (response.status == HttpStatusCode.Accepted) {

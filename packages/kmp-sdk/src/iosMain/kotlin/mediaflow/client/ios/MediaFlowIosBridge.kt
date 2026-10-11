@@ -115,6 +115,10 @@ class MediaFlowIosBridge {
     private var eventClient: TaskEventClient? = null
     private var eventJob: Job? = null
     private var eventHandler: ((String) -> Unit)? = null
+    private var credentialExpiredHandler: (() -> Unit)? = null
+    private val authStore =
+        mediaflow.client.core.auth
+            .KeychainDeviceAuthStore()
 
     private var auth: mediaflow.client.core.auth.AuthRepository? = null
     private var media: mediaflow.client.core.media.MediaRepository? = null
@@ -126,6 +130,12 @@ class MediaFlowIosBridge {
         eventHandler = handler
     }
 
+    /** 凭据失效回调（任意屏 401）：桥内已清 Keychain，Swift 侧应回到登录界面。 */
+    fun setCredentialExpiredHandler(handler: (() -> Unit)?) {
+        credentialExpiredHandler = handler
+    }
+
+    /** 凭据模式：管理员密码直接 enrollment（走登录限流）→ 设备令牌。 */
     suspend fun login(
         baseUrl: String,
         name: String,
@@ -134,47 +144,94 @@ class MediaFlowIosBridge {
         val json = MediaFlowApiFactory.defaultJson()
         val normalized = baseUrl.trimEnd('/')
         cache = SessionAuthCache()
-        val transport = MediaFlowApiFactory(normalized, cache, json)
-        val client = transport.httpClient()
-        val api = mediaflow.api.apis.DefaultApi(baseUrl = normalized, httpClient = transport.httpClient())
-        auth =
-            mediaflow.client.core.auth
-                .AuthRepository(
-                    client,
-                    mediaflow.client.core.auth
-                        .InMemoryDeviceAuthStore(),
-                    cache,
-                    json,
-                )
-        return when (val result = auth!!.login(name, password)) {
+        rebuild(normalized, json)
+        return when (val result = auth!!.enrollWithCredentials(name, password, deviceName(baseUrl))) {
             is SdkResult.Success -> {
-                media =
-                    mediaflow.client.core.media
-                        .MediaRepository(api, json)
-                review =
-                    mediaflow.client.core.review
-                        .ReviewRepository(api, client, cache, json)
-                tasks =
-                    mediaflow.client.core.tasks
-                        .TaskRepository(api, cache, json)
-                playback =
-                    mediaflow.client.core.playback
-                        .PlaybackRepository(api, json)
-                eventClient =
-                    TaskEventClient(
-                        baseUrl = normalized,
-                        authCache = cache,
-                        json = json,
-                        engine =
-                            mediaflow.client.core.net
-                                .platformHttpClientEngine(),
-                    )
                 startEvents()
                 Outcome(true)
             }
             is SdkResult.Failure -> Outcome(false, readable(result.error))
         }
     }
+
+    /** 配对码模式：Web 管理面签发的一次性码 → 设备令牌。 */
+    suspend fun pair(
+        baseUrl: String,
+        pairingCode: String,
+    ): Outcome {
+        val json = MediaFlowApiFactory.defaultJson()
+        val normalized = baseUrl.trimEnd('/')
+        cache = SessionAuthCache()
+        rebuild(normalized, json)
+        return when (val result = auth!!.enrollWithPairingCode(pairingCode, deviceName(baseUrl))) {
+            is SdkResult.Success -> {
+                startEvents()
+                Outcome(true)
+            }
+            is SdkResult.Failure -> Outcome(false, readable(result.error))
+        }
+    }
+
+    /** 冷启动恢复：Keychain 有凭据则直接接线（不做网络验证，首个请求自然校验）。 */
+    suspend fun restore(baseUrl: String): Outcome {
+        val json = MediaFlowApiFactory.defaultJson()
+        val normalized = baseUrl.trimEnd('/')
+        cache = SessionAuthCache()
+        cache.load(authStore)
+        if (cache.current() == null) return Outcome(false)
+        rebuild(normalized, json)
+        startEvents()
+        return Outcome(true)
+    }
+
+    /** 登出：按通道失效服务端凭据（设备自吊销/会话删除）并清 Keychain。 */
+    suspend fun logout(): Outcome {
+        val result = auth?.logout()
+        eventJob?.cancel()
+        return when (result) {
+            null -> Outcome(true)
+            is SdkResult.Success -> Outcome(true)
+            is SdkResult.Failure -> Outcome(true, readable(result.error))
+        }
+    }
+
+    /** 重建传输/仓库层（登录、配对与恢复共用；authStore 为 Keychain 持久层）。 */
+    private fun rebuild(
+        normalized: String,
+        json: kotlinx.serialization.json.Json,
+    ) {
+        val transport = MediaFlowApiFactory(normalized, cache, json)
+        val client = transport.httpClient()
+        val api = mediaflow.api.apis.DefaultApi(baseUrl = normalized, httpClient = client)
+        auth =
+            mediaflow.client.core.auth
+                .AuthRepository(client, authStore, cache, json)
+        media =
+            mediaflow.client.core.media
+                .MediaRepository(api, json)
+        review =
+            mediaflow.client.core.review
+                .ReviewRepository(api, client, cache, json)
+        tasks =
+            mediaflow.client.core.tasks
+                .TaskRepository(api, client, cache, json)
+        playback =
+            mediaflow.client.core.playback
+                .PlaybackRepository(api, json)
+        eventClient =
+            TaskEventClient(
+                baseUrl = normalized,
+                authCache = cache,
+                json = json,
+                engine =
+                    mediaflow.client.core.net
+                        .platformHttpClientEngine(),
+            )
+    }
+
+    /** 设备名：恢复/配对与凭据模式共用的展示名。 */
+    private fun deviceName(baseUrl: String): String =
+        "iPhone（${baseUrl.removePrefix("https://").removePrefix("http://").substringBefore('/')}）"
 
     private fun startEvents() {
         eventJob?.cancel()
@@ -346,8 +403,12 @@ class MediaFlowIosBridge {
         }
     }
 
-    private fun readable(error: MediaFlowError): String =
-        when (error) {
+    private fun readable(error: MediaFlowError): String {
+        if (error.isCredentialExpired()) {
+            scope.launch { auth?.discardLocalCredentials() }
+            credentialExpiredHandler?.invoke()
+        }
+        return when (error) {
             is MediaFlowError.Http ->
                 when (error.status) {
                     HTTP_UNAUTHORIZED -> "登录已过期，请重新登录"
@@ -358,6 +419,7 @@ class MediaFlowIosBridge {
             is MediaFlowError.Network -> "网络异常或离线"
             else -> "发生错误"
         }
+    }
 }
 
 private const val HTTP_UNAUTHORIZED = 401

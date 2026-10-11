@@ -20,9 +20,9 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.isActive
 import kotlinx.io.IOException
 import kotlinx.serialization.json.Json
+import mediaflow.client.core.net.AuthHeaderPlugin
 import mediaflow.client.core.net.MediaFlowApiFactory
 import mediaflow.client.core.net.SessionAuthCache
-import mediaflow.client.core.net.SessionCookiePlugin
 import kotlin.coroutines.coroutineContext
 
 /** SSE 单行上限：防御异常服务端行为（超长行只可能来自故障注入）。 */
@@ -65,7 +65,7 @@ class TaskEventClient(
                 header(HttpHeaders.Origin, baseUrl.removeSuffix("/"))
                 header(MediaFlowApiFactory.SEC_FETCH_SITE_HEADER, "same-origin")
             }
-            install(SessionCookiePlugin.create(authCache))
+            install(AuthHeaderPlugin.create(authCache))
             // SSE 是无限时长流：请求级超时关闭，仅保留连接建立超时。
             install(HttpTimeout) {
                 requestTimeoutMillis = Long.MAX_VALUE

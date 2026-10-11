@@ -34,7 +34,7 @@ class MediaFlowApiFactory(
                 header(HttpHeaders.Origin, originProof)
                 header(SEC_FETCH_SITE_HEADER, "same-origin")
             }
-            install(sessionCookiePlugin())
+            install(authHeaderPlugin())
             install(HttpTimeout) {
                 requestTimeoutMillis = REQUEST_TIMEOUT_MS
                 connectTimeoutMillis = CONNECT_TIMEOUT_MS
@@ -58,7 +58,7 @@ class MediaFlowApiFactory(
         }
     }
 
-    private fun sessionCookiePlugin() = SessionCookiePlugin.create(authCache)
+    private fun authHeaderPlugin() = AuthHeaderPlugin.create(authCache)
 
     companion object {
         const val SESSION_COOKIE_NAME = "__Host-mediaflow_session"
