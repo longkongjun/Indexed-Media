@@ -176,14 +176,23 @@ test("creates a bounded target and safely recovers execution and rollback respon
 
   await page.goto(`/tasks/${taskId}`);
   await expect(page.getByRole("heading", { name: "安全整理" })).toBeVisible();
-  await expect(page.getByText(longDestination, { exact: false })).toBeVisible();
-  await page.getByRole("button", { name: "授权当前计划执行一次" }).focus();
-  await page.keyboard.press("Enter");
+  await expect(page.locator("[data-plan-preview]").getByText(longDestination, { exact: false }).first()).toBeVisible();
+
+  // 审批链（W3）：等待审批横幅 → 全影响计划预览 → 二次确认批准（Web 人工授权唯一产生方）。
+  await expect(page.getByRole("alert").filter({ hasText: "1 个整理计划等待审批" })).toBeVisible();
+  await page.getByRole("button", { name: "查看完整计划并审批" }).click();
+  await expect(page.getByRole("button", { name: "批准并执行计划 v3" })).toBeVisible();
+  await page.getByRole("button", { name: "批准并执行计划 v3" }).click();
+  const approveDialog = page.getByRole("alertdialog", { name: "确认批准并执行" });
+  await expect(approveDialog).toBeVisible();
+  await approveDialog.getByRole("button", { name: "确认执行计划 v3" }).click();
   await expect(page.getByText(/操作结果尚未确认/)).toBeVisible();
   expect(executions).toHaveLength(1);
 
-  await page.getByRole("button", { name: "授权当前计划执行一次" }).focus();
+  await page.getByRole("button", { name: "批准并执行计划 v3" }).focus();
   await page.keyboard.press("Enter");
+  await expect(approveDialog.getByRole("button", { name: "取消" })).toBeFocused();
+  await approveDialog.getByRole("button", { name: "确认执行计划 v3" }).click();
   await expect(page.getByText("NFO：失败")).toBeVisible();
   await expect(page.getByText(/重试只继续这些步骤/)).toBeVisible();
   await expect(page.getByText(/copy · verified/)).toBeVisible();

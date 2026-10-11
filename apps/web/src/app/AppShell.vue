@@ -10,6 +10,7 @@ import { useRouter } from "vue-router";
 import AiSessionPanel from "./AiSessionPanel.vue";
 import { identityClientKey } from "./client";
 import { useMediaFlowClient } from "../components/injectedClient";
+import { useNotificationsBadgeStore } from "./notifications";
 import { useSessionStore } from "./session";
 import { useJellyfin } from "../features/jellyfin/useJellyfin";
 import { applySkinChoice, applyThemeChoice, readSkinChoice, readThemeChoice, type SkinChoice, type ThemeChoice } from "./theme";
@@ -20,6 +21,7 @@ const session = useSessionStore();
 const accountOpen = ref(false);
 
 const jellyfin = useJellyfin(useMediaFlowClient());
+const notificationsBadge = useNotificationsBadgeStore();
 const jellyfinHealthLabel = computed(() => {
   const health = jellyfin.integration.value?.health;
   if (health === "healthy") return "连接正常";
@@ -61,6 +63,13 @@ watch(accountOpen, (open) => {
 });
 onMounted(() => {
   void jellyfin.load();
+  // 导航角标：启动加载一次未读计数；失败静默（notification 规格 §3）。
+  void useMediaFlowClient()
+    .listNotifications()
+    .then((page) => {
+      notificationsBadge.setUnread(page.unread_count);
+    })
+    .catch(() => undefined);
 });
 </script>
 
@@ -77,7 +86,7 @@ onMounted(() => {
         <RouterLink to="/connections/downloaders">下载器连接</RouterLink>
         <RouterLink to="/automation/sources">来源自动化</RouterLink>
         <RouterLink to="/capability-events">AI 能力活动</RouterLink>
-        <RouterLink to="/notifications">通知中心</RouterLink>
+        <RouterLink to="/notifications">通知中心<span v-if="notificationsBadge.unreadCount > 0" class="nav-badge" aria-label="{{ notificationsBadge.unreadCount }} 条未读通知">{{ notificationsBadge.unreadCount }}</span></RouterLink>
         <button data-account-toggle type="button" aria-controls="account-panel" :aria-expanded="accountOpen" @click="accountOpen = !accountOpen">账户与系统</button>
       </nav>
       <AiSessionPanel />
@@ -88,6 +97,7 @@ onMounted(() => {
         <p v-if="session.account">当前管理员：{{ session.account.administrator_name }}</p>
         <RouterLink to="/automation/sources">管理来源自动化</RouterLink>
         <RouterLink to="/capability-events">AI 能力活动</RouterLink>
+        <RouterLink to="/notifications">通知中心<span v-if="notificationsBadge.unreadCount > 0" class="nav-badge" aria-label="{{ notificationsBadge.unreadCount }} 条未读通知">{{ notificationsBadge.unreadCount }}</span></RouterLink>
         <p v-if="jellyfin.integration.value" data-jellyfin-status>
           Jellyfin：{{ jellyfinHealthLabel }}<template v-if="jellyfin.integration.value.server_version">
             （{{ jellyfin.integration.value.server_version }}）</template>
@@ -164,6 +174,7 @@ nav a.router-link-active { box-shadow: inset var(--mfd-stroke-focus-ring) 0 0 va
 .appearance-option:has(input:checked) { border-color: var(--mfd-color-action-primary); background: var(--mfd-color-bg-selected); font-weight: 650; }
 .appearance-option input { min-height: 0; width: auto; margin: 0; accent-color: var(--mfd-color-action-primary); }
 .appearance-option:focus-within { outline: 3px solid var(--mfd-color-border-focus); outline-offset: 2px; }
+.nav-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 1.4rem; margin-left: .4rem; padding: .05rem .4rem; border-radius: var(--mfd-radius-full); background: var(--mfd-color-action-danger); color: var(--mfd-color-text-on-danger); font-size: .72rem; font-weight: 650; }
 .mobile-nav { display: none; }
 @media (max-width: 48rem) {
   .sidebar { position: static; width: auto; height: 4rem; padding: 1rem; }

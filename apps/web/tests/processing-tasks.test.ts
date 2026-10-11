@@ -175,10 +175,11 @@ describe("ProcessingTask center", () => {
     });
     await flushPromises();
 
-    expect(wrapper.get('ol[aria-label="处理时间线"]').text()).toContain("持久检查点：waiting-confirmation");
+    expect(wrapper.get('ol[aria-label="处理时间线"]').text()).toContain("识别");
+    expect(wrapper.text()).toContain("需要人工处理");
     expect(wrapper.text()).toContain("人工决定：planning-requested");
     expect(wrapper.get(`a[href="/review-cases/${reviewCaseId}"]`).text()).toBe("进入人工确认");
-    expect(wrapper.get("button").text()).toBe("取消处理");
+    expect(wrapper.get('nav[aria-label="处理任务操作"] button').text()).toBe("取消处理");
     expect(wrapper.text()).not.toContain("重试处理");
     expect(wrapper.get('a[href="/tasks?view=pending"]').attributes("href")).toBe("/tasks?view=pending");
     wrapper.unmount();

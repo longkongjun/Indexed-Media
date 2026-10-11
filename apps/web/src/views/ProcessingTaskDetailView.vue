@@ -6,10 +6,13 @@
  * 会话状态只用于认证失败处理，页面不自行推进 Core 业务流程。
  */
 import type { TaskEventEnvelope } from "@mediaflow/api-client-ts";
-import { inject, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import ApprovalBanner from "../components/ApprovalBanner.vue";
 import AsyncState from "../components/AsyncState.vue";
 import ErrorSummary from "../components/ErrorSummary.vue";
+import PlanPreview from "../components/PlanPreview.vue";
+import TaskTimeline from "../components/TaskTimeline.vue";
 import { useMediaFlowClient } from "../components/injectedClient";
 import { useProcessingTask } from "../features/processing-tasks/useProcessingTask";
 import { handleAuthenticatedFailure } from "../components/apiErrors";
@@ -66,6 +69,24 @@ const nfoLabels: Record<string, string> = {
   "not-requested": "未请求", preserved: "已保留", generated: "已生成", failed: "失败",
 };
 
+const planPreviewSection = ref<HTMLElement | null>(null);
+const waitingApproval = computed(() => organization.projection.value?.plan?.authorization === "paused");
+
+/** 横幅/深链打开完整计划视图：滚动 + 聚焦（approval-flow 深链 ?plan=<version>）。 */
+function openPlanPreview(): void {
+  planPreviewSection.value?.scrollIntoView({ block: "start" });
+  planPreviewSection.value?.querySelector<HTMLElement>("[data-plan-preview]")?.focus();
+}
+
+/** 拒绝 = 计划不执行（现有作废语义：取消任务）；批准 = Web 人工授权（唯一授权产生方）。 */
+const canRejectPlan = computed(() => Boolean(detail.task.value?.allowed_actions.includes("cancel")) && detail.canCancel.value && organization.pendingAction.value === null);
+
+onMounted(() => {
+  if (typeof route.query.plan === "string") {
+    void nextTick().then(openPlanPreview);
+  }
+});
+
 async function openRollback(): Promise<void> {
   rollbackConfirming.value = true;
   await nextTick();
@@ -82,12 +103,17 @@ onBeforeUnmount(events.stop);
 <template>
   <main class="page-stack">
     <header class="page-header"><div><RouterLink :to="{ name: 'tasks', query: backQuery }">← 返回任务中心</RouterLink><h1>处理任务详情</h1></div></header>
+    <ApprovalBanner
+      v-if="organization.projection.value?.plan && waitingApproval"
+      :plan="organization.projection.value.plan"
+      @open="openPlanPreview"
+    />
     <ErrorSummary v-if="detail.actionError.value" :message="detail.actionError.value" heading="任务操作未完成" />
     <AsyncState :state="detail.state.value" :error-message="detail.errorMessage.value" offline-message="当前离线，保留最近投影并暂停写操作" @retry="detail.load">
       <article v-if="detail.task.value" class="detail-card">
         <h2><code>{{ detail.task.value.relative_path }}</code></h2>
         <dl class="count-grid"><div><dt>状态</dt><dd><span class="status-badge" :data-tone="processingStatusBadge(detail.task.value.status).tone"><span aria-hidden="true">{{ processingStatusBadge(detail.task.value.status).shape }}</span> {{ processingStatusBadge(detail.task.value.status).label }}</span></dd></div><div><dt>阶段</dt><dd>{{ detail.task.value.stage }}</dd></div><div><dt>检查点</dt><dd>{{ detail.task.value.checkpoint }}</dd></div><div><dt>尝试次数</dt><dd>{{ detail.task.value.attempt_count }}</dd></div></dl>
-        <ol class="timeline" aria-label="处理时间线"><li>当前阶段：{{ detail.task.value.stage }}</li><li>持久检查点：{{ detail.task.value.checkpoint }}</li><li v-if="detail.task.value.decision_checkpoint">人工决定：{{ detail.task.value.decision_checkpoint }}</li><li>最近更新：<time :datetime="detail.task.value.updated_at">{{ detail.task.value.updated_at }}</time></li></ol>
+        <TaskTimeline :task="detail.task.value" :organization="organization.projection.value" />
         <p v-if="detail.task.value.reason">原因：{{ detail.task.value.reason }}</p>
         <nav class="detail-actions" aria-label="处理任务操作">
           <RouterLink v-if="detail.canReview.value && detail.reviewCaseId.value" :to="{ name: 'review-case', params: { id: detail.reviewCaseId.value } }">进入人工确认</RouterLink>
@@ -117,18 +143,19 @@ onBeforeUnmount(events.stop);
           <article class="detail-card">
             <header class="detail-heading"><div><p class="eyebrow">服务端状态</p><h3>{{ stateLabels[organization.projection.value.state] }}</h3></div><time v-if="organization.lastUpdated.value" :datetime="organization.lastUpdated.value">{{ organization.lastUpdated.value }}</time></header>
             <p v-if="organization.projection.value.state === 'not-planned'">任务尚未完成身份确认或 worker 尚未生成计划。</p>
-            <template v-if="organization.projection.value.plan">
-              <dl>
-                <div><dt>计划版本</dt><dd>{{ organization.projection.value.plan.version }}（{{ organization.projection.value.plan.authorization }}）</dd></div>
-                <div><dt>来源</dt><dd><code class="safe-path">{{ organization.projection.value.plan.source.root_id }}/{{ organization.projection.value.plan.source.relative_path }}</code></dd></div>
-                <div><dt>目标</dt><dd><code class="safe-path">{{ organization.projection.value.plan.destination.root_id }}/{{ organization.projection.value.plan.destination.relative_path }}</code></dd></div>
-                <div><dt>固定操作</dt><dd>{{ organization.projection.value.plan.operation }}</dd></div>
-                <div><dt>命名结果</dt><dd class="safe-path">{{ organization.projection.value.plan.naming }}</dd></div>
-              </dl>
-              <ul v-if="organization.projection.value.plan.risk_codes.length" aria-label="整理风险"><li v-for="risk in organization.projection.value.plan.risk_codes" :key="risk">{{ risk }}</li></ul>
-              <p v-if="organization.canExecute.value">一次性授权只绑定当前计划版本，不会创建可复用规则，也不能覆盖路径、来源或文件系统冲突。</p>
-            </template>
           </article>
+
+          <div ref="planPreviewSection" class="plan-preview-section">
+            <PlanPreview
+              v-if="organization.projection.value.plan"
+              :projection="organization.projection.value"
+              :can-approve="organization.canExecute.value"
+              :can-reject="canRejectPlan"
+              :pending="organization.pendingAction.value"
+              @approve="organization.execute"
+              @reject="detail.cancel"
+            />
+          </div>
 
           <article class="detail-card">
             <h3>Journal 与实际结果</h3>
@@ -151,7 +178,6 @@ onBeforeUnmount(events.stop);
 
           <nav class="detail-actions" aria-label="安全整理操作">
             <button v-if="organization.projection.value.allowed_actions.includes('recalculate')" data-organization-action="recalculate" type="button" :disabled="!organization.canRecalculate.value" @click="organization.recalculate">重新计算计划</button>
-            <button v-if="organization.projection.value.allowed_actions.includes('execute')" data-organization-action="execute" type="button" :disabled="!organization.canExecute.value" @click="organization.execute">授权当前计划执行一次</button>
             <button v-if="organization.projection.value.allowed_actions.includes('rollback')" data-organization-action="rollback" type="button" :disabled="!organization.canRollback.value" @click="openRollback">回滚本次操作</button>
           </nav>
 

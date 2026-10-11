@@ -5,7 +5,11 @@
  * 标签不得出现同义变体；tone/shape 供徽章双编码（形状符 + 中文词）。
  * 语义权威：页面状态见 packages/ui-contract；状态词表见 ui-contract copy-templates word_lists。
  */
-import type { ScanTask } from "@mediaflow/api-client-ts";
+import type { ProcessingTask, ProcessingTaskOrganization, ScanTask } from "@mediaflow/api-client-ts";
+
+/** 计划/ journal 的生成 schema 类型（客户端按 schema 逐名导出，这两个经组织投影索引访问取得）。 */
+type OrganizationPlanOperation = NonNullable<ProcessingTaskOrganization["plan"]>["operation"];
+type OrganizationJournalEntry = ProcessingTaskOrganization["journals"][number];
 
 /** 徽章语义色调（status-badge 规格 tone 五值）。 */
 export type BadgeTone = "success" | "warning" | "danger" | "info" | "neutral";
@@ -55,6 +59,7 @@ const CAPABILITY_STATE_BADGES: Record<string, BadgeEntry> = {
   succeeded: { label: "成功", tone: "success", shape: "◆" },
   failed: { label: "失败", tone: "danger", shape: "▲" },
   waiting_approval: { label: "等待审批", tone: "warning", shape: "◐" },
+  needs_approval: { label: "等待审批", tone: "warning", shape: "◐" },
   paused: { label: "已暂停", tone: "neutral", shape: "○" },
 };
 
@@ -92,3 +97,38 @@ export const NOTIFICATION_KIND_LABELS: Record<string, string> = {
 export function notificationKindLabel(kind: string): string {
   return NOTIFICATION_KIND_LABELS[kind] ?? kind;
 }
+
+/** 整理计划固定操作词表（plan-preview 规格 §2：操作类型如实展示，硬链接不得表述为移动）。 */
+export const ORGANIZATION_OPERATION_LABELS: Record<OrganizationPlanOperation, string> = {
+  move: "移动",
+  copy: "复制",
+  hardlink: "硬链接",
+};
+
+/** 整理 journal 操作类型词表（含执行期步骤：来源清理与 NFO 写入）。 */
+export const ORGANIZATION_JOURNAL_KIND_LABELS: Record<OrganizationJournalEntry["kind"], string> = {
+  move: "移动",
+  copy: "复制",
+  hardlink: "硬链接",
+  "source-removal": "来源清理",
+  nfo: "NFO 写入",
+};
+
+/** 整理 journal 状态词表（task-timeline 规格：每行结果标记）。 */
+export const ORGANIZATION_JOURNAL_STATUS_LABELS: Record<OrganizationJournalEntry["status"], string> = {
+  prepared: "已准备",
+  executing: "执行中",
+  applied: "已应用",
+  verified: "已验证",
+  compensated: "已补偿",
+  "manual-review": "待人工复核",
+};
+
+/** 处理任务阶段词表（task-timeline 规格：识别→计划→文件操作→NFO→完成）。 */
+export const PROCESSING_STAGE_LABELS: Record<ProcessingTask["stage"], string> = {
+  identification: "识别",
+  planning: "计划",
+  "file-operation": "文件操作",
+  nfo: "NFO",
+  completion: "完成",
+};

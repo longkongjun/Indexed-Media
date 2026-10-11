@@ -5,7 +5,7 @@
  * 只读事实 + 显式已读动作；出站 Webhook 的配置与健康在同一页面的独立区块维护，
  * 其失败绝不影响应用内投递。
  */
-import { nextTick, onMounted, ref } from "vue";
+import { nextTick, onMounted, ref, watchEffect } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import AsyncState from "../components/AsyncState.vue";
 import CursorPager from "../components/CursorPager.vue";
@@ -13,6 +13,7 @@ import { handleAuthenticatedFailure } from "../components/apiErrors";
 import { notificationKindLabel } from "../components/dictionaries";
 import { useMediaFlowClient } from "../components/injectedClient";
 import { useNotifications } from "../features/notifications/useNotifications";
+import { useNotificationsBadgeStore } from "../app/notifications";
 import { useSessionStore } from "../app/session";
 
 const route = useRoute();
@@ -21,7 +22,16 @@ const session = useSessionStore();
 const client = useMediaFlowClient();
 const failure = (error: unknown) => handleAuthenticatedFailure(error, session, router, route.fullPath);
 const notifications = useNotifications(client, failure);
+const notificationsBadge = useNotificationsBadgeStore();
 const unreadOnly = ref(false);
+
+// 导航角标同步：仅在加载完成（content/empty）后回写，避免加载中的 0 抹掉外壳已取得的计数。
+watchEffect(() => {
+  const kind = notifications.state.value.kind;
+  if (kind === "content" || kind === "empty") {
+    notificationsBadge.setUnread(notifications.unreadCount.value);
+  }
+});
 
 function kindLabel(kind: string): string {
   return notificationKindLabel(kind);
