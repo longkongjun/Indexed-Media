@@ -22,6 +22,8 @@ const INSTANCE_KEY_FILE: &str = "instance.key";
 pub enum IntegrationKind {
     /// The Movie Database 元数据提供方。
     Tmdb,
+    /// Jellyfin 媒体服务器（独立健康与首页入口，不建媒体库映射）。
+    Jellyfin,
     /// qBittorrent `WebUI` API 下载器。
     Qbittorrent,
     /// Transmission RPC 下载器。
@@ -44,6 +46,7 @@ impl IntegrationKind {
     const fn as_bytes(self) -> &'static [u8] {
         match self {
             Self::Tmdb => b"tmdb",
+            Self::Jellyfin => b"jellyfin",
             Self::Qbittorrent => b"qbittorrent",
             Self::Transmission => b"transmission",
             Self::DownloadTaskSource => b"download-task-source",

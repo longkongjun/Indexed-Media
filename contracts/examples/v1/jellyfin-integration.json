@@ -1,0 +1,11 @@
+{
+  "kind": "jellyfin",
+  "configured": true,
+  "base_url": "https://jellyfin.example.test",
+  "display_name": "客厅服务器",
+  "server_version": "10.9.11",
+  "config_version": 3,
+  "health": "healthy",
+  "failure_code": null,
+  "checked_at": "2026-10-11T08:00:00.000001Z"
+}

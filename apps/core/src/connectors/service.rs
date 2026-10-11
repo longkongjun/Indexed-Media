@@ -115,6 +115,8 @@ pub struct ConnectorService {
     store: ConnectorStore,
     key: Result<Arc<InstanceKey>, SecretError>,
     tester: Arc<dyn TmdbConnectionTester>,
+    jellyfin_tester: Arc<dyn crate::connectors::jellyfin::JellyfinConnectionTester>,
+    jellyfin: crate::connectors::jellyfin::JellyfinStore,
 }
 
 impl ConnectorService {
@@ -136,6 +138,11 @@ impl ConnectorService {
     ) -> Self {
         let key = InstanceKey::load_or_create(config_dir).map(Arc::new);
         Self {
+            jellyfin_tester: std::sync::Arc::new(
+                crate::connectors::jellyfin::HttpJellyfinTester::production(),
+            ),
+            jellyfin: crate::connectors::jellyfin::JellyfinStore::new(pool.clone()),
+
             store: ConnectorStore::new_with_notifier(pool, notifier),
             key,
             tester,
@@ -238,6 +245,142 @@ impl ConnectorService {
             )
             .await?;
         self.get_tmdb().await
+    }
+
+    /// 读取 Jellyfin 连接的脱敏投影；从未配置时返回全零版本视图。
+    ///
+    /// # Errors
+    ///
+    /// 数据库失败或存储记录损坏时返回稳定错误。
+    pub async fn get_jellyfin(
+        &self,
+    ) -> Result<crate::connectors::jellyfin::JellyfinIntegrationView, AppError> {
+        let record = self.jellyfin.load().await?;
+        Ok(record.map_or_else(unconfigured_jellyfin, |record| {
+            crate::connectors::jellyfin::project_jellyfin(&record)
+        }))
+    }
+
+    /// 以候选地址与凭据执行不落盘的 Jellyfin 连接测试。
+    ///
+    /// # Errors
+    ///
+    /// 输入校验失败或上游不可达时返回稳定错误。
+    pub async fn test_jellyfin(
+        &self,
+        command: crate::connectors::jellyfin::JellyfinConfigCommand,
+    ) -> Result<crate::connectors::jellyfin::JellyfinConnectionTestResult, AppError> {
+        validate_jellyfin_command(&command)?;
+        let token = command.api_token.into_secret_bytes();
+        let now = chrono::Utc::now();
+        let probe = self
+            .jellyfin_tester
+            .test(&command.base_url, token.expose())
+            .await;
+        Ok(crate::connectors::jellyfin::probe_to_result(probe, now))
+    }
+
+    /// 使用乐观并发加密并保存一份 Jellyfin 连接，并把健康置为待复检。
+    ///
+    /// # Errors
+    ///
+    /// 输入校验、密钥、数据库或乐观并发错误。
+    pub async fn put_jellyfin(
+        &self,
+        command: crate::connectors::jellyfin::JellyfinConfigCommand,
+        expected_version: i64,
+    ) -> Result<crate::connectors::jellyfin::JellyfinIntegrationView, AppError> {
+        validate_jellyfin_command(&command)?;
+        if expected_version < 0 {
+            return Err(validation_error());
+        }
+        let current = self.jellyfin.load().await?;
+        let (id, actual_version) = current.as_ref().map_or((Uuid::now_v7(), 0), |value| {
+            (value.id, value.config_version)
+        });
+        if actual_version != expected_version {
+            return Err(AppError::new(
+                ErrorCode::ConfigVersionConflict,
+                "connector config version changed",
+            ));
+        }
+        let key = self.key()?;
+        let token = command.api_token.into_secret_bytes();
+        let sealed = key
+            .seal(
+                &SecretAad::new(
+                    id,
+                    IntegrationKind::Jellyfin,
+                    expected_version + 1,
+                    SECRET_SCHEMA_VERSION,
+                ),
+                token.expose(),
+            )
+            .map_err(|error| AppError::with_source(ErrorCode::Internal, error))?;
+        self.jellyfin
+            .save(
+                id,
+                expected_version,
+                &command.base_url,
+                command.display_name.as_deref(),
+                &sealed,
+                chrono::Utc::now().timestamp_micros(),
+            )
+            .await?;
+        self.get_jellyfin().await
+    }
+
+    /// 清除 Jellyfin 凭据并回到未配置状态。
+    ///
+    /// # Errors
+    ///
+    /// 乐观并发或数据库错误。
+    pub async fn delete_jellyfin(&self, expected_version: i64) -> Result<(), AppError> {
+        if expected_version < 0 {
+            return Err(validation_error());
+        }
+        self.jellyfin
+            .delete(expected_version, chrono::Utc::now().timestamp_micros())
+            .await
+    }
+
+    /// 用一次已保存配置的连接测试刷新健康投影。
+    ///
+    /// # Errors
+    ///
+    /// 未配置、密钥或数据库错误。
+    pub async fn refresh_jellyfin_health(&self) -> Result<(), AppError> {
+        let Some(record) = self.jellyfin.load().await? else {
+            return Ok(());
+        };
+        let Some(sealed) = record.sealed.as_ref() else {
+            return Ok(());
+        };
+        let key = self.key()?;
+        let token = key
+            .open(
+                &SecretAad::new(
+                    record.id,
+                    IntegrationKind::Jellyfin,
+                    record.config_version,
+                    SECRET_SCHEMA_VERSION,
+                ),
+                sealed,
+            )
+            .map_err(|error| AppError::with_source(ErrorCode::Internal, error))?;
+        let probe = self
+            .jellyfin_tester
+            .test(&record.base_url, token.expose())
+            .await;
+        let result = crate::connectors::jellyfin::probe_to_result(probe, chrono::Utc::now());
+        self.jellyfin
+            .record_health(
+                result.health,
+                result.failure_code,
+                result.server_version.as_deref(),
+                chrono::Utc::now().timestamp_micros(),
+            )
+            .await
     }
 
     /// 清除加密凭据列，同时保留单调递增的墓碑版本。
@@ -351,6 +494,43 @@ fn validate_command(command: &TmdbConfigCommand) -> Result<(), AppError> {
         || command.region.as_deref().is_some_and(|value| {
             value.len() != 2 || !value.bytes().all(|byte| byte.is_ascii_uppercase())
         })
+    {
+        return Err(validation_error());
+    }
+    Ok(())
+}
+
+fn unconfigured_jellyfin() -> crate::connectors::jellyfin::JellyfinIntegrationView {
+    crate::connectors::jellyfin::JellyfinIntegrationView {
+        kind: "jellyfin",
+        configured: false,
+        base_url: None,
+        display_name: None,
+        server_version: None,
+        config_version: 0,
+        health: IntegrationHealth::Unconfigured,
+        failure_code: None,
+        checked_at: None,
+    }
+}
+
+fn validate_jellyfin_command(
+    command: &crate::connectors::jellyfin::JellyfinConfigCommand,
+) -> Result<(), AppError> {
+    let token_len = command.api_token.len();
+    let url = reqwest::Url::parse(&command.base_url).ok();
+    let scheme_ok = url
+        .as_ref()
+        .is_some_and(|url| matches!(url.scheme(), "http" | "https"));
+    let has_host = url.as_ref().is_some_and(|url| url.host_str().is_some());
+    if !(16..=4096).contains(&token_len)
+        || !scheme_ok
+        || !has_host
+        || command.base_url.len() > 2048
+        || command
+            .display_name
+            .as_deref()
+            .is_some_and(|value| value.is_empty() || value.len() > 120)
     {
         return Err(validation_error());
     }

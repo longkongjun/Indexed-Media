@@ -58,6 +58,8 @@ const eventValidator = eventAjv.compile(eventSchema as AnySchema);
 describe("M2 contract fixtures", () => {
   it("defines M4 source automation, event, and enhancer fixtures without secret projections", () => {
     const examples = [
+      ["JellyfinIntegration", loadJson("contracts/examples/v1/jellyfin-integration.json")],
+      ["JellyfinConnectionTestResult", loadJson("contracts/examples/v1/jellyfin-connection-test-result.json")],
       ["AutomationSourcePage", loadJson("contracts/examples/v1/automation-source-page.json")],
       ["AutomationSource", loadJson("contracts/examples/v1/automation-source.json")],
       ["AutomationSourceConnectionTestResult", loadJson("contracts/examples/v1/automation-source-connection-test-result.json")],

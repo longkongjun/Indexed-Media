@@ -2,6 +2,7 @@
 pub mod downloader;
 /// Local-only identification enhancer configuration and protocol boundary.
 pub mod enhancer;
+pub mod jellyfin;
 /// 公开脱敏连接器 DTO 与稳定提供方错误。
 pub mod model;
 /// 已认证 TMDB 配置 HTTP 路由。

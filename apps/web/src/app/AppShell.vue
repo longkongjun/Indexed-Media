@@ -5,20 +5,39 @@
  * 组件没有 props、发出事件或暴露的实例方法。它读取会话 store，在本地切换账户面板；退出登录会清除会话状态
  * 并导航到登录页。
  */
-import { inject, ref } from "vue";
+import { computed, inject, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import AiSessionPanel from "./AiSessionPanel.vue";
 import { identityClientKey } from "./client";
+import { useMediaFlowClient } from "../components/injectedClient";
 import { useSessionStore } from "./session";
+import { useJellyfin } from "../features/jellyfin/useJellyfin";
 
 const router = useRouter();
 const client = inject(identityClientKey, null);
 const session = useSessionStore();
 const accountOpen = ref(false);
 
+const jellyfin = useJellyfin(useMediaFlowClient());
+const jellyfinHealthLabel = computed(() => {
+  const health = jellyfin.integration.value?.health;
+  if (health === "healthy") return "连接正常";
+  if (health === "unauthorized") return "凭据被拒绝";
+  if (health === "unavailable") return "无法访问";
+  if (health === "degraded") return "待复检";
+  return "未配置";
+});
+
 async function logout(): Promise<void> {
   await session.logout(router, client?.deleteSession.bind(client));
 }
+
+watch(accountOpen, (open) => {
+  if (open) void jellyfin.load();
+});
+onMounted(() => {
+  void jellyfin.load();
+});
 </script>
 
 <template>
@@ -44,6 +63,17 @@ async function logout(): Promise<void> {
         <p v-if="session.account">当前管理员：{{ session.account.administrator_name }}</p>
         <RouterLink to="/automation/sources">管理来源自动化</RouterLink>
         <RouterLink to="/capability-events">AI 能力活动</RouterLink>
+        <p v-if="jellyfin.integration.value" data-jellyfin-status>
+          Jellyfin：{{ jellyfinHealthLabel }}<template v-if="jellyfin.integration.value.server_version">
+            （{{ jellyfin.integration.value.server_version }}）</template>
+          <a
+            v-if="jellyfin.integration.value.base_url"
+            :href="jellyfin.integration.value.base_url"
+            target="_blank"
+            rel="noopener noreferrer"
+            data-jellyfin-home-link
+          >打开 Jellyfin 首页</a>
+        </p>
         <button type="button" @click="logout">退出登录</button>
       </section>
       <RouterView />

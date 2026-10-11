@@ -116,6 +116,17 @@ fn router_with_dyn_tester(
             "/api/v1/integrations/tmdb/connection-tests",
             post(test_tmdb),
         )
+        .route(
+            "/api/v1/integrations/jellyfin",
+            get(get_jellyfin)
+                .put(put_jellyfin)
+                .delete(delete_jellyfin)
+                .post(refresh_jellyfin),
+        )
+        .route(
+            "/api/v1/integrations/jellyfin/connection-tests",
+            post(test_jellyfin),
+        )
         .with_state(Arc::new(ConnectorHttpState {
             config,
             db: db.clone(),
@@ -177,6 +188,86 @@ async fn delete_tmdb(
     )
     .await?;
     Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+async fn get_jellyfin(
+    State(state): State<Arc<ConnectorHttpState>>,
+    headers: HeaderMap,
+) -> Result<Json<crate::connectors::jellyfin::JellyfinIntegrationView>, AppError> {
+    state.guard_get(&headers).await?;
+    Ok(Json(state.connectors.get_jellyfin().await?))
+}
+
+async fn test_jellyfin(
+    State(state): State<Arc<ConnectorHttpState>>,
+    headers: HeaderMap,
+    payload: Result<Json<crate::connectors::jellyfin::JellyfinConfigCommand>, JsonRejection>,
+) -> Result<Json<crate::connectors::jellyfin::JellyfinConnectionTestResult>, AppError> {
+    state.guard_write(&headers).await?;
+    let Json(command) = payload.map_err(|_| validation_error())?;
+    let result = state.connectors.test_jellyfin(command).await?;
+    audit::record(
+        state.db.pool(),
+        "jellyfin.connection-test",
+        "success",
+        Some("jellyfin"),
+    )
+    .await?;
+    Ok(Json(result))
+}
+
+async fn put_jellyfin(
+    State(state): State<Arc<ConnectorHttpState>>,
+    headers: HeaderMap,
+    payload: Result<Json<crate::connectors::jellyfin::JellyfinConfigCommand>, JsonRejection>,
+) -> Result<Json<crate::connectors::jellyfin::JellyfinIntegrationView>, AppError> {
+    state.guard_write(&headers).await?;
+    let expected = if_match(&headers)?;
+    let Json(command) = payload.map_err(|_| validation_error())?;
+    let result = state.connectors.put_jellyfin(command, expected).await?;
+    audit::record(
+        state.db.pool(),
+        "jellyfin.config-save",
+        "success",
+        Some("jellyfin"),
+    )
+    .await?;
+    Ok(Json(result))
+}
+
+async fn delete_jellyfin(
+    State(state): State<Arc<ConnectorHttpState>>,
+    headers: HeaderMap,
+) -> Result<Response, AppError> {
+    state.guard_write(&headers).await?;
+    state
+        .connectors
+        .delete_jellyfin(if_match(&headers)?)
+        .await?;
+    audit::record(
+        state.db.pool(),
+        "jellyfin.config-delete",
+        "success",
+        Some("jellyfin"),
+    )
+    .await?;
+    Ok(StatusCode::NO_CONTENT.into_response())
+}
+
+async fn refresh_jellyfin(
+    State(state): State<Arc<ConnectorHttpState>>,
+    headers: HeaderMap,
+) -> Result<Json<crate::connectors::jellyfin::JellyfinIntegrationView>, AppError> {
+    state.guard_write(&headers).await?;
+    state.connectors.refresh_jellyfin_health().await?;
+    audit::record(
+        state.db.pool(),
+        "jellyfin.health-refresh",
+        "success",
+        Some("jellyfin"),
+    )
+    .await?;
+    Ok(Json(state.connectors.get_jellyfin().await?))
 }
 
 fn if_match(headers: &HeaderMap) -> Result<i64, AppError> {

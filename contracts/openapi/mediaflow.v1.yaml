@@ -301,6 +301,70 @@ paths:
         '409': { $ref: '#/components/responses/Conflict' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
         '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/integrations/jellyfin:
+    get:
+      operationId: getJellyfinIntegration
+      summary: Read the redacted Jellyfin connection projection
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/JellyfinIntegration' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    put:
+      operationId: putJellyfinIntegration
+      summary: Save an encrypted Jellyfin connection
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/IfMatch' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/JellyfinConfigCommand' }
+      responses:
+        '200': { $ref: '#/components/responses/JellyfinIntegration' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    post:
+      operationId: refreshJellyfinHealth
+      summary: Re-test the saved Jellyfin connection and refresh its health
+      security: [{ cookieAuth: [] }]
+      responses:
+        '200': { $ref: '#/components/responses/JellyfinIntegration' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    delete:
+      operationId: deleteJellyfinIntegration
+      summary: Remove the Jellyfin connection credentials
+      security: [{ cookieAuth: [] }]
+      parameters: [{ $ref: '#/components/parameters/IfMatch' }]
+      responses:
+        '204': { description: Connection removed }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/integrations/jellyfin/connection-tests:
+    post:
+      operationId: testJellyfinConnection
+      summary: Non-persistent Jellyfin connection test
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/JellyfinConfigCommand' }
+      responses:
+        '200': { $ref: '#/components/responses/JellyfinConnectionTestResult' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
   /api/v1/integrations/tmdb/connection-tests:
     post:
       operationId: testTmdbConnection
@@ -1194,6 +1258,8 @@ components:
     OrganizationTarget: { description: One safe organization target projection, content: { application/json: { schema: { $ref: '#/components/schemas/OrganizationTarget' } } } }
     OrganizationTargetPreflight: { description: Non-persistent organization target preflight, content: { application/json: { schema: { $ref: '#/components/schemas/OrganizationTargetPreflight' } } } }
     ProcessingTaskOrganization: { description: "One task's safe plan, journals, and local result", content: { application/json: { schema: { $ref: '#/components/schemas/ProcessingTaskOrganization' } } } }
+    JellyfinIntegration: { description: Redacted Jellyfin connection projection, content: { application/json: { schema: { $ref: '#/components/schemas/JellyfinIntegration' } } } }
+    JellyfinConnectionTestResult: { description: Non-persistent Jellyfin test result, content: { application/json: { schema: { $ref: '#/components/schemas/JellyfinConnectionTestResult' } } } }
     CapabilityActivityPage: { description: Redacted AI capability channel events, content: { application/json: { schema: { $ref: '#/components/schemas/CapabilityActivityPage' } } } }
     Unauthorized: { description: Authentication required, content: { application/json: { schema: { $ref: '#/components/schemas/ApiErrorBody' } } } }
     Forbidden: { description: CSRF or Origin rejected, content: { application/json: { schema: { $ref: '#/components/schemas/ApiErrorBody' } } } }
@@ -2137,6 +2203,41 @@ components:
         projection_version: { type: integer, minimum: 1, maximum: 9007199254740991 }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
+    JellyfinIntegration:
+      description: Redacted Jellyfin connection; independent of MediaFlow libraries and never a task dependency.
+      type: object
+      additionalProperties: false
+      required: [kind, configured, base_url, display_name, server_version, config_version, health, failure_code, checked_at]
+      properties:
+        kind: { const: jellyfin }
+        configured: { type: boolean }
+        base_url: { type: [string, 'null'], minLength: 8, maxLength: 2048 }
+        display_name: { type: [string, 'null'], minLength: 1, maxLength: 120 }
+        server_version: { type: [string, 'null'], maxLength: 64 }
+        config_version: { type: integer, minimum: 0 }
+        health: { enum: [unconfigured, healthy, degraded, unavailable, unauthorized] }
+        failure_code: { oneOf: [{ $ref: '#/components/schemas/IntegrationFailureCode' }, { type: 'null' }] }
+        checked_at: { type: [string, 'null'], format: date-time }
+    JellyfinConnectionTestResult:
+      description: Non-persistent Jellyfin connection probe result.
+      type: object
+      additionalProperties: false
+      required: [reachable, health, failure_code, server_version, checked_at]
+      properties:
+        reachable: { type: boolean }
+        health: { enum: [healthy, unavailable, unauthorized] }
+        failure_code: { oneOf: [{ $ref: '#/components/schemas/IntegrationFailureCode' }, { type: 'null' }] }
+        server_version: { type: [string, 'null'], maxLength: 64 }
+        checked_at: { type: string, format: date-time }
+    JellyfinConfigCommand:
+      description: Candidate Jellyfin connection; credentials are sealed on save and never echoed.
+      type: object
+      additionalProperties: false
+      required: [base_url, api_token, display_name]
+      properties:
+        base_url: { type: string, minLength: 8, maxLength: 2048 }
+        api_token: { type: string, minLength: 16, maxLength: 4096 }
+        display_name: { type: [string, 'null'], minLength: 1, maxLength: 120 }
     CapabilityActivityEvent:
       description: Redacted AI capability channel event; carries no input payloads, credentials, or paths.
       type: object

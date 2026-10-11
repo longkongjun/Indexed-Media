@@ -103,7 +103,7 @@ async fn task_two_database_can_apply_the_lower_numbered_forward_migration_withou
     let baseline_migrations = tempfile::tempdir().unwrap();
     for entry in std::fs::read_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/migrations")).unwrap() {
         let entry = entry.unwrap();
-        if entry.file_name() != "0032_organization_quarantine.sql" {
+        if entry.file_name() != "0033_jellyfin_connection.sql" {
             std::fs::copy(
                 entry.path(),
                 baseline_migrations.path().join(entry.file_name()),

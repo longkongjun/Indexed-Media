@@ -42,6 +42,9 @@ export type PutTmdbIntegrationRequest = components["schemas"]["PutTmdbIntegratio
 export type TmdbConnectionTestRequest = components["schemas"]["TmdbConnectionTestRequest"];
 /** 已脱敏的 TMDB 连接测试结果。 */
 export type TmdbConnectionTestResult = components["schemas"]["TmdbConnectionTestResult"];
+export type JellyfinIntegration = components["schemas"]["JellyfinIntegration"];
+export type JellyfinConnectionTestResult = components["schemas"]["JellyfinConnectionTestResult"];
+export type JellyfinConfigCommand = components["schemas"]["JellyfinConfigCommand"];
 /** 收件目录持续发现和稳定门禁策略。 */
 export type DiscoveryPolicy = components["schemas"]["DiscoveryPolicy"];
 /** 替换持续发现策略的写入体。 */
@@ -103,6 +106,7 @@ export type AutomationEvent = components["schemas"]["AutomationEvent"];
 /** 自动化事件的稳定游标分页。 */
 export type AutomationEventPage = components["schemas"]["AutomationEventPage"];
 export type CapabilityActivityEvent = components["schemas"]["CapabilityActivityEvent"];
+
 export type CapabilityActivityPage = components["schemas"]["CapabilityActivityPage"];
 /** 本地 Ollama 识别增强器的候选配置。 */
 export type IdentificationEnhancerInput = components["schemas"]["IdentificationEnhancerInput"];
@@ -316,6 +320,16 @@ export interface MediaFlowClient {
   cancelAutomationEvent(id: string, idempotencyKey: string): Promise<AutomationEvent>;
   /** @param options - 游标与页大小。@returns 最新在前的 AI 能力通道事件。 */
   listCapabilityEvents(options?: CapabilityEventListOptions): Promise<CapabilityActivityPage>;
+  /** @returns 独立于资源库的脱敏 Jellyfin 连接投影。 */
+  getJellyfinIntegration(): Promise<JellyfinIntegration>;
+  /** @param body - 候选地址与凭据。@returns 不落盘测试结果。 */
+  testJellyfinConnection(body: JellyfinConfigCommand): Promise<JellyfinConnectionTestResult>;
+  /** @param body - 完整连接配置。@param version - 当前 `If-Match` 版本。@returns 已保存投影。 */
+  putJellyfinIntegration(body: JellyfinConfigCommand, version: number): Promise<JellyfinIntegration>;
+  /** @returns 重测后的健康投影。 */
+  refreshJellyfinHealth(): Promise<JellyfinIntegration>;
+  /** @param version - 当前 `If-Match` 版本。 */
+  deleteJellyfinIntegration(version: number): Promise<void>;
   /** @returns 已脱敏的本地识别增强器配置。 */
   getIdentificationEnhancer(): Promise<IdentificationEnhancer>;
   /** @param body - 候选 Ollama 配置。@returns 不落盘的能力与健康。 */
@@ -399,6 +413,11 @@ const operations = {
   rotateAutomationWebhookSecret: ["POST", "/api/v1/automation-sources/{automationSourceId}/secret-rotations"],
   listAutomationEvents: ["GET", "/api/v1/automation-events"],
   listCapabilityEvents: ["GET", "/api/v1/capability-events"],
+  getJellyfinIntegration: ["GET", "/api/v1/integrations/jellyfin"],
+  testJellyfinConnection: ["POST", "/api/v1/integrations/jellyfin/connection-tests"],
+  putJellyfinIntegration: ["PUT", "/api/v1/integrations/jellyfin"],
+  refreshJellyfinHealth: ["POST", "/api/v1/integrations/jellyfin"],
+  deleteJellyfinIntegration: ["DELETE", "/api/v1/integrations/jellyfin"],
   getAutomationEvent: ["GET", "/api/v1/automation-events/{automationEventId}"],
   retryAutomationEvent: ["POST", "/api/v1/automation-events/{automationEventId}/retries"],
   cancelAutomationEvent: ["POST", "/api/v1/automation-events/{automationEventId}/cancellations"],
@@ -576,6 +595,11 @@ export function createMediaFlowClient(options: { baseUrl?: string; fetch?: typeo
       cursor: options.cursor,
       query: { limit: options.limit?.toString() },
     }),
+    getJellyfinIntegration: () => request("getJellyfinIntegration"),
+    testJellyfinConnection: (body) => request("testJellyfinConnection", { body }),
+    putJellyfinIntegration: (body, version) => request("putJellyfinIntegration", { body, ifMatch: version }),
+    refreshJellyfinHealth: () => request("refreshJellyfinHealth"),
+    deleteJellyfinIntegration: (version) => request("deleteJellyfinIntegration", { ifMatch: version }),
     getAutomationEvent: (id) => request("getAutomationEvent", { path: { automationEventId: id } }),
     retryAutomationEvent: (id, idempotencyKey) => request("retryAutomationEvent", {
       path: { automationEventId: id }, idempotencyKey,

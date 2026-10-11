@@ -22,6 +22,8 @@ import ProcessingTaskDetailView from "../src/views/ProcessingTaskDetailView.vue"
 const client = {
   bootstrap: vi.fn(), createSession: vi.fn(), setCsrfToken: vi.fn(),
   listCapabilityEvents: vi.fn(async () => ({ items: [], next_cursor: null })),
+  getJellyfinIntegration: vi.fn(async () => ({ kind: "jellyfin", configured: false, base_url: null, display_name: null, server_version: null, config_version: 0, health: "unconfigured", failure_code: null, checked_at: null })),
+  refreshJellyfinHealth: vi.fn(),
 } as unknown as MediaFlowClient;
 
 async function mountWithRouter(component: Component, path: string, api: MediaFlowClient = client) {

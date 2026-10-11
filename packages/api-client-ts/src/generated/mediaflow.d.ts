@@ -345,6 +345,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/integrations/jellyfin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read the redacted Jellyfin connection projection */
+        get: operations["getJellyfinIntegration"];
+        /** Save an encrypted Jellyfin connection */
+        put: operations["putJellyfinIntegration"];
+        /** Re-test the saved Jellyfin connection and refresh its health */
+        post: operations["refreshJellyfinHealth"];
+        /** Remove the Jellyfin connection credentials */
+        delete: operations["deleteJellyfinIntegration"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/integrations/jellyfin/connection-tests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Non-persistent Jellyfin connection test */
+        post: operations["testJellyfinConnection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/integrations/tmdb/connection-tests": {
         parameters: {
             query?: never;
@@ -2005,6 +2042,37 @@ export interface components {
             /** Format: date-time */
             updated_at: string;
         };
+        /** @description Redacted Jellyfin connection; independent of MediaFlow libraries and never a task dependency. */
+        JellyfinIntegration: {
+            /** @constant */
+            kind: "jellyfin";
+            configured: boolean;
+            base_url: string | null;
+            display_name: string | null;
+            server_version: string | null;
+            config_version: number;
+            /** @enum {unknown} */
+            health: "unconfigured" | "healthy" | "degraded" | "unavailable" | "unauthorized";
+            failure_code: components["schemas"]["IntegrationFailureCode"] | null;
+            /** Format: date-time */
+            checked_at: string | null;
+        };
+        /** @description Non-persistent Jellyfin connection probe result. */
+        JellyfinConnectionTestResult: {
+            reachable: boolean;
+            /** @enum {unknown} */
+            health: "healthy" | "unavailable" | "unauthorized";
+            failure_code: components["schemas"]["IntegrationFailureCode"] | null;
+            server_version: string | null;
+            /** Format: date-time */
+            checked_at: string;
+        };
+        /** @description Candidate Jellyfin connection; credentials are sealed on save and never echoed. */
+        JellyfinConfigCommand: {
+            base_url: string;
+            api_token: string;
+            display_name: string | null;
+        };
         /** @description Redacted AI capability channel event; carries no input payloads, credentials, or paths. */
         CapabilityActivityEvent: {
             sequence: number;
@@ -2767,6 +2835,24 @@ export interface components {
                 "application/json": components["schemas"]["ProcessingTaskOrganization"];
             };
         };
+        /** @description Redacted Jellyfin connection projection */
+        JellyfinIntegration: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["JellyfinIntegration"];
+            };
+        };
+        /** @description Non-persistent Jellyfin test result */
+        JellyfinConnectionTestResult: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["JellyfinConnectionTestResult"];
+            };
+        };
         /** @description Redacted AI capability channel events */
         CapabilityActivityPage: {
             headers: {
@@ -3398,6 +3484,106 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getJellyfinIntegration: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["JellyfinIntegration"];
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    putJellyfinIntegration: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Decimal configuration version expected by the caller. */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JellyfinConfigCommand"];
+            };
+        };
+        responses: {
+            200: components["responses"]["JellyfinIntegration"];
+            401: components["responses"]["Unauthorized"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    refreshJellyfinHealth: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["JellyfinIntegration"];
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    deleteJellyfinIntegration: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Decimal configuration version expected by the caller. */
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Connection removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    testJellyfinConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JellyfinConfigCommand"];
+            };
+        };
+        responses: {
+            200: components["responses"]["JellyfinConnectionTestResult"];
+            401: components["responses"]["Unauthorized"];
+            422: components["responses"]["ValidationFailed"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };
