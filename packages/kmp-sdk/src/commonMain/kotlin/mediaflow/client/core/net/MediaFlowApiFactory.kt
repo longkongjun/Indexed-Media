@@ -3,7 +3,6 @@ package mediaflow.client.core.net
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.DefaultRequest
 import io.ktor.client.plugins.HttpTimeout
-import io.ktor.client.plugins.api.createClientPlugin
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.header
 import io.ktor.http.HttpHeaders
@@ -59,18 +58,7 @@ class MediaFlowApiFactory(
         }
     }
 
-    private fun sessionCookiePlugin() =
-        createClientPlugin(
-            "MediaFlowSessionCookie",
-            { authCache },
-        ) {
-            val cache = pluginConfig
-            onRequest { request, _ ->
-                cache.current()?.let { credentials ->
-                    request.header(HttpHeaders.Cookie, "$SESSION_COOKIE_NAME=${credentials.sessionCookieValue}")
-                }
-            }
-        }
+    private fun sessionCookiePlugin() = SessionCookiePlugin.create(authCache)
 
     companion object {
         const val SESSION_COOKIE_NAME = "__Host-mediaflow_session"
