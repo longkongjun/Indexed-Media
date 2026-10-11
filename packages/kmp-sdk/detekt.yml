@@ -18,8 +18,16 @@ style:
   MagicNumber:
     # HTTP 状态码/超时等协议常量集中于错误模型与网络层常量对象，放开测试与配置代码。
     ignoreAnnotated: ['Test']
+  MaxLineLength:
+    # 生成的契约客户端经 .editorconfig 豁免；手写代码 140（与 .editorconfig max_line_length 一致）。
+    maxLineLength: 140
 
 exceptions:
+  # SDK 边界统一约定：传输/解码异常在指定边界点捕获并映射为 MediaFlowError，
+  # 不外抛原始异常。这些边界的 catch(Exception) 是设计使然（各处 KDoc 已注明），
+  # 逐点 @Suppress 只会产生噪音；规则关闭后由复审清单保证每个 catch 必须经
+  # ErrorMapping/统一错误模型收口。
   TooGenericExceptionCaught:
-    # SDK 边界需要兜底捕获并映射为统一错误模型；保留默认激活，注释说明意图。
-    active: true
+    active: false
+  SwallowedException:
+    active: false

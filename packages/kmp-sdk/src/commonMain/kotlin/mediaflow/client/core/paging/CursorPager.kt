@@ -8,6 +8,11 @@ data class PageResult<T>(
     val nextCursor: String?,
 )
 
+/** 把统一错误模型经异常通道送入分页器 fetch 的内部包装（分页器解包还原）。 */
+class MediaFlowErrorTunnel(
+    val error: mediaflow.client.core.error.MediaFlowError,
+) : Exception()
+
 /**
  * 有界游标分页状态机：对齐 Web 端 useMediaItems 的语义——
  *
@@ -74,9 +79,11 @@ class CursorPager<T>(
                 fetch(cursor, limit)
             } catch (failure: Exception) {
                 if (myEpoch != epoch) return false
+                // fetch 闭包可能经隧道送入统一错误模型（Repository 层）；解包透传，其余异常边界映射。
                 val error =
-                    mediaflow.client.core.error.ErrorMapping
-                        .fromThrowable(failure)
+                    (failure as? MediaFlowErrorTunnel)?.error
+                        ?: mediaflow.client.core.error.ErrorMapping
+                            .fromThrowable(failure)
                 state.value = PageState.fromError(error, stale)
                 return true
             }
