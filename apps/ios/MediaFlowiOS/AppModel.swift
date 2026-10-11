@@ -7,7 +7,8 @@ final class AppModel: ObservableObject {
     @Published var loggedIn = false
     @Published var loginBusy = false
     @Published var loginError: String?
-    @Published var baseUrl = "http://127.0.0.1:8642"
+    /// 上次登录地址持久化（UserDefaults），冷启动恢复与登录页默认值共用。
+    @Published var baseUrl = UserDefaults.standard.string(forKey: "mediaflow.base-url") ?? "http://127.0.0.1:8642"
     @Published var username = "admin"
     @Published var password = ""
     /// 登录页模式：配对码（Web 签发的一次性码）或管理员密码，统一产设备令牌。
@@ -92,6 +93,7 @@ final class AppModel: ObservableObject {
                     outcome = try await bridge.login(baseUrl: url, name: name, password: secret)
                 }
                 if outcome.success {
+                    UserDefaults.standard.set(url, forKey: "mediaflow.base-url")
                     loggedIn = true
                 } else {
                     loginError = outcome.message ?? (mode ? "配对失败" : "登录失败")

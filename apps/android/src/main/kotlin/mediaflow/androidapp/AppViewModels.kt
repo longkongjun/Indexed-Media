@@ -40,6 +40,11 @@ class LoginViewModel(private val container: SdkContainer) : ViewModel() {
         loggedIn.value = false
     }
 
+    /** 冷启动恢复成功：跳过登录页直接进入六屏。 */
+    fun markRestored() {
+        loggedIn.value = true
+    }
+
     private fun enroll(baseUrl: String, call: suspend () -> SdkResult<mediaflow.client.core.auth.StoredCredentials>) {
         if (busy.value) return
         busy.value = true
@@ -47,7 +52,10 @@ class LoginViewModel(private val container: SdkContainer) : ViewModel() {
         viewModelScope.launch {
             container.configure(baseUrl)
             when (val result = call()) {
-                is SdkResult.Success -> loggedIn.value = true
+                is SdkResult.Success -> {
+                    container.rememberBaseUrl(baseUrl)
+                    loggedIn.value = true
+                }
                 is SdkResult.Failure -> error.value = PageVisual.readableMessage(result.error)
             }
             busy.value = false

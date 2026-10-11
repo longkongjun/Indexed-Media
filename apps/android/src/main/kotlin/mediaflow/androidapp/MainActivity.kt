@@ -64,7 +64,9 @@ fun AppRoot(container: SdkContainer) {
     val loggedIn by login.loggedIn.collectAsState()
     var backStack by remember { mutableStateOf(listOf<Screen>()) }
 
-    LaunchedEffect(Unit) { container.warmUp() }
+    LaunchedEffect(Unit) {
+        if (container.restoreSession()) login.markRestored()
+    }
     // 任意屏 401：凭据已被容器清空，统一回登录页。
     LaunchedEffect(Unit) {
         container.sessionExpired.collect {

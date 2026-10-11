@@ -24,6 +24,7 @@ import mediaflow.client.core.tasks.TaskRepository
  * 加密落盘（第二批），任意屏 401 经 [sessionExpired] 统一回登录页。
  */
 class SdkContainer(context: Context) {
+    private val prefs = context.getSharedPreferences("mediaflow-container", Context.MODE_PRIVATE)
     val authStore = KeystoreDeviceAuthStore(context)
     val authCache: SessionAuthCache = SessionAuthCache()
     val json: Json = MediaFlowApiFactory.defaultJson()
@@ -79,7 +80,21 @@ class SdkContainer(context: Context) {
 
     fun eventClientOrNull(): TaskEventClient? = eventClient
 
-    suspend fun warmUp() {
+    /** 登录成功后记住服务器地址，供冷启动恢复。 */
+    fun rememberBaseUrl(baseUrl: String) {
+        prefs.edit().putString("base-url", baseUrl.trimEnd('/')).apply()
+    }
+
+    /**
+     * 冷启动恢复：Keystore 有凭据且上次登录地址在档则直接接线进入
+     * （不做网络验证，首个请求自然校验；401 统一回登录页）。
+     */
+    suspend fun restoreSession(): Boolean {
+        val saved = prefs.getString("base-url", null)
+        if (saved != null) {
+            configure(saved)
+        }
         authCache.load(authStore)
+        return saved != null && authCache.current() != null
     }
 }
