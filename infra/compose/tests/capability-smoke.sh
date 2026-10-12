@@ -58,13 +58,13 @@ secret_root="$fixture_root/secrets"
 mkdir -p "$config_root" "$incoming_root" "$secret_root"
 printf 'bootstrap-secret-for-capability-smoke-0001\n' > "$secret_root/bootstrap"
 chmod 600 "$secret_root/bootstrap"
-printf '{"roots":[{"id":"incoming","label":"Incoming","access":"read-only","path":"/data/incoming"}]}\n' \
+printf '{"roots":[{"id":"incoming","label":"Incoming","access":"read-only","container_path":"/data/incoming"}]}\n' \
   > "$fixture_root/deployment-roots.json"
 
 capability_token="capability-smoke-token-0123456789abcdef"
 cat > "$fixture_root/smoke.env" <<ENV
 MEDIAFLOW_TEST_IMAGE=$test_image
-MEDIAFLOW_PUBLIC_ORIGIN=http://127.0.0.1:32167
+MEDIAFLOW_PUBLIC_ORIGIN=https://mediaflow-capability-smoke.example.test
 MEDIAFLOW_TRUSTED_PROXY_CIDRS=127.0.0.1/32
 MEDIAFLOW_PORT=32167
 MEDIAFLOW_BIND_ADDRESS=127.0.0.1
