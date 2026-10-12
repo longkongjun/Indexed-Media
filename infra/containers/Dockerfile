@@ -9,10 +9,13 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web/package.json apps/web/package.json
 COPY packages/api-client-ts/package.json packages/api-client-ts/package.json
 COPY packages/ui-contract/package.json packages/ui-contract/package.json
-RUN pnpm install --frozen-lockfile --filter @mediaflow/web...
+COPY packages/test-fixtures/package.json packages/test-fixtures/package.json
+RUN pnpm install --frozen-lockfile --filter @mediaflow/web... --filter @mediaflow/test-fixtures
 COPY apps/web apps/web
 COPY packages/api-client-ts packages/api-client-ts
 COPY packages/ui-contract packages/ui-contract
+COPY packages/test-fixtures packages/test-fixtures
+COPY contracts contracts
 RUN pnpm --filter @mediaflow/web build
 
 FROM --platform=${TARGETPLATFORM} rust:1.97.0-bookworm AS core-build
