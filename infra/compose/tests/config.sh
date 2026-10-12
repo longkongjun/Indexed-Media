@@ -28,11 +28,11 @@ for file in "$compose_file" "$env_example" "$roots_example" "$secret_ignore"; do
   [ -f "$file" ] || fail "$file is missing"
 done
 
-require_fixed "$compose_file" '${MEDIAFLOW_IMAGE:-mediaflow:0.2.0-m2}'
+require_fixed "$compose_file" '${MEDIAFLOW_IMAGE:-mediaflow:0.3.0}'
 require_fixed "$compose_file" 'read_only: true'
 require_fixed "$compose_file" 'no-new-privileges:true'
 require_fixed "$compose_file" 'cap_drop:'
-require_fixed "$compose_file" 'user: "${PUID:-1000}:${PGID:-1000}"'
+require_fixed "$compose_file" 'user: "${PUID:-10001}:${PGID:-10001}"'
 require_fixed "$compose_file" 'MEDIAFLOW_BOOTSTRAP_SECRET_FILE: /run/secrets/mediaflow-bootstrap'
 require_fixed "$compose_file" ':/run/secrets/mediaflow-bootstrap:ro'
 require_fixed "$compose_file" '/data/incoming:ro'
@@ -91,7 +91,7 @@ project_name="mediaflow-config-check-$$"
 test_uid=12345
 test_gid=23456
 # `MEDIAFLOW_TEST_IMAGE` 可选地选择用于所有权和运行时检查的不可变本地镜像。
-test_image=${MEDIAFLOW_TEST_IMAGE:-mediaflow:0.2.0-m2}
+test_image=${MEDIAFLOW_TEST_IMAGE:-mediaflow:0.3.0}
 # Root-owned fixture restoration
 # 以下恢复测试夹具的宿主所有权；上一行是自检脚本读取的稳定边界标记。
 host_uid=$(id -u)

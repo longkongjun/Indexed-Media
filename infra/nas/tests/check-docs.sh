@@ -34,7 +34,7 @@ done
 for text in 'Node 24.18.0' 'pnpm 11.10.0' 'Rust 1.97.0' 'Docker Compose' '同源'; do
   require_fixed "$development" "$text"
 done
-for text in 'mediaflow:0.2.0-m2' 'MEDIAFLOW_PUBLIC_ORIGIN' 'MEDIAFLOW_TRUSTED_PROXY_CIDRS' 'bootstrap.secret' 'read-only' '宿主文件的 chown 与 chmod 0600 是权限事实来源' '只读 bind mount'; do
+for text in 'mediaflow:0.3.0' 'MEDIAFLOW_PUBLIC_ORIGIN' 'MEDIAFLOW_TRUSTED_PROXY_CIDRS' 'bootstrap.secret' 'read-only' '宿主文件的 chown 与 chmod 0600 是权限事实来源' '只读 bind mount'; do
   require_fixed "$deployment" "$text"
 done
 for text in 'Nginx Proxy Manager' 'SSE' 'proxy_buffering off' 'proxy_read_timeout' 'X-Forwarded-Proto' 'X-Forwarded-Host' 'WebSocket' '不是必需'; do

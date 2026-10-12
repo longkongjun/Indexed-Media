@@ -97,4 +97,4 @@ proxy_set_header X-Forwarded-Host $host;
 
 ## 检查与证据边界
 
-反向代理说明属于固定 `mediaflow:0.2.0-m2` 单镜像、单 MediaFlow 服务拓扑的外部部署边界。自动检查使用锁定的 Node 24.18.0、pnpm 11.10.0、Rust 1.97.0 工具链，并通过 `just check-nas` 检查本文的 HTTPS/SSE 文档门槛；完整汇总入口为 `just check-m2`，其中 `just check-containers`、`just check-compose` 和 `just smoke-m2-compose` 需要 Docker runtime。文档检查或静态配置检查不能证明 Caddy 或 Nginx Proxy Manager 已在目标 NAS 上实际转发 SSE。
+反向代理说明属于固定 `mediaflow:0.3.0` 单镜像、单 MediaFlow 服务拓扑的外部部署边界。自动检查使用锁定的 Node 24.18.0、pnpm 11.10.0、Rust 1.97.0 工具链，并通过 `just check-nas` 检查本文的 HTTPS/SSE 文档门槛；完整汇总入口为 `just check-m2`，其中 `just check-containers`、`just check-compose` 和 `just smoke-m2-compose` 需要 Docker runtime。文档检查或静态配置检查不能证明 Caddy 或 Nginx Proxy Manager 已在目标 NAS 上实际转发 SSE。

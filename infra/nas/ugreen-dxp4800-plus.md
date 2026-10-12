@@ -19,8 +19,8 @@ Compose 只授予可写 `/config`、只读 `/data/incoming` 和只读根配置�
 ```sh
 docker buildx build --platform linux/amd64 --load \
   --file infra/containers/Dockerfile \
-  --tag mediaflow:0.2.0-m2 .
-docker image inspect mediaflow:0.2.0-m2 \
+  --tag mediaflow:0.3.0 .
+docker image inspect mediaflow:0.3.0 \
   --format 'architecture={{.Architecture}} image_id={{.Id}} repo_digests={{json .RepoDigests}}'
 ```
 

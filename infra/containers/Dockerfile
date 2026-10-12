@@ -22,7 +22,7 @@ RUN cargo build --manifest-path apps/core/Cargo.toml --locked --release
 
 FROM --platform=${TARGETPLATFORM} debian:bookworm-slim AS runtime
 LABEL org.opencontainers.image.title="MediaFlow" \
-      org.opencontainers.image.version="0.2.0-m2"
+      org.opencontainers.image.version="0.3.0"
 
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends ca-certificates tzdata \

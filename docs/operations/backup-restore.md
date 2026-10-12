@@ -13,7 +13,7 @@ puid=1000
 pgid=1000
 docker run --rm --user "${puid}:${pgid}" --read-only --tmpfs /tmp \
   --volume /path/to/offline-copy:/backup:ro \
-  mediaflow:0.2.0-m2 verify-database --database /backup/mediaflow.db
+  mediaflow:0.3.0 verify-database --database /backup/mediaflow.db
 ```
 
 只有命令返回 `integrity_check: ok`、空外键违规和预期关键表计数时，副本才可进入保留集。记录镜像 digest、schema 版本、manifest、散列、创建时间、NAS 文件系统和计数；不要备份 bootstrap secret。`instance.key` 的保管权限应至少等同管理员凭据，密钥散列只能进入受控清单，不能用散列替代密钥本体。
@@ -28,7 +28,7 @@ pgid=1000
 docker run --rm --user "${puid}:${pgid}" --read-only --tmpfs /tmp \
   --volume /path/to/verified-backups:/backup:ro \
   --volume /path/to/new-empty-config:/restore \
-  mediaflow:0.2.0-m2 restore-backup \
+  mediaflow:0.3.0 restore-backup \
   --backup /backup/mediaflow-vN-TIMESTAMP.db \
   --config-dir /restore
 ```
@@ -60,4 +60,4 @@ MEDIAFLOW_ROOTS_CONFIG_PATH=/path/to/new-empty-config/deployment-roots.json
 
 ## 检查与证据边界
 
-备份/恢复说明对应固定 `mediaflow:0.2.0-m2` 单镜像、单服务 Compose；仓库使用 Node 24.18.0、pnpm 11.10.0、Rust 1.97.0 的锁定检查组合。`just check-nas` 只验证本文包含干净恢复、`verify-database`、`restore-backup`、`integrity_check`、外键与关键计数说明；`just check-m2` 还会在静态检查后执行 Docker-backed 的 `just check-containers`、`just check-compose` 与 `just smoke-m2-compose`。这些命令在没有 Docker runtime 时必须失败，不能替代目标 UGREEN DXP 4800 Plus 上对新空 `/config` 的实际恢复演练。
+备份/恢复说明对应固定 `mediaflow:0.3.0` 单镜像、单服务 Compose；仓库使用 Node 24.18.0、pnpm 11.10.0、Rust 1.97.0 的锁定检查组合。`just check-nas` 只验证本文包含干净恢复、`verify-database`、`restore-backup`、`integrity_check`、外键与关键计数说明；`just check-m2` 还会在静态检查后执行 Docker-backed 的 `just check-containers`、`just check-compose` 与 `just smoke-m2-compose`。这些命令在没有 Docker runtime 时必须失败，不能替代目标 UGREEN DXP 4800 Plus 上对新空 `/config` 的实际恢复演练。

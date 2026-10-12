@@ -34,7 +34,7 @@ require_fixed "$dockerfile" 'cargo build --manifest-path apps/core/Cargo.toml --
 require_fixed "$dockerfile" 'USER 10001:10001'
 require_fixed "$dockerfile" 'ENTRYPOINT ["/usr/local/bin/mediaflow-core"]'
 require_fixed "$dockerfile" 'CMD ["serve"]'
-require_fixed "$dockerfile" 'org.opencontainers.image.version="0.2.0-m2"'
+require_fixed "$dockerfile" 'org.opencontainers.image.version="0.3.0"'
 require_fixed "$dockerfile" '/usr/lib/apt'
 require_fixed "$dockerfile" '/usr/bin/apt*'
 require_fixed "$dockerfile" '/usr/bin/dpkg*'
@@ -65,7 +65,7 @@ docker info >/dev/null 2>&1 || fail "docker daemon is required for the image run
 command -v python3 >/dev/null 2>&1 || fail "python3 is required for same-origin HTTP checks"
 
 # `MEDIAFLOW_TEST_IMAGE` 可选地选择此检查构建和运行的不可变本地标签。
-image=${MEDIAFLOW_TEST_IMAGE:-mediaflow:0.2.0-m2}
+image=${MEDIAFLOW_TEST_IMAGE:-mediaflow:0.3.0}
 case "$image" in
   *:latest|latest) fail "test image must use an immutable non-latest tag" ;;
 esac

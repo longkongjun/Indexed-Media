@@ -2,8 +2,10 @@ name: mediaflow
 
 services:
   mediaflow:
-    image: "${MEDIAFLOW_IMAGE:-mediaflow:0.2.0-m2}"
-    user: "${PUID:-1000}:${PGID:-1000}"
+    # 默认标签随版本策略更新；本地构建后可 export MEDIAFLOW_IMAGE=mediaflow:local 覆盖。
+    image: "${MEDIAFLOW_IMAGE:-mediaflow:0.3.0}"
+    # 与镜像内 /config 属主（10001）对齐；NAS 场景按需覆盖为宿主共享组。
+    user: "${PUID:-10001}:${PGID:-10001}"
     restart: unless-stopped
     read_only: true
     tmpfs:
@@ -13,7 +15,8 @@ services:
     cap_drop:
       - ALL
     ports:
-      - "${MEDIAFLOW_BIND_ADDRESS:-0.0.0.0}:${MEDIAFLOW_PORT:-3000}:3000"
+      # 默认只绑回环：明文 HTTP 不暴露到局域网；反代/容器网络场景改为内网地址或 0.0.0.0。
+      - "${MEDIAFLOW_BIND_ADDRESS:-127.0.0.1}:${MEDIAFLOW_PORT:-3000}:3000"
     environment:
       MEDIAFLOW_MODE: production
       MEDIAFLOW_LISTEN: 0.0.0.0:3000
@@ -30,6 +33,10 @@ services:
       - "${MEDIAFLOW_INCOMING_PATH:?Set the host incoming directory}:/data/incoming:ro"
       - "${MEDIAFLOW_ROOTS_CONFIG_PATH:-./deployment-roots.json}:/run/mediaflow/deployment-roots.json:ro"
       - "${MEDIAFLOW_BOOTSTRAP_SECRET_PATH:-./secrets/bootstrap.secret}:/run/secrets/mediaflow-bootstrap:ro"
+      # 可写媒体根（整理目标 / A2-A3 写能力）：取消注释并指向宿主媒体库目录。
+      # deployment-roots.json 中的目标根必须落在这些挂载内，写能力才可用。
+      # - "${MEDIAFLOW_LIBRARY_PATH:?Set the host media library directory}:/data/media/library:rw"
+      # - "${MEDIAFLOW_TRASH_PATH:?Set the host quarantine directory}:/data/media/trash:rw"
     healthcheck:
       test: ["CMD", "/usr/local/bin/healthcheck.sh"]
       interval: 30s

@@ -28,7 +28,7 @@ command -v docker >/dev/null 2>&1 || fail "docker command is required"
 docker info >/dev/null 2>&1 || fail "Docker daemon is unavailable"
 command -v python3 >/dev/null 2>&1 || fail "python3 is required for JSON assertions"
 
-test_image=${MEDIAFLOW_TEST_IMAGE:-mediaflow:0.2.0-m2}
+test_image=${MEDIAFLOW_TEST_IMAGE:-mediaflow:0.3.0}
 case "$test_image" in latest|*:latest) fail "test image must use immutable non-latest tag: $test_image" ;; esac
 docker image inspect "$test_image" >/dev/null 2>&1 || fail "test image $test_image is unavailable; run just check-containers first"
 

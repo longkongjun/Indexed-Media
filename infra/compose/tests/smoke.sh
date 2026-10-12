@@ -19,7 +19,7 @@ if [ "${1:-}" = "--static-only" ]; then
   for marker in \
     'docker info' 'docker compose version' 'docker image inspect' \
     'docker compose config --format json' 'docker compose up -d' \
-    'docker compose restart mediaflow' 'MEDIAFLOW_TEST_IMAGE:-mediaflow:0.2.0-m2' \
+    'docker compose restart mediaflow' 'MEDIAFLOW_TEST_IMAGE:-mediaflow:0.3.0' \
     'read_only' '/data/incoming:ro' '/run/mediaflow/deployment-roots.json:ro' \
     '/run/secrets/mediaflow-bootstrap:ro' '/proc/1/cmdline' \
     'trap - EXIT HUP INT TERM' 'original_status=$?' 'cleanup_error=0' \
@@ -42,7 +42,7 @@ docker compose version >/dev/null 2>&1 || fail "Docker Compose v2 is required (d
 command -v python3 >/dev/null 2>&1 || fail "python3 is required for JSON and HTTP assertions"
 
 # `MEDIAFLOW_TEST_IMAGE` 可选地选择冒烟测试执行的不可变预构建镜像。
-test_image=${MEDIAFLOW_TEST_IMAGE:-mediaflow:0.2.0-m2}
+test_image=${MEDIAFLOW_TEST_IMAGE:-mediaflow:0.3.0}
 case "$test_image" in latest|*:latest) fail "test image must use immutable non-latest tag: $test_image" ;; esac
 docker image inspect "$test_image" >/dev/null 2>&1 || fail "test image $test_image is unavailable; run just check-containers first"
 
