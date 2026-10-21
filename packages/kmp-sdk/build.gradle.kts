@@ -190,14 +190,8 @@ detekt {
     buildUponDefaultConfig = true
     allRules = false
     config.setFrom(files("$projectDir/detekt.yml"))
-    // detekt 默认只扫 JVM 约定目录；KMP 源集显式列出。
-    source.setFrom(
-        "src/commonMain/kotlin",
-        "src/commonTest/kotlin",
-        "src/jvmMain/kotlin",
-        "src/androidMain/kotlin",
-        "src/iosMain/kotlin",
-    )
+    // Include every handwritten main/test platform source set; generated output stays separate.
+    source.setFrom(fileTree("src") { include("**/*.kt") })
 }
 
 ktlint {

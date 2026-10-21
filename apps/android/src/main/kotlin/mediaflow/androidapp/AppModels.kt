@@ -13,9 +13,14 @@ sealed interface Screen {
 
     data object Tasks : Screen
 
-    data class Detail(val mediaItemId: String, val title: String) : Screen
+    data class Detail(
+        val mediaItemId: String,
+        val title: String,
+    ) : Screen
 
-    data class Confirm(val reviewCaseId: String) : Screen
+    data class Confirm(
+        val reviewCaseId: String,
+    ) : Screen
 }
 
 /**

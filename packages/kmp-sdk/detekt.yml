@@ -4,7 +4,8 @@
 complexity:
   LongMethod:
     # 测试内的 given/when/then 场景组装允许较长；生产代码保持默认 60。
-    threshold: 120
+    threshold: 60
+    excludes: ['**/src/*Test/**']
   LongParameterList:
     # DTO 组装与 Repository 构造参数经数据类/接口收拢前允许过渡；C1 收紧观察。
     active: false

@@ -1,11 +1,11 @@
 package mediaflow.androidapp
 
+import mediaflow.client.core.error.MediaFlowError
+import mediaflow.client.core.paging.PageState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
-import mediaflow.client.core.error.MediaFlowError
-import mediaflow.client.core.paging.PageState
 
 /** 页面状态语义映射（ui-contract 对齐）：UI 层唯一展示语义来源。 */
 class PageVisualTest {
@@ -25,8 +25,7 @@ class PageVisualTest {
 
     @Test
     fun httpSemanticsHaveReadableChineseMessages() {
-        fun message(status: Int) =
-            PageVisual.readableMessage(MediaFlowError.Http(status, null, "raw ${status}", null))
+        fun message(status: Int) = PageVisual.readableMessage(MediaFlowError.Http(status, null, "raw $status", null))
         assertEquals("登录已过期，请重新登录", message(401))
         assertEquals("内容已被他人更新，请刷新后重试", message(409))
         assertEquals("操作过于频繁，请稍后重试", message(429))
