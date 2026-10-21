@@ -33,4 +33,4 @@ just、cargo-deny、cargo-machete 和 SwiftLint 的固定版本见[工具清单]
 
 CI 通过同源原子入口运行，失败时保留 job 日志与适用报告。两套 workflow 是工程矩阵的不同部分，需按同一源码基线汇合真实 job 结果；静态解析或本地替身不算远端 CI 验收。真实 Core UI、设备、NAS、外部服务与发布验收继续走独立入口。
 
-四处 TS 配置均开启 exactOptionalPropertyTypes；Vue Router5.2.0 的3行纯声明兼容修补由 `patches/` 与锁文件固定，运行时 JS 未变，依赖版本未升级；上游修复后可单独移除补丁。现有暂留配置仍须审阅：SDK 仍有异常/构造参数规则的宽范围关闭，cargo-deny 私有许可和重复版本策略见其配置。文件存在或本地部分通过均不等于这些例外已批准；不通过增加全局豁免来掩盖违规。
+四处 TS 配置均开启 exactOptionalPropertyTypes；Vue Router5.2.0 的3行纯声明兼容修补由 `patches/` 与锁文件固定，其运行时 JS 和版本未变；上游修复后可单独移除补丁。SDK 的 LongParameterList 与 SwallowedException 采用默认检查，现有局部 Suppress 仍按其声明范围生效。现有暂留配置仍须审阅：SDK 的 TooGenericExceptionCaught 仍全局关闭，cargo-deny 私有许可和重复版本策略见其配置。文件存在或本地部分通过均不等于这些例外已批准；不通过增加全局豁免来掩盖违规。
