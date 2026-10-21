@@ -20,7 +20,7 @@ test("tests then saves a connection and replays a secret-safe download create", 
   if (testInfo.project.name === "chromium-mobile") await page.setViewportSize({ width: 390, height: 844 });
   let saved = false;
   let created = false;
-  const writes: Array<{ key?: string; body: Record<string, unknown> }> = [];
+  const writes: Array<{ key: string | undefined; body: Record<string, unknown> }> = [];
   await page.route("**/api/v1/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());

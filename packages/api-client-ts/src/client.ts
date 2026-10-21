@@ -131,14 +131,14 @@ export type OrganizationTargetPreflight = components["schemas"]["OrganizationTar
 /** 一个 ProcessingTask 的计划、journal、本地结果和服务端允许动作。 */
 export type ProcessingTaskOrganization = components["schemas"]["ProcessingTaskOrganization"];
 
-/** ProcessingTask 中心的稳定服务端筛选。 */
+/** ProcessingTask 中心的稳定服务端筛选；查询选项将显式 undefined 视为省略。 */
 export interface ProcessingTaskListOptions {
-  cursor?: string;
-  view?: "pending" | "running" | "all" | "completed";
-  stage?: ProcessingTask["stage"];
-  status?: ProcessingTask["status"] | "partial-success" | "completed" | "failed";
-  inboxDirectoryId?: string;
-  query?: string;
+  cursor?: string | undefined;
+  view?: "pending" | "running" | "all" | "completed" | undefined;
+  stage?: ProcessingTask["stage"] | undefined;
+  status?: ProcessingTask["status"] | "partial-success" | "completed" | "failed" | undefined;
+  inboxDirectoryId?: string | undefined;
+  query?: string | undefined;
 }
 
 /** ReviewCase 上下文内的有界临时候选搜索。 */
@@ -151,11 +151,11 @@ export interface ReviewCandidateSearchOptions {
 
 /** 正式 Catalog 列表的稳定服务端筛选。 */
 export interface MediaItemListOptions {
-  cursor?: string;
-  type?: "movie" | "series" | "generic-video";
-  libraryId?: string;
-  localStatus?: "complete" | "partial";
-  query?: string;
+  cursor?: string | undefined;
+  type?: "movie" | "series" | "generic-video" | undefined;
+  libraryId?: string | undefined;
+  localStatus?: "complete" | "partial" | undefined;
+  query?: string | undefined;
 }
 
 /** ReviewCase 列表的可选稳定筛选条件。 */
@@ -168,17 +168,17 @@ export interface ReviewCaseListOptions {
 
 /** 下载任务列表的稳定服务端筛选。 */
 export interface DownloadTaskListOptions {
-  cursor?: string;
-  connectionId?: string;
-  status?: DownloadTask["status"];
-  query?: string;
+  cursor?: string | undefined;
+  connectionId?: string | undefined;
+  status?: DownloadTask["status"] | undefined;
+  query?: string | undefined;
 }
 
 /** 应用内通知列表的查询参数。 */
 export interface NotificationListOptions {
-  cursor?: string;
-  limit?: number;
-  unreadOnly?: boolean;
+  cursor?: string | undefined;
+  limit?: number | undefined;
+  unreadOnly?: boolean | undefined;
 }
 
 /** AI 能力通道事件列表的分页参数。 */
@@ -189,10 +189,10 @@ export interface CapabilityEventListOptions {
 
 /** 自动化事件列表的稳定服务端筛选。 */
 export interface AutomationEventListOptions {
-  cursor?: string;
-  sourceId?: string;
-  status?: AutomationEvent["status"];
-  action?: AutomationEvent["action"];
+  cursor?: string | undefined;
+  sourceId?: string | undefined;
+  status?: AutomationEvent["status"] | undefined;
+  action?: AutomationEvent["action"] | undefined;
 }
 
 /**

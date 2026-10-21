@@ -2,3 +2,5 @@ packages:
   - apps/web
   - packages/api-client-ts
   - packages/test-fixtures
+patchedDependencies:
+  vue-router@5.2.0: patches/vue-router@5.2.0.patch

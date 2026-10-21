@@ -19,7 +19,7 @@ const session: SessionResponse = {
 
 function apiError(status: number, code: "auth.invalid_credentials" | "auth.rate_limited" | "bootstrap.invalid_secret" | "bootstrap.already_completed" | "internal.error", details?: Record<string, string | number | boolean | null>) {
   return new MediaFlowApiError(status, {
-    error: { code, message: code, request_id: "018f0f10-8bc1-7a5e-8e5a-2dc913d23c86", details },
+    error: { code, message: code, request_id: "018f0f10-8bc1-7a5e-8e5a-2dc913d23c86", ...(details === undefined ? {} : { details }) },
   });
 }
 
