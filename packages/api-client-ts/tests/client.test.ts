@@ -6,7 +6,7 @@ import { MediaFlowApiError, createMediaFlowClient } from "../src/client.js";
 describe("MediaFlowClient", () => {
 
 /** 提取第 N 次 fetch 调用的 RequestInit；noUncheckedIndexedAccess 下索引访问必须显式证明存在。 */
-const callInit = (calls: Array<[RequestInfo | URL, RequestInit?]>, index: number): RequestInit => {
+const callInit = (calls: Array<Parameters<typeof globalThis.fetch>>, index: number): RequestInit => {
   const call = calls[index];
   if (!call || !call[1]) throw new Error(`expected fetch call ${index} with request init`);
   return call[1];

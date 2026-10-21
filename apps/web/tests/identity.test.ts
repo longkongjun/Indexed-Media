@@ -1,5 +1,6 @@
 import type { MediaFlowClient, SessionResponse } from "@mediaflow/api-client-ts";
 import { MediaFlowApiError } from "@mediaflow/api-client-ts";
+import type { Component } from "vue";
 import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -57,8 +58,7 @@ function client(overrides: Partial<MediaFlowClient> = {}): MediaFlowClient {
   };
 }
 
-// eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents -- eslint 的 projectService 把 SFC 默认导出解析为 any，vue-tsc 下类型正常
-async function harness(component: typeof LoginView | typeof SetupView, api: MediaFlowClient, path: string) {
+async function harness(component: Component, api: MediaFlowClient, path: string) {
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [

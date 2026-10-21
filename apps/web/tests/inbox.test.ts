@@ -23,7 +23,7 @@ function client(overrides: Partial<MediaFlowClient> = {}): MediaFlowClient {
   return {
     getBootstrapStatus: noop, bootstrap: noop, createSession: noop, getSession: noop, deleteSession: noop,
     listDeploymentRoots: vi.fn(async () => ({ items: [{ id: "incoming", label: "家庭收件区", access: "read-write" }], next_cursor: null })),
-    preflightInboxDirectory: vi.fn(async ({ root_id, relative_path }) => ({ root_id, relative_path, readable: true, overlaps_existing: false })),
+    preflightInboxDirectory: vi.fn<MediaFlowClient["preflightInboxDirectory"]>(async ({ root_id, relative_path }) => ({ root_id, relative_path, readable: true, overlaps_existing: false })),
     listInboxDirectories: vi.fn(async () => ({ items: [], next_cursor: null })), createInboxDirectory: vi.fn(async () => inbox),
     getInboxDirectory: vi.fn(async () => inbox), createScanTask: vi.fn(async () => task), listScanTasks: noop,
     getScanTask: noop, retryScanTask: noop, cancelScanTask: noop, listScanTaskFiles: noop, listScanTaskErrors: noop,
@@ -75,7 +75,7 @@ describe("inbox directory flow", () => {
       ["path.escape", "超出能力根"], ["root.unavailable", "能力根暂不可用"],
     ] as const;
     for (const [code, copy] of cases) {
-      const api = client({ preflightInboxDirectory: vi.fn(async () => { throw new MediaFlowApiError(409, { error: { code, message: "/host/private", request_id: inbox.id } }); }) });
+      const api = client({ preflightInboxDirectory: vi.fn<MediaFlowClient["preflightInboxDirectory"]>(async () => { throw new MediaFlowApiError(409, { error: { code, message: "/host/private", request_id: inbox.id } }); }) });
       const feature = useInboxDirectories(api);
       await feature.load();
       feature.form.rootId = "incoming";

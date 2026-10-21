@@ -57,7 +57,7 @@ describe("Task 7 accessibility", () => {
   it.each([[SetupView, "/setup"], [LoginView, "/login"]] as const)("has no automated form violations", async (component, path) => {
     const wrapper = await mountWithRouter(component, path);
     // jsdom 无法计算渲染后的颜色，因此颜色对比度由后续浏览器测试覆盖。
-    const result = await axe.run(wrapper.element, { rules: { "color-contrast": { enabled: false } } });
+    const result = await axe.run(wrapper.element as Element, { rules: { "color-contrast": { enabled: false } } });
     expect(result.violations).toEqual([]);
     wrapper.unmount();
   });
@@ -166,7 +166,7 @@ describe("Task 7 accessibility", () => {
     const wrapper = await mountWithRouter(component, path, api);
     await flushPromises();
     if (component === InboxListView) await wrapper.get("button.primary-action").trigger("click");
-    const result = await axe.run(wrapper.element, { rules: { "color-contrast": { enabled: false } } });
+    const result = await axe.run(wrapper.element as Element, { rules: { "color-contrast": { enabled: false } } });
     expect(result.violations).toEqual([]);
     wrapper.unmount();
   });

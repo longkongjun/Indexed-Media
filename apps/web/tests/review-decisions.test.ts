@@ -101,7 +101,7 @@ describe("ReviewCase decisions", () => {
   });
 
   it("retains the exact intent key while the result is unknown", async () => {
-    const submit = vi.fn()
+    const submit = vi.fn<MediaFlowClient["submitReviewDecision"]>()
       .mockRejectedValueOnce(new TypeError("lost one"))
       .mockRejectedValueOnce(new TypeError("lost two"))
       .mockResolvedValueOnce(receipt);

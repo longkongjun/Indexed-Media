@@ -495,7 +495,8 @@ export function createMediaFlowClient(options: { baseUrl?: string; fetch?: typeo
   const fetcher = options.fetch ?? globalThis.fetch;
   let csrfToken: string | null = null;
 
-  async function request<T>(operation: OperationId, requestOptions: { path?: Record<string, string>; body?: unknown; cursor?: string; query?: Record<string, string | undefined>; idempotencyKey?: string; ifMatch?: number } = {}): Promise<T> {
+  // Optional positional arguments are forwarded here; explicit undefined means omitted.
+  async function request<T>(operation: OperationId, requestOptions: { path?: Record<string, string>; body?: unknown; cursor?: string | undefined; query?: Record<string, string | undefined>; idempotencyKey?: string | undefined; ifMatch?: number | undefined } = {}): Promise<T> {
     const [method, template] = operations[operation];
     const path = Object.entries(requestOptions.path ?? {}).reduce<string>((value, [key, id]) => value.replace(`{${key}}`, encodeURIComponent(id)), template);
     const url = new URL(path, options.baseUrl ?? "http://mediaflow.local");
@@ -508,7 +509,7 @@ export function createMediaFlowClient(options: { baseUrl?: string; fetch?: typeo
     if (requestOptions.idempotencyKey) headers["Idempotency-Key"] = requestOptions.idempotencyKey;
     if (requestOptions.ifMatch !== undefined) headers["If-Match"] = String(requestOptions.ifMatch);
     if (method !== "GET" && csrfToken) headers["X-CSRF-Token"] = csrfToken;
-    const response = await fetcher(options.baseUrl ? url.toString() : `${path}${url.search}`, { method, headers, body: requestOptions.body === undefined ? undefined : JSON.stringify(requestOptions.body), credentials: "same-origin" });
+    const response = await fetcher(options.baseUrl ? url.toString() : `${path}${url.search}`, { method, headers, ...(requestOptions.body === undefined ? {} : { body: JSON.stringify(requestOptions.body) }), credentials: "same-origin" });
     if (!response.ok) {
       let body: ApiErrorBody | undefined;
       if (response.headers.get("content-type")?.includes("application/json")) {
