@@ -88,6 +88,148 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/family-members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List family member records
+         * @description External-player identities only; members never hold MediaFlow sessions or admin surface.
+         */
+        get: operations["listFamilyMembers"];
+        put?: never;
+        /** Create a family member record */
+        post: operations["createFamilyMember"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/family-members/{memberId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                memberId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Remove a family member record */
+        delete: operations["deleteFamilyMember"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/device-pairing-codes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Issue a one-time device pairing code
+         * @description Issues a single-use base32 pairing code valid for ten minutes; only its SHA-256 digest is stored. Web management face, browser session channel only.
+         */
+        post: operations["createDevicePairingCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devices/enrollment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Enroll a device and issue its token
+         * @description Pre-authentication mobile entry point with no browser origin proof. Exactly one gate applies; a valid one-time pairing code, or administrator credentials sharing the login throttle. The raw device token is returned exactly once.
+         */
+        post: operations["enrollDevice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List enrolled devices
+         * @description Device management face including revoked rows; browser session channel only, device tokens cannot list.
+         */
+        get: operations["listDevices"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devices/{deviceId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke a device token
+         * @description Administrator revocation through the browser session, or a device revoking only itself as mobile logout. The cookie-session channel requires the CSRF proof; the bearer device-token channel is exempt because the token itself is the write proof.
+         */
+        delete: operations["revokeDevice"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/devices/current/token-rotation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rotate the calling device token
+         * @description Atomically replaces the calling device's token digest; the old token dies immediately and the new raw token is returned exactly once. Bearer channel only, no browser proofs.
+         */
+        post: operations["rotateDeviceToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/deployment-roots": {
         parameters: {
             query?: never;
@@ -340,6 +482,30 @@ export interface paths {
         post?: never;
         /** Delete TMDB integration credentials */
         delete: operations["deleteTmdbIntegration"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/system/backups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List backup manifests newest-first
+         * @description Redacted backup listing; restore stays an offline runbook operation by design.
+         */
+        get: operations["listBackups"];
+        put?: never;
+        /**
+         * Trigger a manual backup
+         * @description Reuses the migration-time primitives (schema version, SHA-256 manifest, deployment-roots copy); returns the written manifest.
+         */
+        post: operations["createManualBackup"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1202,7 +1368,7 @@ export interface components {
         ApiErrorBody: {
             error: {
                 /** @enum {string} */
-                code: "bootstrap.already_completed" | "bootstrap.invalid_secret" | "auth.invalid_credentials" | "auth.rate_limited" | "session.expired" | "csrf.invalid" | "origin.untrusted" | "root.not_found" | "root.unavailable" | "path.invalid" | "path.escape" | "path.symlink_forbidden" | "inbox.overlap" | "inbox.not_found" | "task.not_found" | "task.invalid_state" | "task.lease_lost" | "integration.not_configured" | "integration.unauthorized" | "integration.rate_limited" | "integration.unsupported-version" | "provider.unavailable" | "provider.timeout" | "provider.response-too-large" | "provider.invalid-response" | "download.correlation-ambiguous" | "download.remote-missing" | "automation.source-disabled" | "automation.signature-invalid" | "automation.replay" | "automation.action-invalid" | "automation.payload-invalid" | "automation.downstream-conflict" | "organization.root-read-only" | "organization.target-overlap" | "organization.target-unavailable" | "organization.path-outside-root" | "organization.target-exists" | "organization.source-changed" | "organization.hardlink-cross-device" | "organization.operation-unsupported" | "organization.journal-ambiguous" | "revision.changed" | "event.cursor_expired" | "request.conflict" | "validation.failed" | "internal.error";
+                code: "bootstrap.already_completed" | "bootstrap.invalid_secret" | "auth.invalid_credentials" | "auth.rate_limited" | "session.expired" | "permission.denied" | "csrf.invalid" | "origin.untrusted" | "root.not_found" | "root.unavailable" | "path.invalid" | "path.escape" | "path.symlink_forbidden" | "inbox.overlap" | "inbox.not_found" | "task.not_found" | "task.invalid_state" | "task.lease_lost" | "integration.not_configured" | "integration.unauthorized" | "integration.rate_limited" | "integration.unsupported-version" | "provider.unavailable" | "provider.timeout" | "provider.response-too-large" | "provider.invalid-response" | "download.correlation-ambiguous" | "download.remote-missing" | "automation.source-disabled" | "automation.signature-invalid" | "automation.replay" | "automation.action-invalid" | "automation.payload-invalid" | "automation.downstream-conflict" | "organization.root-read-only" | "organization.target-overlap" | "organization.target-unavailable" | "organization.path-outside-root" | "organization.target-exists" | "organization.source-changed" | "organization.hardlink-cross-device" | "organization.operation-unsupported" | "organization.journal-ambiguous" | "revision.changed" | "event.cursor_expired" | "request.conflict" | "validation.failed" | "internal.error";
                 message: string;
                 /** Format: uuid */
                 request_id: string;
@@ -2191,6 +2357,103 @@ export interface components {
         NotificationWebhookProbeReceipt: {
             delivered: boolean;
         };
+        /** @description External-player identity; no MediaFlow session or admin surface. */
+        FamilyMember: {
+            /** Format: uuid */
+            id: string;
+            display_name: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        /** @description Family member list. */
+        FamilyMemberPage: {
+            items: components["schemas"]["FamilyMember"][];
+        };
+        /** @description New member record; the password is hashed and never echoed. */
+        FamilyMemberInput: {
+            display_name: string;
+            password: string;
+        };
+        /** @description Enrolled device projection; never carries token material. */
+        DeviceView: {
+            /** Format: uuid */
+            id: string;
+            display_name: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            last_used_at?: string | null;
+            /** Format: date-time */
+            expires_at: string;
+            /** Format: date-time */
+            revoked_at?: string | null;
+        };
+        /** @description Device list including revoked rows. */
+        DevicePage: {
+            items: components["schemas"]["DeviceView"][];
+        };
+        /** @description One enrollment gate; a pairing code or administrator credentials, never both. Secrets are discarded after verification. */
+        DeviceEnrollmentInput: {
+            /** @description Eight base32 characters; case and separator characters are normalized server-side. */
+            pairing_code?: string;
+            administrator_name?: string;
+            password?: string;
+            device_name: string;
+        };
+        /** @description Enrollment receipt; the raw token is returned exactly once and only its SHA-256 digest is stored. */
+        DeviceEnrollment: {
+            device: components["schemas"]["DeviceView"];
+            /** @description Raw bearer token for the Authorization header. */
+            token: string;
+            /** @constant */
+            version: "v1";
+        };
+        /** @description One-time pairing code issuance; the code is returned exactly once. */
+        DevicePairingCode: {
+            pairing_code: string;
+            /** Format: date-time */
+            expires_at: string;
+            /** @constant */
+            version: "v1";
+        };
+        /** @description Rotated token receipt; the previous token is invalid immediately. */
+        DeviceTokenRotation: {
+            token: string;
+            /** Format: date-time */
+            expires_at: string;
+            /** @constant */
+            version: "v1";
+        };
+        /** @description Backup file name and its lowercase SHA-256 digest. */
+        BackupFileEntry: {
+            name: string;
+            sha256: string;
+        };
+        /** @description Self-describing backup manifest; restore accepts single-component file names only. */
+        BackupManifest: {
+            schema_version: number;
+            sha256: string;
+            /** Format: date-time */
+            created_at: string;
+            files: {
+                database: components["schemas"]["BackupFileEntry"];
+                deployment_roots: components["schemas"]["BackupFileEntry"];
+            };
+        };
+        /** @description One listed backup with its manifest. */
+        BackupListItem: {
+            id: string;
+            manifest: components["schemas"]["BackupManifest"];
+        };
+        /** @description Newest-first backup listing. */
+        BackupPage: {
+            items: components["schemas"]["BackupListItem"][];
+        };
+        /** @description Manual backup result. */
+        BackupCreationReceipt: {
+            manifest: components["schemas"]["BackupManifest"];
+            created: boolean;
+        };
         /** @description Redacted Jellyfin connection; independent of MediaFlow libraries and never a task dependency. */
         JellyfinIntegration: {
             /** @constant */
@@ -3020,6 +3283,78 @@ export interface components {
                 "application/json": components["schemas"]["NotificationWebhookAccepted"];
             };
         };
+        /** @description Family member records */
+        FamilyMemberPage: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["FamilyMemberPage"];
+            };
+        };
+        /** @description Family member stored */
+        FamilyMemberCreated: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["FamilyMember"];
+            };
+        };
+        /** @description Device enrolled; the raw token is returned exactly once */
+        DeviceEnrollmentCreated: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["DeviceEnrollment"];
+            };
+        };
+        /** @description Enrolled devices including revoked rows */
+        DevicePage: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["DevicePage"];
+            };
+        };
+        /** @description Pairing code issued; single-use for ten minutes */
+        PairingCodeCreated: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["DevicePairingCode"];
+            };
+        };
+        /** @description Token rotated; the previous token is invalid immediately */
+        DeviceTokenRotated: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["DeviceTokenRotation"];
+            };
+        };
+        /** @description Backup manifests newest-first */
+        BackupPage: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["BackupPage"];
+            };
+        };
+        /** @description Manual backup written */
+        BackupCreationReceipt: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["BackupCreationReceipt"];
+            };
+        };
         /** @description Redacted Jellyfin connection projection */
         JellyfinIntegration: {
             headers: {
@@ -3332,6 +3667,188 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             500: components["responses"]["InternalError"];
+        };
+    };
+    listFamilyMembers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["FamilyMemberPage"];
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    createFamilyMember: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+                /** @description Exact public origin proof used when Fetch Metadata is absent and checked whenever supplied. */
+                Origin?: components["parameters"]["Origin"];
+                /** @description Browser Fetch Metadata primary same-origin proof; cross-site and malformed values fail closed. */
+                "Sec-Fetch-Site"?: components["parameters"]["SecFetchSite"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FamilyMemberInput"];
+            };
+        };
+        responses: {
+            201: components["responses"]["FamilyMemberCreated"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            422: components["responses"]["ValidationFailed"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    deleteFamilyMember: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+                /** @description Exact public origin proof used when Fetch Metadata is absent and checked whenever supplied. */
+                Origin?: components["parameters"]["Origin"];
+                /** @description Browser Fetch Metadata primary same-origin proof; cross-site and malformed values fail closed. */
+                "Sec-Fetch-Site"?: components["parameters"]["SecFetchSite"];
+            };
+            path: {
+                memberId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Family member removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    createDevicePairingCode: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+                /** @description Exact public origin proof used when Fetch Metadata is absent and checked whenever supplied. */
+                Origin?: components["parameters"]["Origin"];
+                /** @description Browser Fetch Metadata primary same-origin proof; cross-site and malformed values fail closed. */
+                "Sec-Fetch-Site"?: components["parameters"]["SecFetchSite"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: components["responses"]["PairingCodeCreated"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    enrollDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceEnrollmentInput"];
+            };
+        };
+        responses: {
+            201: components["responses"]["DeviceEnrollmentCreated"];
+            401: components["responses"]["Unauthorized"];
+            422: components["responses"]["ValidationFailed"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    listDevices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["DevicePage"];
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    revokeDevice: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Required for the cookie-session channel only; bearer device tokens are exempt (token as write proof). */
+                "X-CSRF-Token"?: string;
+                /** @description Exact public origin proof used when Fetch Metadata is absent and checked whenever supplied. */
+                Origin?: string;
+                /** @description Browser Fetch Metadata primary same-origin proof; cross-site and malformed values fail closed. */
+                "Sec-Fetch-Site"?: "same-origin" | "same-site" | "cross-site" | "none";
+            };
+            path: {
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Device token revoked. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    rotateDeviceToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["DeviceTokenRotated"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     listDeploymentRoots: {
@@ -3671,6 +4188,44 @@ export interface operations {
             409: components["responses"]["Conflict"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    listBackups: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["BackupPage"];
+            401: components["responses"]["Unauthorized"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    createManualBackup: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+                /** @description Exact public origin proof used when Fetch Metadata is absent and checked whenever supplied. */
+                Origin?: components["parameters"]["Origin"];
+                /** @description Browser Fetch Metadata primary same-origin proof; cross-site and malformed values fail closed. */
+                "Sec-Fetch-Site"?: components["parameters"]["SecFetchSite"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["BackupCreationReceipt"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
         };
     };
     listNotifications: {
