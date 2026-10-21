@@ -338,20 +338,18 @@ test-web-identity:
     @CI=true pnpm --filter @mediaflow/web typecheck
     @CI=true pnpm --filter @mediaflow/web test -- --run tests/router.test.ts tests/identity.test.ts tests/accessibility.test.ts
 
-# 检查全部移动端和 TV 应用；当前模块未初始化，因此返回状态 2。
+# 检查当前 Android/iOS；TV 仍使用独立未初始化入口。
 check-mobile:
-    @printf '未初始化：apps/android, apps/ios, apps/android-tv, apps/tvos\n' >&2
-    @exit 2
+    @just check-android
+    @just check-ios
 
-# 检查 Android 应用；当前模块未初始化，因此返回状态 2。
+# 检查 Android 应用。
 check-android:
-    @printf '未初始化：apps/android\n' >&2
-    @exit 2
+    @just client-check-android
 
-# 检查 iOS 应用；当前模块未初始化，因此返回状态 2。
+# 检查 iOS 应用。
 check-ios:
-    @printf '未初始化：apps/ios\n' >&2
-    @exit 2
+    @just client-check-ios
 
 # 检查 Android TV 应用；当前模块未初始化，因此返回状态 2。
 check-android-tv:
@@ -363,10 +361,9 @@ check-tvos:
     @printf '未初始化：apps/tvos\n' >&2
     @exit 2
 
-# 检查 KMP SDK；当前模块未初始化，因此返回状态 2。
+# 检查 KMP SDK。
 check-kmp-sdk:
-    @printf '未初始化：packages/kmp-sdk\n' >&2
-    @exit 2
+    @just client-check-kmp-sdk
 
 # 检查 TypeScript API Client。
 check-api-client-ts:
@@ -489,23 +486,36 @@ check-rust-docs:
 test-rust-doc:
     @cargo test --manifest-path apps/core/Cargo.toml --doc
 
-# 检查依赖治理：advisory/许可扫描（cargo-deny）与未用依赖清理（cargo-machete）。
-check-rust-deps:
-    @cargo deny --manifest-path apps/core/Cargo.toml --config apps/core/deny.toml check
+# advisory 独立于其他依赖检查，离线待验不影响其他检查执行。
+check-rust-advisories:
+    @cargo deny --manifest-path apps/core/Cargo.toml --config apps/core/deny.toml check advisories
+
+# 无 advisory 拉取的依赖静态检查；仍检查许可、来源、重复依赖和未用依赖。
+check-rust-deps-static:
+    @cargo deny --manifest-path apps/core/Cargo.toml --config apps/core/deny.toml check bans licenses sources
     @cargo machete apps/core
 
-# 执行当前已初始化正式能力的完整自动门禁；真实外部系统验收由独立 live 入口负责。
-check:
+check-rust-deps:
+    @just check-rust-deps-static
+    @just check-rust-advisories
+
+# 公共源码检查（不含依赖治理）；供在线/离线自检共用。
+check-source:
     @just check-m4-source-automation
+    @just check-ui-contract
     @just check-rust-docs
     @just test-rust-doc
+
+# 公共源码与依赖门禁；原生客户端和部署检查使用对应入口。
+check:
+    @just check-source
     @just check-rust-deps
 
-# 一键自检：环境探测 + 全量门禁 + 静态部署边界（实机验收前的单命令确认）。
+# 源码部署自检：公共源码、依赖与部署静态检查，不代表原生客户端或运行时验收。
 selfcheck:
     @./tools/selfcheck/selfcheck.sh
 
-# 一键自检（离线模式：跳过 cargo-deny advisory 在线拉取）。
+# 源码部署自检（离线 advisory 待验，返回非零；其他检查继续）。
 selfcheck-offline:
     @./tools/selfcheck/selfcheck.sh --offline
 
@@ -540,7 +550,7 @@ client-fixture-server:
 
 # iOS 应用门禁：生成工程 + 模拟器构建与测试（需 XcodeGen：brew install xcodegen）。
 client-check-ios:
-    @cd apps/ios && xcodegen generate && xcodebuild test -project MediaFlow.xcodeproj -scheme MediaFlowiOS -destination 'platform=iOS Simulator,name=iPhone 17' 2>&1 | tail -5
+    @bash tools/selfcheck/ios.sh
 
 # 客户端全量门禁聚合。
 client-check:

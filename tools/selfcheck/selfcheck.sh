@@ -1,77 +1,62 @@
 #!/bin/sh
-# MediaFlow 一键自检：环境探测 + 本地全量门禁聚合 + 交付就绪摘要。
-# 用途：实机验收前在目标机器（或开发机）上单命令确认代码、契约与文档门禁全绿。
-# 输入：可选 `--offline`（跳过 cargo-deny advisory 在线拉取）。
-# 退出：全部通过 0；环境缺失 2；门禁失败 1。
+# Source/deployment-static checks; offline advisory evidence remains pending (2).
 set -eu
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 cd "$repo_root"
-
 offline=0
-[ "${1:-}" = "--offline" ] && offline=1
+case "$*" in
+  '') ;;
+  --offline) offline=1 ;;
+  *) printf 'usage: %s [--offline]\n' "$0" >&2; exit 2 ;;
+esac
 
-pass() { printf '  \033[32m✓\033[0m %s\n' "$1"; }
-fail() { printf '  \033[31m✗\033[0m %s\n' "$1"; }
-info() { printf '  ·  %s\n' "$1"; }
-
-status=0
-
-printf 'MediaFlow 一键自检\n'
-printf '==================\n'
-
-printf '\n[1/4] 环境探测\n'
-for tool in cargo just pnpm node docker; do
-  if command -v "$tool" >/dev/null 2>&1; then
-    pass "$tool $(command -v "$tool" | head -c 60)"
-  else
-    fail "$tool 缺失"
-    status=2
+output_root=$(mktemp -d "${TMPDIR:-/tmp}/mediaflow-selfcheck.XXXXXX")
+printf '源码部署自检（公共源码、依赖、部署静态检查）\n报告：%s\n' "$output_root"
+failed=0
+pending=0
+for tool in cargo just pnpm node cargo-deny cargo-machete; do
+  if ! command -v "$tool" >/dev/null 2>&1; then
+    printf '缺少工具：%s\n' "$tool" >&2
+    pending=1
   fi
 done
-[ "$status" = 2 ] && { printf '\n环境缺失，自检中止。\n'; exit 2; }
-
-# Xcode license 规避（macOS 上 git/cc 走 CommandLineTools）。
-if [ "$(uname)" = "Darwin" ] && [ -d /Library/Developer/CommandLineTools ]; then
-  export DEVELOPER_DIR=/Library/Developer/CommandLineTools
-  info "DEVELOPER_DIR 已设置（Xcode license 规避）"
+if [ "$pending" = 1 ]; then
+  printf '环境缺失，源码自检待验。\n'
+  exit 2
 fi
 
-printf '\n[2/4] 依赖安装\n'
-if pnpm install --frozen-lockfile >/tmp/mediaflow-selfcheck-install.log 2>&1; then
-  pass "pnpm 依赖就绪"
-else
-  fail "pnpm install 失败"
-  exit 1
-fi
-
-printf '\n[3/4] 全量门禁（just check）\n'
-if just check >/tmp/mediaflow-selfcheck.log 2>&1; then
-  pass "just check 全绿"
-else
-  # cargo-deny 需要网络拉取 advisory-db；离线时提示而非失败。
-  if grep -q "failed to fetch advisory database" /tmp/mediaflow-selfcheck.log && [ "$offline" = 1 ]; then
-    info "advisory-db 在线拉取失败且 --offline 已指定：跳过 cargo-deny"
+# Each independent check runs even if an earlier check failed.
+run_check() {
+  name=$1
+  shift
+  if "$@" >"$output_root/$name.log" 2>&1; then
+    result=0
+    printf '通过：%s\n' "$name"
   else
-    fail "just check 失败（详情 /tmp/mediaflow-selfcheck.log）"
-    tail -20 /tmp/mediaflow-selfcheck.log
-    exit 1
+    result=$?
+    failed=1
+    printf '失败：%s（退出 %s，日志 %s/%s.log）\n' "$name" "$result" "$output_root" "$name" >&2
+    tail -20 "$output_root/$name.log" >&2
   fi
-fi
+  printf '%s\t%s\n' "$name" "$result" >>"$output_root/status.tsv"
+}
 
-printf '\n[4/4] 静态部署边界（just check-all 的容器/文档部分）\n'
-if just check-containers-static >/dev/null 2>&1 \
-  && just check-compose-static >/dev/null 2>&1 \
-  && just check-nas >/dev/null 2>&1; then
-  pass "容器/Compose/NAS 文档静态门禁绿"
+run_check install pnpm install --frozen-lockfile
+run_check source just check-source
+run_check dependencies just check-rust-deps-static
+if [ "$offline" = 1 ]; then
+  pending=1
+  printf '待验：离线模式未执行 advisory 在线检查。\n'
+  printf 'advisories\tPENDING\n' >>"$output_root/status.tsv"
 else
-  fail "静态部署门禁失败"
-  exit 1
+  run_check advisories just check-rust-advisories
 fi
+run_check containers just check-containers-static
+run_check compose just check-compose-static
+run_check nas just check-nas
 
-printf '\n摘要\n'
-printf -- '----\n'
-printf '代码/契约/文档门禁：全部通过。\n'
-printf '运行时验证（真实 NAS / 外部服务 / DSH / compose 镜像）：见任务延后验收台账；\n'
-printf '  网络受限项：cargo-deny advisory（github.com）、Docker 镜像拉取。\n'
-printf '完整实机步骤：infra/nas/ + delivery runbook。\n'
+printf '源码自检报告：%s；真实 NAS、外部服务和客户端验收另行执行。\n' "$output_root"
+[ "$failed" = 0 ] || exit 1
+[ "$pending" = 0 ] || exit 2
+printf '本入口声明的源码与部署静态集合通过。\n'
