@@ -27,3 +27,7 @@ M5 第一批垂直切片已初始化（分支 `feature/m5-client`）：
 ## 后续验证
 
 `cd apps/ios && xcodegen generate && xcodebuild test -project MediaFlow.xcodeproj -scheme MediaFlowiOS -destination 'platform=iOS Simulator,name=iPhone 17'`。
+
+## 工程检查
+
+`just client-check-ios` 使用固定版本 SwiftLint、XcodeGen 和 `MediaFlowiOS` 普通 XCTest。工具、模拟器选择与独立日志/xcresult 见[检查说明](../../docs/development/checks.md)。`MediaFlowiOSUI` 的真实 Core UI、真机签名与设备验收是独立出口。

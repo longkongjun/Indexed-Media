@@ -6,6 +6,7 @@
 ## 用法
 
 ```bash
+just client-check-fixture-server    # ktlint + build；没有现有测试源，不宣称单测通过
 just client-fixture-server          # 0.0.0.0:8642（FIXTURE_PORT 覆盖）
 ```
 

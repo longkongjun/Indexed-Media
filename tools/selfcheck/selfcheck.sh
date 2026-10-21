@@ -15,10 +15,11 @@ output_root=$(mktemp -d "${TMPDIR:-/tmp}/mediaflow-selfcheck.XXXXXX")
 printf '源码部署自检（公共源码、依赖、部署静态检查）\n报告：%s\n' "$output_root"
 failed=0
 pending=0
-for tool in cargo just pnpm node cargo-deny cargo-machete; do
+for tool in cargo just pnpm node python3 cargo-deny cargo-machete; do
   if ! command -v "$tool" >/dev/null 2>&1; then
     printf '缺少工具：%s\n' "$tool" >&2
     pending=1
+    printf 'environment:%s\tPENDING\n' "$tool" >>"$output_root/status.tsv"
   fi
 done
 if [ "$pending" = 1 ]; then

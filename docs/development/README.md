@@ -5,3 +5,5 @@
 新的持久文档使用英文 ASCII kebab-case 文件名。模块实现状态和验证入口以对应模块 README、根 `justfile` 及实际构建配置为准。
 
 [注释与文档规范](comment-documentation-standard.md)是工程级注释规则和语言级写法的唯一权威正文；其他入口只链接，不复制规则内容。
+
+- [工程检查入口、平台范围与报告](checks.md)

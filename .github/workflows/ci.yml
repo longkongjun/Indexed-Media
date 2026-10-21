@@ -1,128 +1,159 @@
-# MediaFlow 持续集成：与本地 `just check-all` 同构的全量自动门禁。
-# 说明：本仓库默认分支的远端 CI 在仓库被 push 后自动生效；本地聚合入口以根 justfile 为准。
-# 供应链（SA-5-001）：第三方 action 一律钉 commit SHA，升级是显式评审事件；
-# GITHUB_TOKEN 按最小权限只读。
-
+# Public-source and infra checks. Native clients are covered by client-ci.yml.
+# Third-party actions use full SHA; GITHUB_TOKEN remains read-only.
 name: ci
-
 on:
   push:
     branches: [main]
   pull_request:
-
 permissions:
   contents: read
-
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
-
+defaults:
+  run:
+    shell: bash
 env:
   CARGO_TERM_COLOR: always
-
 jobs:
   rust:
-    name: rust (fmt / clippy / tests / docs)
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: .
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - name: Install Rust toolchain (pinned by rust-toolchain.toml)
+      - name: Load check tool versions
+        run: |
+          cat tools/selfcheck/tool-versions.env >> "$GITHUB_ENV"
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - name: Install pinned check tools
+        uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2
+        with:
+          tool: just@${{ env.JUST_VERSION }}
+      - name: Rust toolchain
         uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           workspaces: apps/core
-      - name: Format
-        run: cargo fmt --manifest-path apps/core/Cargo.toml -- --check
-      - name: Clippy (pedantic, deny warnings)
-        run: cargo clippy --manifest-path apps/core/Cargo.toml --all-targets -- -D warnings
-      - name: Tests (all targets)
-        run: cargo test --manifest-path apps/core/Cargo.toml --all-targets
-      - name: Doctests
-        run: cargo test --manifest-path apps/core/Cargo.toml --doc
-      - name: Rustdoc (deny warnings)
-        run: cargo doc --manifest-path apps/core/Cargo.toml --no-deps
-        env:
-          RUSTDOCFLAGS: "-D warnings"
-
+      - name: rust
+        run: just check-rust test-rust-doc check-rust-docs 2>&1 | tee "$RUNNER_TEMP/rust.log"
+      - name: Preserve rust reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: rust-reports
+          path: |
+            ${{ runner.temp }}/rust.log
+          if-no-files-found: warn
   rust-deps:
-    name: rust dependencies (advisories / licenses / unused)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - name: Install Rust toolchain
+      - name: Load check tool versions
+        run: |
+          cat tools/selfcheck/tool-versions.env >> "$GITHUB_ENV"
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - name: Install pinned check tools
+        uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2
+        with:
+          tool: just@${{ env.JUST_VERSION }},cargo-deny@${{ env.CARGO_DENY_VERSION }},cargo-machete@${{ env.CARGO_MACHETE_VERSION }}
+      - name: Rust toolchain
         uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+        with:
+          components: rustfmt, clippy
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           workspaces: apps/core
-      - name: cargo-deny (advisories, licenses, bans, sources)
-        uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2
+      - name: rust-deps
+        run: just check-rust-deps 2>&1 | tee "$RUNNER_TEMP/rust-deps.log"
+      - name: Preserve rust-deps reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          manifest-path: apps/core/Cargo.toml
-          arguments: --config apps/core/deny.toml
-      - name: cargo-machete (unused dependencies)
-        uses: bnjbvr/cargo-machete@135555c9cd9f3b4723dee2766f0cacb99aac092b # main
-
+          name: rust-deps-reports
+          path: |
+            ${{ runner.temp }}/rust-deps.log
+          if-no-files-found: warn
   contracts:
-    name: contracts (openapi / events / fixtures / clients)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version-file: .node-version
-          cache: pnpm
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-      - name: OpenAPI lint
-        run: pnpm exec redocly lint contracts/openapi/mediaflow.v1.yaml
-      - name: Events schema and examples
-        run: CI=true pnpm --filter @mediaflow/test-fixtures typecheck && CI=true pnpm --filter @mediaflow/test-fixtures test -- --run
-      - name: TypeScript API client
-        run: CI=true pnpm --filter @mediaflow/api-client-ts typecheck && CI=true pnpm --filter @mediaflow/api-client-ts test -- --run && CI=true pnpm --filter @mediaflow/api-client-ts check-generated
-
-  web:
-    name: web (lint / types / unit / build / e2e)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version-file: .node-version
-          cache: pnpm
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-      - name: Install Playwright browsers
-        run: pnpm --filter @mediaflow/web exec playwright install --with-deps chromium
-      - name: ESLint
-        run: CI=true pnpm --filter @mediaflow/web exec eslint .
-      - name: Typecheck
-        run: CI=true pnpm --filter @mediaflow/web typecheck
-      - name: Unit tests
-        run: CI=true pnpm --filter @mediaflow/web exec vitest --exclude "e2e/**" --run
-      - name: Build and size budget
+      - name: Load check tool versions
         run: |
-          CI=true pnpm --filter @mediaflow/web exec vite build --outDir "$RUNNER_TEMP/dist" --emptyOutDir
-          node apps/web/scripts/check-budget.mjs "$RUNNER_TEMP/dist"
-      - name: Playwright E2E
-        run: CI=true pnpm --filter @mediaflow/web exec playwright test --config playwright.config.ts
-        env:
-          MEDIAFLOW_TEST_OUTPUT_DIR: ${{ runner.temp }}/playwright
-
-  infra:
-    name: infra (containers / compose / nas docs)
+          cat tools/selfcheck/tool-versions.env >> "$GITHUB_ENV"
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - name: Install pinned check tools
+        uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2
+        with:
+          tool: just@${{ env.JUST_VERSION }}
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: contracts
+        run: CI=true just check-contracts check-api-client-ts check-test-fixtures check-ui-contract check-gate-regressions 2>&1 | tee "$RUNNER_TEMP/contracts.log"
+      - name: Preserve contracts reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: contracts-reports
+          path: |
+            ${{ runner.temp }}/contracts.log
+          if-no-files-found: warn
+  web:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - name: Container image checks (static + build)
-        run: ./infra/containers/tests/check-image.sh
-      - name: Compose config checks (static + docker compose)
-        run: ./infra/compose/tests/config.sh
-      - name: NAS documentation gate
-        run: ./infra/nas/tests/check-docs.sh
+      - name: Load check tool versions
+        run: |
+          cat tools/selfcheck/tool-versions.env >> "$GITHUB_ENV"
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - name: Install pinned check tools
+        uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2
+        with:
+          tool: just@${{ env.JUST_VERSION }}
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install Chromium
+        run: pnpm --filter @mediaflow/web exec playwright install --with-deps chromium
+      - name: web
+        run: CI=true just check-web 2>&1 | tee "$RUNNER_TEMP/web.log"
+      - name: Preserve web reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: web-reports
+          path: |
+            ${{ runner.temp }}/web.log
+            ${{ runner.temp }}/mediaflow-web-check.*/
+          if-no-files-found: warn
+  infra:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Load check tool versions
+        run: |
+          cat tools/selfcheck/tool-versions.env >> "$GITHUB_ENV"
+          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - name: Install pinned check tools
+        uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2
+        with:
+          tool: just@${{ env.JUST_VERSION }}
+      - name: infra
+        run: just check-containers check-compose check-nas 2>&1 | tee "$RUNNER_TEMP/infra.log"
+      - name: Preserve infra reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: infra-reports
+          path: |
+            ${{ runner.temp }}/infra.log
+          if-no-files-found: warn

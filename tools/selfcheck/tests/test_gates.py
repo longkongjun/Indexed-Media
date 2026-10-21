@@ -1,6 +1,7 @@
 """Exercise real entry points with isolated external tools; no native build claims."""
 
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -10,6 +11,53 @@ import unittest
 
 REPO = Path(__file__).resolve().parents[3]
 JUST = shutil.which("just")
+
+
+def workflow_policy_errors(text):
+    # Repository workflows use one-line actions and explicit permission mappings.
+    errors = []
+    lines = text.splitlines()
+    permission_blocks = 0
+    for index, line in enumerate(lines):
+        if line.lstrip().startswith("#"):
+            continue
+        if re.search(r"\buses\s*:", line) and not re.fullmatch(
+            r"\s*-?\s*uses:\s+[\w.-]+/[\w./-]+@[0-9a-f]{40}\s*(#.*)?", line
+        ):
+            errors.append("action must use a full SHA")
+        match = re.fullmatch(r"(\s*)permissions:(.*)", line)
+        if match:
+            permission_blocks += 1
+            indent = len(match[1])
+            block = []
+            for child in lines[index + 1:]:
+                if not child.strip() or child.lstrip().startswith("#"):
+                    continue
+                if len(child) - len(child.lstrip()) <= indent:
+                    break
+                block.append(child.strip())
+            if match[2].strip() or block != ["contents: read"]:
+                errors.append("token permissions must be explicit contents: read")
+    if not permission_blocks or not any(line == "permissions:" for line in lines):
+        errors.append("top-level permissions required")
+    if any(re.match(r"\s*pull_request_target\s*:", line) for line in lines):
+        errors.append("untrusted pull_request_target is not allowed")
+    return errors
+
+
+class WorkflowPolicyTests(unittest.TestCase):
+    def test_actual_workflows_pin_actions_and_keep_token_readonly(self):
+        for path in (REPO / ".github/workflows").glob("*.yml"):
+            with self.subTest(path=path.name):
+                self.assertEqual(workflow_policy_errors(path.read_text()), [])
+
+    def test_floating_action_is_rejected(self):
+        self.assertIn("action must use a full SHA", workflow_policy_errors(
+            "permissions:\n  contents: read\nsteps:\n  - uses: actions/checkout@v4\n"))
+
+    def test_job_permission_override_is_rejected(self):
+        self.assertIn("token permissions must be explicit contents: read", workflow_policy_errors(
+            "permissions:\n  contents: read\njobs:\n  build:\n    permissions:\n      contents: write\n"))
 
 
 class GateTests(unittest.TestCase):
@@ -28,8 +76,10 @@ class GateTests(unittest.TestCase):
             shutil.copy(script, self.root / "tools/selfcheck")
         self.env = dict(os.environ, PATH=f"{self.bin}:/usr/bin:/bin", TMPDIR=str(self.reports))
         self.env.pop("DEVELOPER_DIR", None)
-        for tool in ["cargo", "cargo-deny", "cargo-machete", "pnpm", "node", "docker", "swiftlint"]:
+        for tool in ["cargo", "cargo-deny", "cargo-machete", "pnpm", "node", "docker", "xcrun"]:
             self.tool(tool, "exit 0")
+        shutil.copy(REPO / "tools/selfcheck/tool-versions.env", self.root / "tools/selfcheck")
+        self.tool("swiftlint", 'if [ "$1" = version ]; then echo 0.65.1; fi; exit "${SWIFTLINT_STATUS:-0}"')
         self.tool("xcodegen", 'echo generator-output; exit "${GENERATOR_STATUS:-0}"')
         self.tool("xcodebuild", 'echo first-build-line; seq 1 80; exit "${BUILD_STATUS:-0}"')
         self.tool("gradlew", "exit 0", self.root / "gradlew")
@@ -120,6 +170,37 @@ exit 0''')
         self.assertEqual(result.returncode, 2, result.stdout)
         self.assertIn("cargo-deny", result.stdout)
         self.assertFalse((self.reports / "calls").exists())
+        self.assertTrue(any("environment:cargo-deny\tPENDING" in p.read_text()
+                            for p in self.reports.rglob("status.tsv")))
+
+    def test_required_groups_propagate_first_middle_and_last_failure(self):
+        for failed in ["check", "client-check", "check-containers", "check-compose", "check-nas"]:
+            with self.subTest(failed=failed):
+                self.tool("just", 'if [ "$1" = "$FAIL_RECIPE" ]; then exit 7; fi; exit 0')
+                result = self.run_gate(JUST, "check-all", FAIL_RECIPE=failed)
+                self.assertNotEqual(result.returncode, 0, result.stdout)
+
+    def test_ios_failure_reaches_complete_entry(self):
+        self.tool("just", f'''case "$1" in
+check|check-containers|check-compose|check-nas) exit 0;;
+*) exec "{JUST}" "$@";;
+esac''')
+        result = self.run_gate(JUST, "check-all", BUILD_STATUS="65")
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        logs = list(self.reports.rglob("status.tsv"))
+        self.assertTrue(any("xcodebuild\t65" in p.read_text() for p in logs), result.stdout)
+
+    def test_swiftlint_failure_prevents_native_build(self):
+        result = self.ios(SWIFTLINT_STATUS="3")
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertFalse(list(self.reports.rglob("xcodegen.log")))
+
+    def test_installer_rejects_wrong_hash_before_unpacking(self):
+        self.tool("curl", 'while [ "$1" != "-o" ]; do shift; done; printf bad-archive > "$2"')
+        self.tool("unzip", 'touch "$TMPDIR/unpacked"')
+        result = self.run_gate("/bin/bash", "tools/selfcheck/install-swiftlint.sh", str(self.root / "download"))
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertFalse((self.reports / "unpacked").exists())
 
 
 if __name__ == "__main__":
