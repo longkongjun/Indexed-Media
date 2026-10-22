@@ -54,7 +54,9 @@ final class RealCoreJourneyUITests: XCTestCase {
         // 媒体墙（或空态）出现即登录成功；错误文案出现即失败。
         let wall = app.staticTexts["媒体库为空"]
         let tabs = app.buttons["任务"]
-        let errorBanner = app.staticTexts.matching(NSPredicate(format: "label CONTAINS '失败' OR label CONTAINS '异常' OR label CONTAINS '过期'")).firstMatch
+        let errorBanner = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS '失败' OR label CONTAINS '异常' OR label CONTAINS '过期'")
+        ).firstMatch
         let reached = wall.waitForExistence(timeout: 20) || tabs.waitForExistence(timeout: 20)
         if !reached || errorBanner.exists {
             print("M5B2-DIAG visible texts:",
@@ -151,7 +153,6 @@ final class RealCoreJourneyUITests: XCTestCase {
         )
         try logoutViaToolbar()
     }
-
 
     /// 地址微调：tap 字段右端把光标置尾，删除末两位后接新后缀
     /// （默认值 http://127.0.0.1:8642 → 8650；避开全选菜单的平台差异）。

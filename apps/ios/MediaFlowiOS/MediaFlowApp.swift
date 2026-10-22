@@ -236,7 +236,7 @@ struct ConfirmView: View {
                 Section { ProgressView() }
             } else if !model.candidates.isEmpty {
                 Section("候选") {
-                    ForEach(Array(model.candidates.enumerated()), id: \.offset) { index, candidate in
+                    ForEach(Array(model.candidates.enumerated()), id: \.offset) { _, candidate in
                         Button {
                             Task { await model.submitCandidate(screen, candidate: candidate) }
                         } label: {

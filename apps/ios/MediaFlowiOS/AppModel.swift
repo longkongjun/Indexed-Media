@@ -138,20 +138,6 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func applyWall(_ outcome: WallOutcome, append: Bool = false) {
-        if let page = outcome.page {
-            wallItems = append ? wallItems + page.items : page.items
-            wallCursor = page.nextCursor
-            wallHasMore = page.nextCursor != nil
-            wallMode = wallItems.isEmpty ? .empty : .content
-        } else {
-            let message = outcome.error ?? "加载失败"
-            wallMode = message.contains("网络") || message.contains("离线")
-                ? .offline(stale: !wallItems.isEmpty)
-                : .error(message: message, stale: !wallItems.isEmpty)
-        }
-    }
-
     func loadDetail(_ screen: Screen) async {
         guard case let .detail(id, _) = screen else { return }
         detailLoading = true
@@ -253,5 +239,21 @@ final class AppModel: ObservableObject {
         _ = try? await bridge.cancelTask(taskId: taskId)
         cancellingIds.remove(taskId)
         await reloadTasks()
+    }
+}
+
+extension AppModel {
+    private func applyWall(_ outcome: WallOutcome, append: Bool = false) {
+        if let page = outcome.page {
+            wallItems = append ? wallItems + page.items : page.items
+            wallCursor = page.nextCursor
+            wallHasMore = page.nextCursor != nil
+            wallMode = wallItems.isEmpty ? .empty : .content
+        } else {
+            let message = outcome.error ?? "加载失败"
+            wallMode = message.contains("网络") || message.contains("离线")
+                ? .offline(stale: !wallItems.isEmpty)
+                : .error(message: message, stale: !wallItems.isEmpty)
+        }
     }
 }
