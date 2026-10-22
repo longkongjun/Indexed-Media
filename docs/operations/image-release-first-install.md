@@ -13,9 +13,11 @@
 1. 可信仓库main push运行 `ci.yml`。Rust、依赖、契约、Web及infra全部成功后，候选job才有packages写权限；PR只验证。infra用固定基础镜像与Action构建一次、执行实际镜像/Compose冒烟，再保存同一镜像。Rust、Gradle与BuildKit缓存仅允许main push回写，checkout不保留凭据。
 2. 候选发布固定 `mediaflow-dev:sha-完整SHA`，证明绑定仓库/workflow/main push/run/完整SHA/digest/platform；串行锁中重新核对main才移动edge。正式版本不跟随edge。验证输出与候选证明来自当前run，不接受PR或源码中的同名JSON。
 3. 在个人发布环境核对同SHA结果、审阅证据并明确授权后，才推送已有main提交对应的 `vX.Y.Z` tag。`docker-publish.yml`检查该tag属于main且有仍可取得的成功候选证明，跨package复制同digest，不重新构建或修改OCI label。手工重试入口仅在main执行，输入已有tag。
-4. 正式包、源码tag和发布清单身份一致后创建/补齐draft；所有附件及其SHA-256匹配才公开Release。相同版本不同digest或附件拒绝覆盖；中断后只对同一身份重试。package保持private；GITHUB_TOKEN仅在对应job使用，Docker凭据存于runner临时目录并logout。
+4. 正式包、源码tag和发布清单身份一致后创建/补齐draft；所有附件及其SHA-256匹配才公开Release。相同版本不同digest或附件拒绝覆盖；中断后只对同一身份重试。候选`mediaflow-dev`和正式`mediaflow`均保持public，发布前后校验可见性；GITHUB_TOKEN仅在对应job使用，Docker凭据存于runner临时目录并logout。
 
-main推送这批工作流会启用候选写入，版本tag会触发正式提升与Release写入。仅授权本地实施时不要推送、创建远端tag或手动启动发布。真实发布前在个人环境确认Actions可写对应private包、两包可见性/访问权限、Release权限及分支/标签治理；不要在公司设备登录或更改现有账号/remote/凭据。
+main推送这批工作流会启用候选写入，版本tag会触发正式提升与Release写入。仅授权本地实施时不要推送、创建远端tag或手动启动发布。真实发布前在个人环境确认Actions可写对应包、两包public可见性、Release权限及分支/标签治理；不要在公司设备登录或更改现有账号/remote/凭据。
+
+GHCR新包默认private。首次创建前仅允许404进入上传；上传后若仍非public，流程保留已上传镜像并停止，不生成候选证明或正式发布包。管理员在个人环境打开对应包的Package settings，将可见性设为public，再重试同一发布身份；脚本不自动修改可见性。已有包非public会在写入前拒绝，API错误或未知可见性不会放行。包一旦public不能再转回private，镜像内容须适合公开分发。[GitHub包可见性说明](https://docs.github.com/en/packages/learn-github-packages/configuring-a-packages-access-control-and-visibility)
 
 若证明已过期/镜像缺失，重新运行可信main完整CI，不在正式发布流程临时构建。若重建同SHA产生不同digest，保持拒绝覆盖，调查差异并使用新的源码/版本身份。正式镜像及Release不自动清理。
 
@@ -32,7 +34,7 @@ main推送这批工作流会启用候选写入，版本tag会触发正式提升�
 - Linux amd64；Docker daemon与Compose v2支持 `up --wait`、`--pull never`、长bind的 `create_host_path:false` 和JSON config；NAS网络能拉取GHCR。只在目标NAS的本地Docker环境执行安装，不使用远端Docker context。
 - 执行账户有Docker权限；runtime UID/GID为非root，安装账户为该属主或管理员。仅修改本次新建文件属主，不递归chown现有媒体。
 - 三个独立、绝对、无符号链接/重叠/控制字符的路径：尚不存在的instance_dir，以及预建的incoming_dir、media_dir。父目录由管理员控制，incoming只读、media可写，彼此与正式实例/其他测试实例隔离。`/config`使用NAS本地兼容文件系统，不能放SMB/NFS；预留镜像与配置空间。
-- 私有包读取凭据由NAS实际Docker账户管理，仅read:packages，不写入JSON/Compose/日志/发布包。HTTPS Origin、代理来源精确CIDR、显式内网/回环监听地址及可用端口先确定；不开放默认路由代理信任。
+- 两个public镜像包可匿名拉取，NAS无需GitHub登录或read:packages PAT；发布凭据不复制到NAS。HTTPS Origin、代理来源精确CIDR、显式内网/回环监听地址及可用端口先确定；不开放默认路由代理信任。
 
 ## 检查、预览与安装
 

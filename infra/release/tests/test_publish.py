@@ -53,6 +53,33 @@ class ReleaseTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 publish.remote_digest('ghcr.io/longkongjun/mediaflow:1.2.3')
 
+    def test_both_public_packages_are_accepted(self):
+        from unittest.mock import patch, Mock
+        for name in ['mediaflow-dev', 'mediaflow']:
+            with self.subTest(name=name), patch.object(publish.subprocess, 'run', return_value=Mock(returncode=0, stdout='{"visibility":"public"}')):
+                publish.public_package(name)
+
+    def test_nonpublic_or_unknown_visibility_is_rejected_even_before_creation(self):
+        import json
+        from unittest.mock import patch, Mock
+        for visibility in ['private', 'internal', None]:
+            for allow_missing in [False, True]:
+                with self.subTest(visibility=visibility, allow_missing=allow_missing), patch.object(publish.subprocess, 'run', return_value=Mock(returncode=0, stdout=json.dumps({'visibility': visibility}))):
+                    with self.assertRaisesRegex(ValueError, 'mediaflow must be public'):
+                        publish.public_package('mediaflow', allow_missing=allow_missing)
+
+    def test_visibility_api_errors_only_allow_initial_not_found(self):
+        from unittest.mock import patch, Mock
+        for code in [401, 403, 404, 500]:
+            with self.subTest(code=code), patch.object(publish.subprocess, 'run', return_value=Mock(returncode=1, stderr=f'gh: API error (HTTP {code})')):
+                with self.assertRaises(ValueError):
+                    publish.public_package('mediaflow-dev')
+                if code == 404:
+                    publish.public_package('mediaflow-dev', allow_missing=True)
+                else:
+                    with self.assertRaises(ValueError):
+                        publish.public_package('mediaflow-dev', allow_missing=True)
+
     def test_promotion_checks_exact_digest_and_never_builds(self):
         from unittest.mock import patch
         with patch.object(publish, 'remote_digest', side_effect=[None, 'sha256:' + 'c' * 64]), patch.object(publish, 'command') as command:
@@ -107,17 +134,18 @@ class ReleaseTests(unittest.TestCase):
 
     def test_stale_main_candidate_cannot_move_edge(self):
         import os, tempfile, json
-        from unittest.mock import patch
+        from unittest.mock import patch, Mock
         image = dict(Architecture="amd64", Os="linux", Config={"Labels": {
             "org.opencontainers.image.revision": SHA,
             "org.opencontainers.image.source": "https://github.com/" + publish.REPO,
             "org.opencontainers.image.version": "git-" + SHA}})
         env = dict(GITHUB_REPOSITORY=publish.REPO, GITHUB_EVENT_NAME="push", GITHUB_REF="refs/heads/main",
                    GITHUB_SHA=SHA, GITHUB_RUN_ID="42", GITHUB_RUN_ATTEMPT="1")
-        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, env), patch.object(publish, "private_package"), patch.object(publish, "copy_image"), patch.object(publish, "remote_digest", return_value=DIGEST), patch.object(publish, "api", return_value={"object": {"sha": "c" * 40}}), patch.object(publish, "command", return_value=json.dumps([image])) as calls:
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, env), patch.object(publish.subprocess, 'run', return_value=Mock(returncode=0, stdout='{"visibility":"public"}')) as visibility, patch.object(publish, "copy_image"), patch.object(publish, "remote_digest", return_value=DIGEST), patch.object(publish, "api", return_value={"object": {"sha": "c" * 40}}), patch.object(publish, "command", return_value=json.dumps([image])) as calls:
             proof = Path(directory) / "candidate.json"
             publish.candidate(proof)
             self.assertEqual(json.loads(proof.read_text())["source_sha"], SHA)
+            self.assertEqual(visibility.call_count, 2)
             self.assertFalse(any(publish.DEV + ":edge" in call.args for call in calls.call_args_list))
             image["Architecture"] = "arm64"
             calls.return_value = json.dumps([image])

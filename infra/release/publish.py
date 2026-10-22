@@ -98,13 +98,16 @@ def check_image_identity(image, sha):
     require(labels.get('org.opencontainers.image.version') == f'git-{sha}', 'wrong OCI build version')
 
 
-def private_package(name, allow_missing=False):
+def public_package(name, allow_missing=False):
+    """只读取可见性；首次创建后须由管理员公开包，再重试发布。"""
     result = subprocess.run(['gh', 'api', f'/users/longkongjun/packages/container/{name}'],
                             capture_output=True, text=True, timeout=60)
     if result.returncode:
-        require(allow_missing and '(HTTP 404)' in result.stderr, 'cannot verify private package visibility')
+        require(allow_missing and '(HTTP 404)' in result.stderr, f'cannot verify {name} public visibility')
         return
-    require(json.loads(result.stdout).get('visibility') == 'private', 'package must remain private')
+    visibility = json.loads(result.stdout).get('visibility')
+    require(visibility == 'public', f'{name} must be public (visibility={visibility!r}); '
+            'set it to public in GitHub Package settings, then retry')
 
 
 def candidate(output):
@@ -113,7 +116,7 @@ def candidate(output):
     sha = os.environ['GITHUB_SHA']
     run_id = int(os.environ['GITHUB_RUN_ID'])
     proof_for(sha, 'sha256:' + '0' * 64, run_id)
-    private_package('mediaflow-dev', allow_missing=True)
+    public_package('mediaflow-dev', allow_missing=True)
     local = f'mediaflow:sha-{sha}'
     check_image_local = json.loads(command('docker', 'image', 'inspect', local))[0]
     check_image_identity(check_image_local, sha)
@@ -123,7 +126,7 @@ def candidate(output):
     digest = remote_digest(temporary)
     require(digest is not None, 'pushed image missing')
     copy_image(f'{DEV}@{digest}', f'{DEV}:sha-{sha}', digest)
-    private_package('mediaflow-dev')
+    public_package('mediaflow-dev')
     proof = proof_for(sha, digest, run_id)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(proof, indent=2) + '\n')
@@ -189,9 +192,9 @@ def promote(tag, output):
     command('git', 'merge-base', '--is-ancestor', sha, 'origin/main')
     require(command('git', 'rev-parse', 'HEAD') == sha, 'release checkout must equal tag commit')
     proof, run = trusted_candidate(sha)
-    private_package('mediaflow', allow_missing=True)
+    public_package('mediaflow', allow_missing=True)
     copy_image(f'{DEV}@{proof["digest"]}', f'{PROD}:{number}', proof['digest'])
-    private_package('mediaflow')
+    public_package('mediaflow')
     check_image(f'{PROD}@{proof["digest"]}', sha)
     bundle(output, tag, sha, proof, run)
 
