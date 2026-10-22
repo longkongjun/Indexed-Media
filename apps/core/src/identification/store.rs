@@ -1,5 +1,3 @@
-#![allow(clippy::too_many_lines)]
-
 use chrono::{SecondsFormat, TimeZone as _, Utc};
 use serde::Serialize;
 use sha2::{Digest as _, Sha256};
@@ -354,6 +352,8 @@ impl IdentificationStore {
     /// # Errors
     ///
     /// 输入无效或租约丢失时返回对应错误；任何数据库/outbox 失败都会回滚本次全部新写入。
+    // 保留现有事务/投影流程的连续性，拆分需另行行为验证。
+    #[allow(clippy::too_many_lines)]
     pub async fn commit(
         &self,
         command: IdentificationCommit<'_>,

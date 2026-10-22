@@ -1,9 +1,3 @@
-#![allow(
-    clippy::missing_panics_doc,
-    clippy::needless_pass_by_value,
-    clippy::too_many_lines
-)]
-
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use serde::{Deserialize, Serialize};
@@ -115,6 +109,8 @@ impl TaskStore {
     /// # Errors
     ///
     /// 键无效或绑定到不同请求参数、收件箱不存在/不可用，或任意事务、行解码或发件箱操作失败时返回 [`AppError`]。
+    // 保留现有事务/投影流程的连续性，拆分需另行行为验证。
+    #[allow(clippy::too_many_lines)]
     pub async fn create(&self, request: NewScanTask) -> Result<ScanTaskView, AppError> {
         validate_idempotency_key(&request.idempotency_key)?;
         let digest: [u8; 32] = Sha256::digest(request.idempotency_key.as_bytes()).into();
@@ -246,6 +242,8 @@ impl TaskStore {
     /// # Errors
     ///
     /// 事务/查询/发件箱失败或持久化 ID/计数格式错误时返回 [`AppError`]。
+    // 保留现有事务/投影流程的连续性，拆分需另行行为验证。
+    #[allow(clippy::too_many_lines)]
     pub async fn claim_next(
         &self,
         owner: &str,
@@ -449,6 +447,8 @@ impl TaskStore {
     /// 提供超过 500 个观测时返回 [`ErrorCode::ValidationFailed`]，正在取消时返回
     /// [`ErrorCode::TaskInvalidState`]，租约过期/陈旧时返回 [`ErrorCode::TaskLeaseLost`]。
     /// 无效值、数据库、事务或发件箱失败时返回内部 [`AppError`]。
+    // 保留现有事务/投影流程的连续性，拆分需另行行为验证。
+    #[allow(clippy::too_many_lines)]
     pub async fn record_observations(
         &self,
         lease: &ScanLease,
@@ -778,6 +778,8 @@ impl TaskStore {
         self.finish(&current, status, None, now_us).await
     }
 
+    // 保留现有事务/投影流程的连续性，拆分需另行行为验证。
+    #[allow(clippy::too_many_lines)]
     async fn finish(
         &self,
         lease: &ScanLease,
@@ -912,6 +914,8 @@ impl TaskStore {
     ///
     /// 幂等性无效/冲突、任务缺失/不属于该账户、状态不是失败/部分成功、版本存在竞争、存储数据格式错误或任意
     /// 事务/发件箱失败时返回 [`AppError`]。
+    // 保留现有事务/投影流程的连续性，拆分需另行行为验证。
+    #[allow(clippy::too_many_lines)]
     pub async fn retry(
         &self,
         account_id: Uuid,
@@ -1272,6 +1276,12 @@ impl TaskStore {
     ///
     /// 游标格式错误、校验和无效或跨账户时返回 [`ErrorCode::ValidationFailed`]。查询、解码、时间戳/计数或游标
     /// 序列化失败时返回内部 [`AppError`]。
+    ///
+    /// # Panics
+    ///
+    /// 查询投影与预期字段/类型不一致，或已解码 UUID 在生成游标时无法再次解码时 panic。
+    // 保留现有事务/投影流程的连续性，拆分需另行行为验证。
+    #[allow(clippy::too_many_lines)]
     pub async fn list_tasks(
         &self,
         account_id: Uuid,
@@ -1391,6 +1401,10 @@ impl TaskStore {
     ///
     /// 任务不存在/不属于该账户时返回 [`ErrorCode::TaskNotFound`]，游标格式错误或跨查询时返回
     /// [`ErrorCode::ValidationFailed`]。查询、持久化值/时间戳或游标序列化失败时返回内部 [`AppError`]。
+    ///
+    /// # Panics
+    ///
+    /// 查询投影与预期字段/类型不一致，或已解码 UUID 在生成游标时无法再次解码时 panic。
     pub async fn list_files(
         &self,
         account_id: Uuid,
@@ -1502,6 +1516,12 @@ impl TaskStore {
     ///
     /// 任务不存在/不属于该账户时返回 [`ErrorCode::TaskNotFound`]，游标格式错误或跨查询时返回
     /// [`ErrorCode::ValidationFailed`]。查询、持久化值/计数或游标序列化失败时返回内部 [`AppError`]。
+    ///
+    /// # Panics
+    ///
+    /// 查询投影与预期字段/类型不一致，或已解码 UUID 在生成游标时无法再次解码时 panic。
+    // 保留现有事务/投影流程的连续性，拆分需另行行为验证。
+    #[allow(clippy::too_many_lines)]
     pub async fn list_errors(
         &self,
         account_id: Uuid,

@@ -1,5 +1,3 @@
-#![allow(clippy::too_many_lines)]
-
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use chrono::{SecondsFormat, TimeZone as _, Utc};
@@ -117,6 +115,8 @@ impl ProcessingStore {
     ///
     /// revision 不稳定或不存在时返回任务状态或未找到错误；任一原子任务、尝试、请求、快照或
     /// outbox 写入失败时返回内部错误。
+    // 保留现有事务/投影流程的连续性，拆分需另行行为验证。
+    #[allow(clippy::too_many_lines)]
     pub async fn ensure_revision(
         &self,
         revision_id: Uuid,
@@ -275,6 +275,8 @@ impl ProcessingStore {
     /// # Errors
     ///
     /// 游标无效或跨账户时返回校验错误；数据库、存储值、时间戳或游标序列化失败时返回内部错误。
+    // 保留现有事务/投影流程的连续性，拆分需另行行为验证。
+    #[allow(clippy::too_many_lines)]
     pub async fn list_tasks(
         &self,
         account_id: Uuid,
@@ -409,6 +411,8 @@ impl ProcessingStore {
     ///
     /// 过滤条件、限制无效，或游标绑定到其他账户或过滤集合时返回校验错误；数据库或存储投影出错时
     /// 返回内部错误。
+    // 保留现有事务/投影流程的连续性，拆分需另行行为验证。
+    #[allow(clippy::too_many_lines)]
     pub async fn list_task_center(
         &self,
         account_id: Uuid,
@@ -598,6 +602,8 @@ impl ProcessingStore {
     /// # Errors
     ///
     /// 持久化状态无效或事务、outbox 失败时返回内部错误。
+    // 保留现有事务/投影流程的连续性，拆分需另行行为验证。
+    #[allow(clippy::too_many_lines)]
     pub async fn claim_next(
         &self,
         owner: &str,
@@ -1315,6 +1321,8 @@ impl ProcessingStore {
     ///
     /// 任务不属于所属账户时返回未找到；任务未等待识别确认时返回无效状态；收据、尝试或 outbox
     /// 出错时返回内部错误。
+    // 保留现有事务/投影流程的连续性，拆分需另行行为验证。
+    #[allow(clippy::too_many_lines)]
     pub async fn apply_manual_decision(
         &self,
         account_id: Uuid,
@@ -1506,6 +1514,8 @@ impl ProcessingStore {
         .await
     }
 
+    // 保留现有事务/投影流程的连续性，拆分需另行行为验证。
+    #[allow(clippy::too_many_lines)]
     async fn control_task(
         &self,
         account_id: Uuid,
@@ -1747,6 +1757,8 @@ impl ProcessingStore {
         self.get_by_id(lease.task.id).await
     }
 
+    // 保留现有事务/投影流程的连续性，拆分需另行行为验证。
+    #[allow(clippy::too_many_lines)]
     async fn finish_organization_transition(
         &self,
         lease: &ProcessingLease,
