@@ -41,7 +41,7 @@ use uuid::Uuid;
 
 #[tokio::test]
 async fn selected_provider_identity_is_refetched_and_explicit_title_override_can_confirm() {
-    let (fixture, lease, hint) = harness(b"movies/local-title.2026.mkv", vec![1]).await;
+    let (_fixture, db, lease, hint) = harness(b"movies/local-title.2026.mkv", vec![1]).await;
     let provider = ManualProvider::with_detail(candidate(
         438_631,
         ProviderMediaKind::Movie,
@@ -55,7 +55,7 @@ async fn selected_provider_identity_is_refetched_and_explicit_title_override_can
         provider_id: "438631".to_owned(),
     };
 
-    let outcome = IdentificationService::new(fixture.pool().clone())
+    let outcome = IdentificationService::new(db.pool().clone())
         .identify_with_manual_context(
             &lease,
             &hint,
@@ -78,7 +78,7 @@ async fn selected_provider_identity_is_refetched_and_explicit_title_override_can
         sqlx::query_scalar::<_, String>(
             "SELECT source FROM identification_evidence WHERE source='manual-decision'"
         )
-        .fetch_one(fixture.pool())
+        .fetch_one(db.pool())
         .await
         .unwrap(),
         "manual-decision"
@@ -99,7 +99,7 @@ async fn selected_identity_rejects_media_type_and_missing_episode_structure() {
             candidate(13, ProviderMediaKind::Tv, "series", None, &[]),
         ),
     ] {
-        let (fixture, lease, mut hint) = harness(path, vec![path[0]]).await;
+        let (_fixture, db, lease, mut hint) = harness(path, vec![path[0]]).await;
         hint.media_kind = kind;
         if kind == MediaKind::Episode {
             hint.season = Some(1);
@@ -112,7 +112,7 @@ async fn selected_identity_rejects_media_type_and_missing_episode_structure() {
             provider_id: if kind == MediaKind::Movie { "12" } else { "13" }.to_owned(),
         };
 
-        let outcome = IdentificationService::new(fixture.pool().clone())
+        let outcome = IdentificationService::new(db.pool().clone())
             .identify_with_manual_context(
                 &lease,
                 &hint,
@@ -138,7 +138,7 @@ async fn selected_identity_provider_failures_are_recoverable_and_do_not_confirm(
     let failure = ProviderError::TemporarilyUnavailable {
         retry_at_us: 180_000_000,
     };
-    let (fixture, lease, hint) = harness(b"movies/provider-failure.mkv", vec![9]).await;
+    let (_fixture, db, lease, hint) = harness(b"movies/provider-failure.mkv", vec![9]).await;
     let provider = ManualProvider::with_detail_error(failure);
     let context = ManualIdentificationContext::SelectedProvider {
         decision_id: Uuid::now_v7(),
@@ -146,7 +146,7 @@ async fn selected_identity_provider_failures_are_recoverable_and_do_not_confirm(
         provider_id: "99".to_owned(),
     };
 
-    let outcome = IdentificationService::new(fixture.pool().clone())
+    let outcome = IdentificationService::new(db.pool().clone())
         .identify_with_manual_context(
             &lease,
             &hint,
@@ -169,7 +169,7 @@ async fn selected_identity_provider_failures_are_recoverable_and_do_not_confirm(
 
 #[tokio::test]
 async fn selected_identity_never_accepts_a_detail_response_for_another_provider_id() {
-    let (fixture, lease, hint) = harness(b"movies/wrong-provider-id.mkv", vec![10]).await;
+    let (_fixture, db, lease, hint) = harness(b"movies/wrong-provider-id.mkv", vec![10]).await;
     let provider = ManualProvider::with_detail(candidate(
         100,
         ProviderMediaKind::Movie,
@@ -183,7 +183,7 @@ async fn selected_identity_never_accepts_a_detail_response_for_another_provider_
         provider_id: "99".to_owned(),
     };
 
-    let outcome = IdentificationService::new(fixture.pool().clone())
+    let outcome = IdentificationService::new(db.pool().clone())
         .identify_with_manual_context(
             &lease,
             &hint,
@@ -208,7 +208,7 @@ async fn selected_identity_never_accepts_a_detail_response_for_another_provider_
 
 #[tokio::test]
 async fn rematch_runs_strong_rules_again_and_can_remain_ambiguous() {
-    let (fixture, lease, hint) = harness(b"movies/rematch.2026.mkv", vec![4]).await;
+    let (_fixture, db, lease, hint) = harness(b"movies/rematch.2026.mkv", vec![4]).await;
     let provider = ManualProvider::with_search(vec![
         candidate(21, ProviderMediaKind::Movie, "rematch", Some(2026), &[]),
         candidate(22, ProviderMediaKind::Movie, "rematch", Some(2026), &[]),
@@ -224,7 +224,7 @@ async fn rematch_runs_strong_rules_again_and_can_remain_ambiguous() {
         },
     };
 
-    let outcome = IdentificationService::new(fixture.pool().clone())
+    let outcome = IdentificationService::new(db.pool().clone())
         .identify_with_manual_context(
             &lease,
             &hint,
@@ -370,9 +370,9 @@ async fn exact_feedback_matches_the_full_selector_and_never_a_near_title() {
 #[tokio::test]
 async fn revision_change_during_selected_detail_lookup_prevents_manual_commit() {
     let path = b"movies/revision-race.mkv";
-    let (fixture, lease, hint) = harness(path, vec![11]).await;
+    let (_fixture, db, lease, hint) = harness(path, vec![11]).await;
     let provider = RevisionChangingProvider {
-        pool: fixture.pool().clone(),
+        pool: db.pool().clone(),
         inbox: lease.task.inbox_directory_id,
         path: path.to_vec(),
         detail: candidate(41, ProviderMediaKind::Movie, "revision race", None, &[]),
@@ -383,7 +383,7 @@ async fn revision_change_during_selected_detail_lookup_prevents_manual_commit() 
         provider_id: "41".to_owned(),
     };
 
-    let outcome = IdentificationService::new(fixture.pool().clone())
+    let outcome = IdentificationService::new(db.pool().clone())
         .identify_with_manual_context(
             &lease,
             &hint,
@@ -403,7 +403,7 @@ async fn revision_change_during_selected_detail_lookup_prevents_manual_commit() 
     assert_eq!(outcome.level, None);
     assert_eq!(
         sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM identification_decisions")
-            .fetch_one(fixture.pool())
+            .fetch_one(db.pool())
             .await
             .unwrap(),
         0
@@ -412,7 +412,7 @@ async fn revision_change_during_selected_detail_lookup_prevents_manual_commit() 
 
 #[tokio::test]
 async fn uncertain_manual_retry_replaces_the_case_with_a_higher_version() {
-    let (db, original_case, retry, hint, context) =
+    let (_fixture, db, original_case, retry, hint, context) =
         accepted_manual_retry(b"movies/versioned-case.2026.mkv", "51").await;
     let provider = ManualProvider::with_detail(candidate(
         51,
@@ -456,7 +456,7 @@ async fn uncertain_manual_retry_replaces_the_case_with_a_higher_version() {
 
 #[tokio::test]
 async fn blocked_manual_retry_preserves_the_original_recoverable_case() {
-    let (db, original_case, retry, hint, context) =
+    let (_fixture, db, original_case, retry, hint, context) =
         accepted_manual_retry(b"movies/preserved-case.2026.mkv", "52").await;
     let provider = ManualProvider::with_detail_error(ProviderError::Timeout);
 
@@ -493,10 +493,34 @@ async fn blocked_manual_retry_preserves_the_original_recoverable_case() {
     assert_eq!(row.get::<i64, _>("version"), 2);
 }
 
+#[tokio::test]
+async fn manual_fixtures_keep_database_available_to_new_connections() {
+    let (_fixture, db, lease, _) = harness(b"movies/fixture-lifetime.mkv", vec![21]).await;
+    let (_retry_fixture, retry_db, _, retry, _, _) =
+        accepted_manual_retry(b"movies/retry-fixture-lifetime.mkv", "21").await;
+
+    for (db, task_id) in [(db, lease.task.id), (retry_db, retry.task.id)] {
+        let pool = mediaflow_core::platform::db::open_pool(db.path())
+            .await
+            .expect("fixture database must remain available to new connections");
+        assert_eq!(
+            sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM tasks_processing_tasks WHERE id=?")
+                .bind(task_id.as_bytes().as_slice())
+                .fetch_one(&pool)
+                .await
+                .unwrap(),
+            1
+        );
+        pool.close().await;
+    }
+}
+
+// 连接池不会延长临时目录生命周期，调用者必须保留返回的目录所有者。
 async fn accepted_manual_retry(
     path: &[u8],
     provider_id: &str,
 ) -> (
+    common::TestConfigDir,
     mediaflow_core::platform::db::Db,
     Uuid,
     mediaflow_core::tasks::processing::model::ProcessingLease,
@@ -574,13 +598,14 @@ async fn accepted_manual_retry(
     let hint = FilenameParser::default()
         .parse(&String::from_utf8_lossy(path))
         .unwrap();
-    (db, original_case, retry, hint, context)
+    (fixture, db, original_case, retry, hint, context)
 }
 
 async fn harness(
     path: &[u8],
     identity: Vec<u8>,
 ) -> (
+    common::TestConfigDir,
     mediaflow_core::platform::db::Db,
     mediaflow_core::tasks::processing::model::ProcessingLease,
     ParsedIdentityHint,
@@ -593,7 +618,7 @@ async fn harness(
     let hint = FilenameParser::default()
         .parse(&String::from_utf8_lossy(path))
         .unwrap();
-    (db, lease, hint)
+    (fixture, db, lease, hint)
 }
 
 fn token() -> SecretBytes {
