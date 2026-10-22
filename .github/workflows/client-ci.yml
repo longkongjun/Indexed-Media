@@ -14,6 +14,8 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - name: Load check tool versions
         run: |
           cat tools/selfcheck/tool-versions.env >> "$GITHUB_ENV"
@@ -29,6 +31,8 @@ jobs:
           java-version: 17
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@0b6dd653ba04f4f93bf581ec31e66cbd7dcb644d # v4
+        with:
+          cache-read-only: ${{ github.event_name != 'push' || github.ref != 'refs/heads/main' }}
       - name: kmp-sdk
         run: just client-check-build-scripts client-check-kmp-sdk client-docs-kmp-sdk 2>&1 | tee "$RUNNER_TEMP/kmp-sdk.log"
       - name: Preserve kmp-sdk reports
@@ -45,6 +49,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - name: Load check tool versions
         run: |
           cat tools/selfcheck/tool-versions.env >> "$GITHUB_ENV"
@@ -60,6 +66,8 @@ jobs:
           java-version: 17
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@0b6dd653ba04f4f93bf581ec31e66cbd7dcb644d # v4
+        with:
+          cache-read-only: ${{ github.event_name != 'push' || github.ref != 'refs/heads/main' }}
       - name: android
         run: just client-check-android 2>&1 | tee "$RUNNER_TEMP/android.log"
       - name: Preserve android reports
@@ -76,6 +84,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - name: Load check tool versions
         run: |
           cat tools/selfcheck/tool-versions.env >> "$GITHUB_ENV"
@@ -91,6 +101,8 @@ jobs:
           java-version: 17
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@0b6dd653ba04f4f93bf581ec31e66cbd7dcb644d # v4
+        with:
+          cache-read-only: ${{ github.event_name != 'push' || github.ref != 'refs/heads/main' }}
       - name: fixture-server
         run: just client-check-fixture-server 2>&1 | tee "$RUNNER_TEMP/fixture-server.log"
       - name: Preserve fixture-server reports
@@ -107,6 +119,8 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - name: Load check tool versions
         run: |
           cat tools/selfcheck/tool-versions.env >> "$GITHUB_ENV"
@@ -122,6 +136,8 @@ jobs:
           java-version: 17
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@0b6dd653ba04f4f93bf581ec31e66cbd7dcb644d # v4
+        with:
+          cache-read-only: ${{ github.event_name != 'push' || github.ref != 'refs/heads/main' }}
       - name: Native tool identity and SwiftLint
         run: |
           brew install xcodegen

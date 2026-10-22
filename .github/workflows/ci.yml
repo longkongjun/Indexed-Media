@@ -20,6 +20,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - name: Load check tool versions
         run: |
           cat tools/selfcheck/tool-versions.env >> "$GITHUB_ENV"
@@ -35,6 +37,7 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           workspaces: apps/core
+          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
       - name: rust
         run: just check-rust test-rust-doc check-rust-docs 2>&1 | tee "$RUNNER_TEMP/rust.log"
       - name: Preserve rust reports
@@ -49,6 +52,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - name: Load check tool versions
         run: |
           cat tools/selfcheck/tool-versions.env >> "$GITHUB_ENV"
@@ -64,6 +69,7 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           workspaces: apps/core
+          save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
       - name: rust-deps
         run: just check-rust-deps 2>&1 | tee "$RUNNER_TEMP/rust-deps.log"
       - name: Preserve rust-deps reports
@@ -78,6 +84,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - name: Load check tool versions
         run: |
           cat tools/selfcheck/tool-versions.env >> "$GITHUB_ENV"
@@ -107,6 +115,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - name: Load check tool versions
         run: |
           cat tools/selfcheck/tool-versions.env >> "$GITHUB_ENV"
@@ -139,6 +149,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - name: Load check tool versions
         run: |
           cat tools/selfcheck/tool-versions.env >> "$GITHUB_ENV"
