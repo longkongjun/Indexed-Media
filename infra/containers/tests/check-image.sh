@@ -25,6 +25,8 @@ require_fixed() {
 [ -f "$dockerfile" ] || fail "$dockerfile is missing"
 [ -f "$dockerignore" ] || fail "$dockerignore is missing"
 
+python3 -B "$repo_root/infra/containers/tests/test_web_build_inputs.py"
+
 require_fixed "$dockerfile" 'node:24.18.0-bookworm-slim'
 require_fixed "$dockerfile" 'rust:1.97.0-bookworm'
 require_fixed "$dockerfile" 'debian:bookworm-slim'
@@ -35,6 +37,7 @@ require_fixed "$dockerfile" 'USER 10001:10001'
 require_fixed "$dockerfile" 'ENTRYPOINT ["/usr/local/bin/mediaflow-core"]'
 require_fixed "$dockerfile" 'CMD ["serve"]'
 require_fixed "$dockerfile" 'org.opencontainers.image.version="0.2.0-m2"'
+require_fixed "$dockerfile" 'COPY patches patches'
 require_fixed "$dockerfile" '/usr/lib/apt'
 require_fixed "$dockerfile" '/usr/bin/apt*'
 require_fixed "$dockerfile" '/usr/bin/dpkg*'

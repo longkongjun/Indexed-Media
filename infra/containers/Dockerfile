@@ -6,11 +6,16 @@ FROM --platform=${TARGETPLATFORM} node:24.18.0-bookworm-slim AS web-build
 WORKDIR /src
 RUN npm install --global pnpm@11.10.0
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY patches patches
 COPY apps/web/package.json apps/web/package.json
 COPY packages/api-client-ts/package.json packages/api-client-ts/package.json
+COPY packages/test-fixtures/package.json packages/test-fixtures/package.json
 RUN pnpm install --frozen-lockfile --filter @mediaflow/web...
 COPY apps/web apps/web
 COPY packages/api-client-ts packages/api-client-ts
+COPY packages/test-fixtures packages/test-fixtures
+COPY packages/ui-contract/contract packages/ui-contract/contract
+COPY contracts/examples contracts/examples
 RUN pnpm --filter @mediaflow/web build
 
 FROM --platform=${TARGETPLATFORM} rust:1.97.0-bookworm AS core-build
