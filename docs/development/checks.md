@@ -35,4 +35,4 @@ CI 通过同源原子入口运行，失败时保留 job 日志与适用报告。
 
 四处 TS 配置均开启 exactOptionalPropertyTypes；Vue Router5.2.0 的3行纯声明兼容修补由 `patches/` 与锁文件固定，其运行时 JS 和版本未变；上游修复后可单独移除补丁。SDK 的 LongParameterList、SwallowedException 与 TooGenericExceptionCaught 均采用默认检查，异常边界的局部 Suppress 只在其声明范围生效。cargo-deny 私有许可和重复版本等暂留策略见对应配置，仍须按项目约定审阅。文件存在或本地部分通过均不等于这些例外已批准；不通过增加全局豁免来掩盖违规。
 
-两套 CI 均以只读 GITHUB_TOKEN 执行；checkout 完成后不为后续步骤保留其 Git 凭据。Rust/Gradle 缓存仅允许 push/main 回写，其他触发只读。缓存及报告仅用于工程验证，不应存放凭据；这些配置不替代仓库的外部 PR 审批、分支保护及人工安全核对。
+ci/client-ci 的验证 job 使用只读 GITHUB_TOKEN；ci 的受信 main candidate 与 docker-publish 的 promote job 单独授予 packages:write，Release job 单独授予 contents:write，不向验证 job 扩散。所有 checkout 完成后均不为后续步骤保留 Git 凭据。Rust/Gradle/BuildKit 缓存仅允许 push/main 回写，其他触发不回写。缓存及报告不得存放凭据；这些配置不替代仓库的外部 PR 审批、分支保护及人工安全核对。发布与首次安装另见[运维规程](../operations/image-release-first-install.md)，不能由 CI 配置存在推定真实发布通过。
