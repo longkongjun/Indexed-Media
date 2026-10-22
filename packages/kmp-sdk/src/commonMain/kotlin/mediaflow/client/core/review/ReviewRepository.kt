@@ -80,6 +80,7 @@ class ReviewRepository(
      * 提交一次不可变人工决定。幂等键由调用方生成（≥8 字符）；`caseVersion` 为
      * 提交时的活跃案件版本（If-Match），版本冲突返回 Http(409)。
      */
+    @Suppress("TooGenericExceptionCaught") // 统一映射传输/解码错误；先重抛 CancellationException。
     suspend fun submitDecision(
         reviewCaseId: String,
         caseVersion: Long,

@@ -48,6 +48,7 @@ class TaskRepository(
         api.listProcessingTasks()
 
     /** 幂等取消一个处理任务；返回取消后的任务投影。 */
+    @Suppress("TooGenericExceptionCaught") // 统一映射传输/解码错误；先重抛 CancellationException。
     suspend fun cancel(
         processingTaskId: String,
         idempotencyKey: String,

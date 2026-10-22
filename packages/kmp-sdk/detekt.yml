@@ -19,11 +19,3 @@ style:
   MaxLineLength:
     # 生成的契约客户端经 .editorconfig 豁免；手写代码 140（与 .editorconfig max_line_length 一致）。
     maxLineLength: 140
-
-exceptions:
-  # SDK 边界统一约定：传输/解码异常在指定边界点捕获并映射为 MediaFlowError，
-  # 不外抛原始异常。这些边界的 catch(Exception) 是设计使然（各处 KDoc 已注明），
-  # 逐点 @Suppress 只会产生噪音；此规则关闭后由复审清单保证每个 catch 必须经
-  # ErrorMapping/统一错误模型收口。
-  TooGenericExceptionCaught:
-    active: false
