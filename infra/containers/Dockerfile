@@ -2,7 +2,7 @@
 
 ARG TARGETPLATFORM=linux/amd64
 
-FROM --platform=${TARGETPLATFORM} node:24.18.0-bookworm-slim AS web-build
+FROM --platform=${TARGETPLATFORM} node:24.18.0-bookworm-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d AS web-build
 WORKDIR /src
 RUN npm install --global pnpm@11.10.0
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
@@ -18,16 +18,21 @@ COPY packages/ui-contract/contract packages/ui-contract/contract
 COPY contracts/examples contracts/examples
 RUN pnpm --filter @mediaflow/web build
 
-FROM --platform=${TARGETPLATFORM} rust:1.97.0-bookworm AS core-build
+FROM --platform=${TARGETPLATFORM} rust:1.97.0-bookworm@sha256:8fa55b2f3ddf97471ab6a767bfa3f37e6bad0986ba823e75fea57e2a2a5c3073 AS core-build
 WORKDIR /src
 COPY apps/core/Cargo.toml apps/core/Cargo.lock apps/core/
 COPY apps/core/src apps/core/src
 COPY apps/core/migrations apps/core/migrations
 RUN cargo build --manifest-path apps/core/Cargo.toml --locked --release
 
-FROM --platform=${TARGETPLATFORM} debian:bookworm-slim AS runtime
+FROM --platform=${TARGETPLATFORM} debian:bookworm-slim@sha256:7ff6ba31527b9e336162fa061746c366c4b2032f4d2cff2078bea43f78efe3f8 AS runtime
+ARG SOURCE_REVISION=unknown
+ARG BUILD_CREATED=unrecorded
 LABEL org.opencontainers.image.title="MediaFlow" \
-      org.opencontainers.image.version="0.2.0-m2"
+      org.opencontainers.image.version="git-${SOURCE_REVISION}" \
+      org.opencontainers.image.revision="${SOURCE_REVISION}" \
+      org.opencontainers.image.created="${BUILD_CREATED}" \
+      org.opencontainers.image.source="https://github.com/longkongjun/Indexed-Media"
 
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends ca-certificates tzdata \

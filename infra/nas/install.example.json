@@ -1,0 +1,11 @@
+{
+  "instance_dir": "/volume1/docker/mediaflow",
+  "incoming_dir": "/volume1/downloads/completed",
+  "media_dir": "/volume1/media/movies",
+  "uid": 1000,
+  "gid": 1000,
+  "public_origin": "https://media.example.com",
+  "trusted_proxy_cidrs": "172.20.0.2/32",
+  "bind_address": "127.0.0.1",
+  "port": 3000
+}
