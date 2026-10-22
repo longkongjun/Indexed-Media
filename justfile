@@ -475,6 +475,12 @@ check-m2:
     @just check-compose
     @just smoke-m2-compose
 
+# 发布/首装边界的本地回归；不连接registry或NAS，也不代替Docker验收。
+check-release-tools:
+    @python3 -B -m unittest discover -s infra/release/tests -v
+    @python3 -B -m unittest discover -s infra/nas/tests -p 'test_*.py' -v
+    @python3 -B -m unittest discover -s infra/compose/tests -p 'test_*.py' -v
+
 # 检查 NAS 安装、代理和备份恢复文档门槛。
 check-nas:
     @./infra/nas/tests/check-docs.sh
@@ -510,6 +516,7 @@ check-source:
     @just check-m4-source-automation
     @just check-ui-contract
     @just check-gate-regressions
+    @just check-release-tools
     @just check-rust-docs
     @just test-rust-doc
 

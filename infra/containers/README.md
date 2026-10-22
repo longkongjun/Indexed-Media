@@ -16,8 +16,10 @@ M2 产物为 `Dockerfile`：Node 24.18.0 与 Rust 1.97.0 多阶段构建，最�
 
 ## 状态
 
-已初始化：固定 `linux/amd64` 镜像已在当前 Mac 完成构建、inspect、非 root 启动和同源 HTTP 验证；目标 NAS 仍需人工确认镜像摘要与实际运行状态。
+已初始化：提供固定 `linux/amd64` 镜像及构建、inspect、非 root 启动和同源 HTTP 验证入口。实际结果以对应源码和制品的运行证据为准；目标 NAS 仍需人工确认镜像摘要与实际运行状态。
 
 ## 后续验证
 
 `just check-containers`；只读静态验证使用 `just check-containers-static`。
+
+可信main流水线一次构建后以`--existing-image`验证并复用同一产物，OCI revision与构建版本绑定完整SHA；正式提升不重建。命令和外部门禁见[镜像发布与空白NAS首次安装](../../docs/operations/image-release-first-install.md)。

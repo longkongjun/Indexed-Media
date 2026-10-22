@@ -1,5 +1,5 @@
 # Public-source and infra checks. Native clients are covered by client-ci.yml.
-# Third-party actions use full SHA; GITHUB_TOKEN remains read-only.
+# Verification stays read-only; only the trusted main candidate job may publish packages.
 name: ci
 on:
   push:
@@ -102,7 +102,7 @@ jobs:
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
       - name: contracts
-        run: CI=true just check-contracts check-api-client-ts check-test-fixtures check-ui-contract check-gate-regressions 2>&1 | tee "$RUNNER_TEMP/contracts.log"
+        run: CI=true just check-contracts check-api-client-ts check-test-fixtures check-ui-contract check-gate-regressions check-release-tools 2>&1 | tee "$RUNNER_TEMP/contracts.log"
       - name: Preserve contracts reports
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -159,8 +159,47 @@ jobs:
         uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2
         with:
           tool: just@${{ env.JUST_VERSION }}
-      - name: infra
-        run: just check-containers check-compose check-nas 2>&1 | tee "$RUNNER_TEMP/infra.log"
+      - name: OCI build timestamp
+        id: identity
+        run: echo "created=$(git show -s --format=%cI HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+        with:
+          version: v0.38.1
+      - name: Build the single candidate image
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: infra/containers/Dockerfile
+          platforms: linux/amd64
+          load: true
+          push: false
+          provenance: false
+          tags: mediaflow:sha-${{ github.sha }}
+          build-args: |
+            SOURCE_REVISION=${{ github.sha }}
+            BUILD_CREATED=${{ steps.identity.outputs.created }}
+          cache-from: type=gha,scope=mediaflow-amd64
+          cache-to: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'type=gha,mode=max,scope=mediaflow-amd64' || '' }}
+      - name: Validate the built image without rebuilding
+        env:
+          MEDIAFLOW_TEST_IMAGE: mediaflow:sha-${{ github.sha }}
+        run: |
+          ./infra/containers/tests/check-image.sh --existing-image 2>&1 | tee "$RUNNER_TEMP/infra.log"
+          just check-compose smoke-m2-compose check-nas 2>&1 | tee -a "$RUNNER_TEMP/infra.log"
+      - name: Save validated main image
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: docker save "mediaflow:sha-$SOURCE_SHA" -o "$RUNNER_TEMP/candidate.tar"
+      - name: Preserve the exact validated image
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: candidate-image-${{ github.sha }}
+          path: ${{ runner.temp }}/candidate.tar
+          retention-days: 7
+          overwrite: true
+          if-no-files-found: error
       - name: Preserve infra reports
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -169,3 +208,50 @@ jobs:
           path: |
             ${{ runner.temp }}/infra.log
           if-no-files-found: warn
+  candidate:
+    needs: [rust, rust-deps, contracts, web, infra]
+    if: >-
+      github.repository == 'longkongjun/Indexed-Media' &&
+      github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    concurrency:
+      group: mediaflow-candidate-publish
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Isolate temporary registry credentials
+        run: echo "DOCKER_CONFIG=$RUNNER_TEMP/mediaflow-docker-auth" >> "$GITHUB_ENV"
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+        with:
+          version: v0.38.1
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: candidate-image-${{ github.sha }}
+          path: ${{ runner.temp }}/candidate
+      - name: Load the validated image
+        run: docker load -i "$RUNNER_TEMP/candidate/candidate.tar"
+      - name: Authenticate only this publishing job
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: printf '%s' "$GH_TOKEN" | docker login ghcr.io --username longkongjun --password-stdin
+      - name: Publish candidate and ordered edge
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 infra/release/publish.py candidate --output "$RUNNER_TEMP/candidate.json"
+      - name: Preserve trusted candidate proof
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: candidate-proof-${{ github.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/candidate.json
+          if-no-files-found: error
+          retention-days: 90
+      - name: Remove registry login
+        if: always()
+        env:
+          DOCKER_CONFIG: ${{ runner.temp }}/mediaflow-docker-auth
+        run: docker logout ghcr.io

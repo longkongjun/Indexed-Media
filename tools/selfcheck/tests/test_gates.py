@@ -13,7 +13,14 @@ REPO = Path(__file__).resolve().parents[3]
 JUST = shutil.which("just")
 
 
-def workflow_policy_errors(text):
+def workflow_policy_errors(text, workflow=""):
+    allowed = {
+        ("ci.yml", "candidate"): {"contents: read", "packages: write"},
+        ("docker-publish.yml", "promote"): {"contents: read", "actions: read", "packages: write"},
+        ("docker-publish.yml", "release"): {"contents: write"},
+    }
+    job = ""
+    in_jobs = False
     # Repository workflows use one-line actions and explicit permission mappings.
     errors = []
     lines = text.splitlines()
@@ -25,6 +32,11 @@ def workflow_policy_errors(text):
             r"\s*-?\s*uses:\s+[\w.-]+/[\w./-]+@[0-9a-f]{40}\s*(#.*)?", line
         ):
             errors.append("action must use a full SHA")
+        if line == "jobs:":
+            in_jobs = True
+        job_match = re.fullmatch(r"  ([\w-]+):", line)
+        if in_jobs and job_match:
+            job = job_match[1]
         match = re.fullmatch(r"(\s*)permissions:(.*)", line)
         if match:
             permission_blocks += 1
@@ -36,20 +48,41 @@ def workflow_policy_errors(text):
                 if len(child) - len(child.lstrip()) <= indent:
                     break
                 block.append(child.strip())
-            if match[2].strip() or block != ["contents: read"]:
+            expected = allowed.get((workflow, job), {"contents: read"}) if indent == 4 else {"contents: read"}
+            if match[2].strip() or set(block) != expected or len(block) != len(expected):
                 errors.append("token permissions must be explicit contents: read")
     if not permission_blocks or not any(line == "permissions:" for line in lines):
         errors.append("top-level permissions required")
     if any(re.match(r"\s*pull_request_target\s*:", line) for line in lines):
         errors.append("untrusted pull_request_target is not allowed")
+    if workflow == "ci.yml" and "  candidate:" in text:
+        candidate = text.split("  candidate:", 1)[1]
+        for guard in ("needs: [rust, rust-deps, contracts, web, infra]", "github.event_name == 'push'", "github.ref == 'refs/heads/main'", "github.repository == 'longkongjun/Indexed-Media'"):
+            if guard not in candidate:
+                errors.append("candidate publication requires all trusted main gates")
+    if workflow == "docker-publish.yml" and "    needs: promote" not in text:
+        errors.append("Release publication requires successful promotion")
     return errors
 
 
 class WorkflowPolicyTests(unittest.TestCase):
-    def test_actual_workflows_pin_actions_and_keep_token_readonly(self):
+    def test_actual_workflows_pin_actions_and_scope_publish_permissions(self):
         for path in (REPO / ".github/workflows").glob("*.yml"):
             with self.subTest(path=path.name):
-                self.assertEqual(workflow_policy_errors(path.read_text()), [])
+                self.assertEqual(workflow_policy_errors(path.read_text(), path.name), [])
+
+    def test_security_hardening_is_preserved_in_actual_workflows(self):
+        for name in ("ci.yml", "client-ci.yml", "docker-publish.yml"):
+            text = (REPO / ".github/workflows" / name).read_text()
+            for step in re.split(r"(?m)^      - ", text)[1:]:
+                if step.startswith("uses: actions/checkout@"):
+                    self.assertIn("persist-credentials: false", step, name)
+                if step.startswith("uses: Swatinem/rust-cache@"):
+                    self.assertIn("save-if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}", step)
+                if "uses: gradle/actions/setup-gradle@" in step:
+                    self.assertIn("cache-read-only: ${{ github.event_name != 'push' || github.ref != 'refs/heads/main' }}", step)
+                if "uses: docker/build-push-action@" in step:
+                    self.assertIn("github.event_name == 'push' && github.ref == 'refs/heads/main' && 'type=gha", step)
 
     def test_floating_action_is_rejected(self):
         self.assertIn("action must use a full SHA", workflow_policy_errors(
@@ -58,6 +91,18 @@ class WorkflowPolicyTests(unittest.TestCase):
     def test_job_permission_override_is_rejected(self):
         self.assertIn("token permissions must be explicit contents: read", workflow_policy_errors(
             "permissions:\n  contents: read\njobs:\n  build:\n    permissions:\n      contents: write\n"))
+
+
+    def test_publish_permission_cannot_spread_to_verification_job(self):
+        text = (REPO / ".github/workflows/ci.yml").read_text()
+        text = text.replace("  rust:\n", "  rust:\n    permissions:\n      contents: read\n      packages: write\n", 1)
+        self.assertIn("token permissions must be explicit contents: read", workflow_policy_errors(text, "ci.yml"))
+
+    def test_candidate_needs_and_main_guard_cannot_be_removed(self):
+        text = (REPO / ".github/workflows/ci.yml").read_text()
+        for old in ("needs: [rust, rust-deps, contracts, web, infra]", "github.event_name == 'push'", "github.ref == 'refs/heads/main'"):
+            with self.subTest(old=old):
+                self.assertIn("candidate publication requires all trusted main gates", workflow_policy_errors(text.replace(old, "removed"), "ci.yml"))
 
 
 class GateTests(unittest.TestCase):
@@ -158,6 +203,16 @@ exit 0''')
             with self.subTest(recipe=recipe):
                 result = self.ios(recipe, BUILD_STATUS="65")
                 self.assertNotEqual(result.returncode, 0, result.stdout)
+
+    def test_online_advisory_and_independent_failure_are_both_reported(self):
+        self.tool("just", 'echo "$*" >> "$TMPDIR/calls"; case "$1" in check-rust-advisories) exit 4;; check-compose-static) exit 9;; esac; exit 0')
+        result = self.run_gate("/bin/sh", "tools/selfcheck/selfcheck.sh")
+        self.assertEqual(result.returncode, 1, result.stdout)
+        report = next(self.reports.rglob("status.tsv")).read_text()
+        self.assertIn("advisories\t4", report)
+        self.assertIn("compose\t9", report)
+        self.assertIn("nas\t0", report)
+        self.assertNotIn("全部通过", result.stdout)
 
     def test_online_advisory_failure_does_not_skip_static_checks(self):
         result = self.selfcheck(offline=False, FAIL_RECIPE="check-rust-advisories")
