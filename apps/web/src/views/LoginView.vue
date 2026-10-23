@@ -6,6 +6,7 @@
  * 成功登录则通过会话状态重定向。
  */
 import { computed, nextTick, onBeforeUnmount, reactive, ref } from "vue";
+import { MfField } from "@mediaflow/ui-vue";
 import { useIdentity } from "../features/identity/useIdentity";
 
 type LoginField = "login-administrator-name" | "login-password";
@@ -105,12 +106,10 @@ async function submit(): Promise<void> {
         </ul>
       </div>
       <form novalidate @submit.prevent="submit">
-        <label for="login-administrator-name">管理员名称</label>
-        <input id="login-administrator-name" v-model="administratorName" name="administrator_name" autocomplete="username" required :aria-invalid="invalid('login-administrator-name')" :aria-describedby="describedBy('login-administrator-name')" />
+        <MfField id="login-administrator-name" v-model="administratorName" label="管理员名称" name="administrator_name" autocomplete="username" required :invalid="invalid('login-administrator-name')" :described-by="describedBy('login-administrator-name') ?? ''" />
         <p v-if="fieldErrors['login-administrator-name']" id="login-administrator-name-error" class="field-error">{{ fieldErrors["login-administrator-name"] }}</p>
 
-        <label for="login-password">密码</label>
-        <input id="login-password" v-model="password" name="password" type="password" autocomplete="current-password" required :aria-invalid="invalid('login-password')" :aria-describedby="describedBy('login-password')" @keydown.enter.prevent="submit" />
+        <MfField id="login-password" v-model="password" label="密码" name="password" type="password" autocomplete="current-password" required :invalid="invalid('login-password')" :described-by="describedBy('login-password') ?? ''" @keydown.enter.prevent="submit" />
         <p v-if="fieldErrors['login-password']" id="login-password-error" class="field-error">{{ fieldErrors["login-password"] }}</p>
 
         <button type="submit" :disabled="identity.submitting.value">{{ identity.submitting.value ? "正在登录…" : "登录" }}</button>

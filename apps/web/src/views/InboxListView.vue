@@ -5,6 +5,7 @@
  * 路由查询状态提供页面游标。组件没有 props、发出事件或暴露的实例方法；它会在挂载或查询变化时加载，创建前执行预检，
  * 并导航到新建的目录。
  */
+import { MfDialog } from "@mediaflow/ui-vue";
 import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import AsyncState from "../components/AsyncState.vue";
@@ -20,11 +21,12 @@ const route = useRoute();
 const router = useRouter();
 const session = useSessionStore();
 const showAdd = ref(false);
+const showConfirmation = ref(false);
 const failure = (error: unknown) => handleAuthenticatedFailure(error, session, router, route.fullPath);
 const feature = useInboxDirectories(client, failure);
 const selectedRoot = computed(() => feature.roots.value.find((root) => root.id === feature.form.rootId));
 
-async function runPreflight(): Promise<void> { await feature.preflight(); }
+async function runPreflight(): Promise<void> { await feature.preflight(); showConfirmation.value = Boolean(feature.confirmation.value); }
 async function create(): Promise<void> {
   try { const created = await feature.create(); await router.push({ name: "inbox-directory", params: { id: created.id } }); }
   catch { await nextTick(); }
@@ -59,11 +61,9 @@ watch(() => route.query.cursor, loadCurrent);
         <p class="field-help">只填写能力根内的 UTF-8 相对路径，不接受宿主机绝对路径。</p>
         <button type="submit">预检目录</button>
       </form>
-      <section v-if="feature.confirmation.value" class="confirmation" aria-labelledby="confirmation-heading">
-        <h3 id="confirmation-heading">确认扫描范围</h3>
+      <MfDialog v-if="feature.confirmation.value" :open="showConfirmation" title="确认扫描范围" description="仅登记此能力根内的目录，不会自动扫描或执行文件操作。" confirm-label="确认并创建" :busy="feature.pendingCreate.value" :confirm-disabled="!feature.canCreate.value" :error="feature.formError.value?.message ?? ''" @confirm="create" @request-close="showConfirmation = false">
         <dl><div><dt>能力根</dt><dd>{{ feature.confirmation.value.rootLabel }}</dd></div><div><dt>相对路径</dt><dd><code>{{ feature.confirmation.value.relativePath }}</code></dd></div><div><dt>访问权限</dt><dd>{{ selectedRoot?.access === 'read-only' ? '只读' : '读写' }}</dd></div><div><dt>可读取</dt><dd>{{ feature.confirmation.value.readable ? '是' : '否' }}</dd></div><div><dt>重叠</dt><dd>{{ feature.confirmation.value.overlapsExisting ? '是' : '否' }}</dd></div><div><dt>扫描范围</dt><dd>仅此能力根内的上述相对目录</dd></div></dl>
-        <button class="primary-action" type="button" :disabled="!feature.canCreate.value" @click="create">确认并创建</button>
-      </section>
+      </MfDialog>
     </section>
   </main>
 </template>
