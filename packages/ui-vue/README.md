@@ -1,6 +1,6 @@
 # @mediaflow/ui-vue
 
-MediaFlow Web 正式基础库的最小切片：仅包含 C01 Action 按钮（`MfButton`）。设计契约来自 `references/Indexed-wiki/design/ui-system/`（02 共同契约、03 主题与数值来源、10 Web 组件、13 正式库采纳契约，draft-5.1）；本包是 13 所述"正式 Vue 基础库"的首个可评审切片，不代表完整 Web 基础库。
+MediaFlow Web 正式基础库的最小切片：仅包含 C01 Action 按钮（`MfButton`）。设计契约来自 `references/Indexed-wiki/design/ui-system/`（02 共同契约、03 主题与数值来源、10 Web 组件、13 正式库采纳契约，B1-1）；本包是 13 所述"正式 Vue 基础库"的首个可评审切片，不代表完整 Web 基础库。
 
 ## 公共 API
 
@@ -43,9 +43,9 @@ import "@mediaflow/ui-vue/style.css";
 
 ## 主题与 token 来源
 
-`src/styles/theme.css` 提供按钮消费的 `--mfd-*` 语义 token 子集（evergreen 浅/暗），值逐项来自冻结值源 `labs/design-system/tokens/tokens.json` v2.0.0（与 `apps/web/src/styles/tokens.css` 同源），由 `tests/package-contract.test.ts` 对账。主题结构与生成表一致：`[data-theme="dark"]` 显式优先，无偏好时跟随系统；皮肤（aurora/sepia）由宿主完整 token 表提供，宿主同名变量可覆盖本子集（值同源，顺序无关）。组件样式选择器全部以 `.mf-button` 限定，不选中宿主其他 `button`。
+`src/styles/theme.css` 提供按钮消费的 `--mfd-*` 语义 token 子集（evergreen 浅/暗），值逐项来自冻结值源 `labs/design-system/tokens/tokens.json` v2.0.0（与 `apps/web/src/styles/tokens.css` 同源），由 `tests/package-contract.test.ts` 对账。主题结构与生成表一致：`[data-theme="light|dark"]` 显式优先（包含子树），无偏好时跟随系统；皮肤（aurora/sepia）由宿主完整 token 表提供，宿主同名变量可覆盖本子集（值同源，顺序无关）。组件样式选择器全部以 `.mf-button` 限定，不选中宿主其他 `button`。
 
-已记录的规范映射决定（规范未定或 lab 旧文档冲突处，以 wiki draft-5.1 为准）：图标尺寸取 `icon-size-md`（token desc"按钮与导航图标"）；danger pressed 无 active token，与 hover 同值；普通按钮 pressed 以 `border-strong` 内阴影加深边框；hover 仅在 `(hover: hover)` 下出现，普通型 hover 用 `bg-hover` 叠层保留底色。
+已记录的规范映射决定（规范未定或 lab 旧文档冲突处，以 wiki B1-1 为准）：图标尺寸取 `icon-size-md`（token desc"按钮与导航图标"）；danger pressed 无 active token，与 hover 同值；普通按钮 pressed 以 `border-strong` 内阴影加深边框；hover 仅在 `(hover: hover)` 下出现，普通型 hover 用 `bg-hover` 叠层保留底色。
 
 ## 构建与验证
 
@@ -57,4 +57,4 @@ pnpm test:consumer    # 从构建产物公开入口消费的最小无业务消�
 pnpm verify           # 以上全部按序执行
 ```
 
-验证边界：jsdom 单元测试覆盖 DOM 契约与事件；几何（44×44、200% 文字、320px 长标签换行）、focus-visible 焦点环、暗色主题与真实键盘激活由浏览器验证记录（见工作流状态 `workflow-state/mediaflow/worktrees/ui-web-action-slice/`）。仍待验：真实读屏、系统级 reduce-motion/暗色偏好、Enter 键激活在标准桌面浏览器（本会话 webview 不为原生 button 合成 Enter click，属宿主限制）、RTL 与其他浏览器引擎。
+验证边界：jsdom 单元测试覆盖 DOM 契约与事件；几何（44×44、200% 文字、320px 长标签换行）、focus-visible 焦点环、暗色主题与真实键盘激活由浏览器验证记录（见工作流状态 `workflow-state/mediaflow/worktrees/ui-web-action-slice/`）。主任务在桌面Chrome补验：Enter/Space激活一次、busy保焦点/防重复、系统暗色回退、显式浅色子树、reduce-motion静态忙碌指示和200%换行。真实读屏、RTL、触屏及其他浏览器引擎仍待验。

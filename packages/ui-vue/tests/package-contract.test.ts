@@ -75,6 +75,10 @@ const darkVars = declaredVars(blockAfter(themeCss, '[data-theme="dark"]'));
 const schemeVars = declaredVars(blockAfter(blockAfter(themeCss, "@media (prefers-color-scheme: dark)"), ":root:not([data-theme])"));
 
 describe("主题 token 与冻结值源对账", () => {
+  it("显式浅色子树重新声明全部浅色角色，覆盖继承的根暗色", () => {
+    expect(declaredVars(blockAfter(themeCss, '[data-theme="light"]'))).toEqual(rootVars);
+  });
+
   it("浅色块每个变量等于 tokens.json 的 light/value", () => {
     expect(rootVars.size).toBeGreaterThan(0);
     for (const [name, cssValue] of rootVars) {

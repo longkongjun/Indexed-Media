@@ -29,6 +29,9 @@ importers:
       '@mediaflow/api-client-ts':
         specifier: workspace:*
         version: link:../../packages/api-client-ts
+      '@mediaflow/ui-vue':
+        specifier: workspace:*
+        version: link:../../packages/ui-vue
       pinia:
         specifier: 3.0.4
         version: 3.0.4(typescript@5.9.3)(vue@3.5.39(typescript@5.9.3))
