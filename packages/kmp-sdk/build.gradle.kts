@@ -180,11 +180,13 @@ kotlin.targets.configureEach {
     }
 }
 tasks.configureEach {
-    val needsGenerated = (name.startsWith("compile") && name.endsWith("Metadata")) ||
-        name.startsWith("runKtlint") ||
-        // AGP 的 baseline-profile 整理任务会读生成目录下的构建文件，同样需要接线，
-        // 否则 release 构建在任务依赖校验处失败。
-        name.startsWith("prepare") && name.endsWith("ArtProfile")
+    val needsGenerated =
+        (name.startsWith("compile") && name.endsWith("Metadata")) ||
+            name.startsWith("runKtlint") ||
+            // AGP 的 baseline-profile 整理任务会读生成目录下的构建文件，同样需要接线，
+            // 否则 release 构建在任务依赖校验处失败。
+            name.startsWith("prepare") &&
+            name.endsWith("ArtProfile")
     if (needsGenerated) {
         dependsOn(openApiGenerate)
     }
