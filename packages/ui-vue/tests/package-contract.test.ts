@@ -111,7 +111,7 @@ describe("主题 token 与冻结值源对账", () => {
 });
 
 describe("样式选择器作用域", () => {
-  /** 断言一段 CSS 的所有选择器都以 .mf-button 或主题入口选择器开头，不选中宿主其他元素。 */
+  /** 断言一段 CSS 的所有选择器都以已登记的 .mf-* 组件命名空间或主题入口选择器开头，不选中宿主其他元素。 */
   function expectScoped(css: string): void {
     const withoutComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
     for (const match of withoutComments.matchAll(/([^{}]+)\{/g)) {
@@ -125,7 +125,7 @@ describe("样式选择器作用域", () => {
         const trimmed = part.trim();
         if (trimmed.length === 0) continue;
         if (
-          /^\.mf-(button|image|content-card|request-state)(?:[ _:.\[#>-]|$)/.test(trimmed) ||
+          /^\.mf-(button|image|content-card|request-state|field|dialog|menu)(?:[ _:.\[#>-]|$)/.test(trimmed) ||
           trimmed.startsWith(":root") ||
           trimmed.startsWith("[data-theme") ||
           trimmed.startsWith("[data-skin") ||

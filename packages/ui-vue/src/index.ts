@@ -4,6 +4,9 @@
  */
 import "./styles/theme.css";
 
+import MfMenu from "./components/MfMenu.vue";
+import MfField from "./components/MfField.vue";
+import MfDialog from "./components/MfDialog.vue";
 import MfButton from "./components/MfButton.vue";
 import MfImage from "./components/MfImage.vue";
 import MfContentCard from "./components/MfContentCard.vue";
@@ -19,4 +22,7 @@ export type MfImageProps = InstanceType<typeof MfImage>["$props"];
 export type MfContentCardProps = InstanceType<typeof MfContentCard>["$props"];
 export type MfRequestStateProps = InstanceType<typeof MfRequestState>["$props"];
 export type { MfRequestStateValue } from "./types";
-export { MfButton, MfImage, MfContentCard, MfRequestState };
+export type MfFieldProps = InstanceType<typeof MfField>["$props"];
+export type MfDialogProps = InstanceType<typeof MfDialog>["$props"];
+export type MfMenuProps = InstanceType<typeof MfMenu>["$props"];
+export { MfMenu, MfField, MfDialog, MfButton, MfImage, MfContentCard, MfRequestState };

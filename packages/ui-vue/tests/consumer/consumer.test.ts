@@ -70,7 +70,7 @@ describe("构建产物公开入口消费", () => {
         const trimmed = part.trim();
         if (trimmed.length === 0) continue;
         expect(
-          /^\.mf-(button|image|content-card|request-state)(?:[ _:.\[#>-]|$)/.test(trimmed) ||
+          /^\.mf-(button|image|content-card|request-state|field|dialog|menu)(?:[ _:.\[#>-]|$)/.test(trimmed) ||
             trimmed.startsWith(":root") ||
             trimmed.startsWith("[data-theme") ||
             trimmed.startsWith("[data-skin") ||
