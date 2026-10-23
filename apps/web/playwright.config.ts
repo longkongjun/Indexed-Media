@@ -12,7 +12,7 @@ export default defineConfig({
   retries: 0,
   reporter: [["line"]],
   outputDir: `${outputRoot}/artifacts`,
-  use: { baseURL: "http://127.0.0.1:4198", trace: "retain-on-failure" },
+  use: { baseURL: "http://127.0.0.1:4198", trace: { mode: "retain-on-failure", screenshots: false, snapshots: true }, screenshot: "off", video: "off" },
   projects: [
     { name: "chromium-desktop", use: { ...devices["Desktop Chrome"] } },
     { name: "chromium-mobile", use: { ...devices["Pixel 7"] } },
