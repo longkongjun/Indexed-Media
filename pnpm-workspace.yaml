@@ -3,5 +3,6 @@ packages:
   - packages/api-client-ts
   - packages/test-fixtures
   - packages/ui-vue
+  - tools/ui-vue-consumer
 patchedDependencies:
   vue-router@5.2.0: patches/vue-router@5.2.0.patch

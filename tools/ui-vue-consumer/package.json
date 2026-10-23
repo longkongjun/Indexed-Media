@@ -1,0 +1,17 @@
+{
+  "name": "@mediaflow/ui-vue-consumer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 4201 --strictPort",
+    "build": "vue-tsc --noEmit && vite build",
+    "test": "vitest run",
+    "preview": "vite preview --host 127.0.0.1 --port 4201 --strictPort"
+  },
+  "dependencies": { "@mediaflow/ui-vue": "workspace:*", "vue": "3.5.39" },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "6.0.8", "@vue/test-utils": "2.4.11", "@types/node": "24.13.3",
+    "jsdom": "29.1.1", "typescript": "5.9.3", "vite": "8.1.4", "vitest": "4.1.10", "vue-tsc": "3.3.7"
+  }
+}
