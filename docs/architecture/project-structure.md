@@ -24,7 +24,7 @@ MediaFlow/
 - 正式 Web 使用 Vue；Android 使用 Jetpack Compose；iOS 使用 SwiftUI。
 - KMP 共享业务与数据逻辑，不共享正式 UI。
 
-Vue基础库位于`packages/ui-vue`，公开JS/类型/CSS入口；媒体页只做必要按钮消费。Android/Android TV/SwiftUI基础库分别位于`packages/ui-android`、`packages/ui-android-tv`、`packages/ui-swift`。它们只依赖平台框架/成熟UI原语，不导入业务SDK、实体、路由、权限或Core契约；`tools/ui-*-consumer`是从公开入口依赖的无业务原生消费者，不是展示站或正式TV客户端。
+Vue基础库位于`packages/ui-vue`，公开JS/类型/CSS入口；媒体页只做必要按钮消费。Android/Android TV基础库分别位于`packages/ui-android`、`packages/ui-android-tv`。它们只依赖平台框架/成熟UI原语，不导入业务SDK、实体、路由、权限或Core契约；`tools/ui-*-consumer`是从公开入口依赖的无业务原生消费者，不是展示站或正式TV客户端。
 
 ## 模块边界
 

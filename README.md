@@ -30,7 +30,6 @@ MediaFlow/
 |   |-- ui-vue/                   # Vue正式基础组件（C01）
 |   |-- ui-android/               # Compose正式基础组件
 |   |-- ui-android-tv/            # Compose for TV正式基础组件
-|   |-- ui-swift/                 # iOS SwiftUI正式基础组件
 |   |-- ui-contract/              # 跨端页面状态与交互约定
 |   `-- test-fixtures/            # 跨端共用测试样例
 |
