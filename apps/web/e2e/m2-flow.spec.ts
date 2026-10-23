@@ -1,4 +1,19 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+import type { CapabilityActivityPage } from "@mediaflow/api-client-ts";
+
+const emptyCapabilityEvents = { items: [], next_cursor: null } satisfies CapabilityActivityPage;
+
+const browserErrors = new WeakMap<Page, string[]>();
+
+test.beforeEach(({ page }) => {
+  const errors: string[] = [];
+  browserErrors.set(page, errors);
+  page.on("pageerror", (error) => errors.push(error.message));
+});
+
+test.afterEach(({ page }) => {
+  expect(browserErrors.get(page), "M2 flows must not throw browser runtime errors").toEqual([]);
+});
 
 const inboxId = "018f0f10-8bc1-7a5e-8e5a-2dc913d23c86";
 const taskId = "018f0f10-8bc1-7a5e-8e5a-2dc913d23c87";
@@ -34,6 +49,7 @@ test("adds an inbox, scans live, keeps partial results, pages safely, and disabl
     const json = (body: unknown, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
     if (path === "/api/v1/system/bootstrap-status") return json({ requires_initialization: false, version: "v1" });
     if (path === "/api/v1/session") return json(account);
+    if (path === "/api/v1/capability-events") return json(emptyCapabilityEvents);
     if (path === "/api/v1/deployment-roots") return json({ items: [{ id: "incoming", label: "家庭收件区", access: "read-write" }], next_cursor: null });
     if (path === "/api/v1/inbox-directories/preflight") return json({ root_id: "incoming", relative_path: "camera/uploads", readable: true, overlaps_existing: false });
     if (path === "/api/v1/inbox-directories" && request.method() === "POST") { created = true; return json({ id: inboxId, root_id: "incoming", relative_path: "camera/uploads", health: "available", last_checked_at: "2026-07-18T08:00:00Z" }, 201); }
@@ -54,6 +70,7 @@ test("adds an inbox, scans live, keeps partial results, pages safely, and disabl
 
   await page.goto("/inbox-directories");
   await expect(page.getByRole("heading", { name: "收件目录" })).toBeVisible();
+  await expect(page.getByText("暂无 AI 通道活动", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "添加收件目录" }).focus(); await page.keyboard.press("Enter");
   await page.getByLabel("能力根").focus(); await page.getByLabel("能力根").selectOption("incoming");
   await expect(page.getByLabel("能力根")).toHaveValue("incoming");
@@ -101,15 +118,19 @@ test("native EventSource receives the same named frames emitted by Core", async 
     let body;
     if (path === "/api/v1/system/bootstrap-status") body = { requires_initialization: false, version: "v1" };
     else if (path === "/api/v1/session") body = account;
-    else {
+    else if (path === "/api/v1/capability-events") body = emptyCapabilityEvents;
+    else if (path === `/api/v1/scan-tasks/${taskId}`) {
       taskReads += 1;
       body = taskReads === 1
         ? { id: taskId, inbox_directory_id: inboxId, status: "running", recovering: false, counts: { visited_directories: 1, observed_files: 2, skipped_entries: 0, errors: 0 } }
         : { id: taskId, inbox_directory_id: inboxId, status: "partial-success", recovering: false, counts: { visited_directories: 6, observed_files: 17, skipped_entries: 2, errors: 1 } };
     }
+    else if (["/api/v1/integrations/jellyfin", "/api/v1/notifications"].includes(path)) return route.fulfill({ status: 404, body: "" });
+    else throw new Error(`Unexpected M2 API request: ${route.request().method()} ${path}`);
     return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
   });
   await page.goto(`/scan-tasks/${taskId}`);
+  await expect(page.getByText("暂无 AI 通道活动", { exact: true })).toBeVisible();
   await expect(page.getByText("已观察文件").locator("..").getByText("17")).toBeVisible();
   await expect(page.locator('[data-status="partial-success"]')).toContainText("部分成功");
 });
