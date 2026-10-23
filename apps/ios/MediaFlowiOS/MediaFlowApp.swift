@@ -132,10 +132,9 @@ struct WallView: View {
                 MfContentRow(
                     item.title,
                     subtitle: "\(item.typeLabel) · \(item.yearLabel) · \(item.statusLabel)",
-                    action: { model.path.append(Screen.detail(id: item.id, title: item.title)) }
-                ) {
-                    Text(item.hasArtwork ? "▣" : "□").font(.title2)
-                }
+                    action: { model.path.append(Screen.detail(id: item.id, title: item.title)) },
+                    artwork: { Text(item.hasArtwork ? "▣" : "□").font(.title2) }
+                )
                 .accessibilityIdentifier("media-row-\(item.id)")
             }
             if model.wallHasMore {

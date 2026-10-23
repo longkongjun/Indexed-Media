@@ -8,6 +8,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "6.0"
+    # The SDK declares iosSimulatorArm64; no Intel simulator framework is produced.
+    "ARCHS[sdk=iphonesimulator*]": arm64
     DEVELOPMENT_TEAM: ""
     # 模拟器 ad-hoc 签名：Keychain（SecItemAdd）要求宿主进程带签名派生的
     # access groups，无签名（ALLOWED=NO）会以 -34018 拒绝写入。真机随第二批交付。

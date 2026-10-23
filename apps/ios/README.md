@@ -1,35 +1,28 @@
 # iOS
 
-## 目标
+MediaFlow 的 SwiftUI iPhone 客户端，最低 iOS 16。KMP 只共享业务与数据，SwiftUI 通过 `MediaFlowKit` 二进制框架和 `MediaFlowUI` Swift Package 构建原生界面；不从同级应用或 labs 导入。iPad 不在当前正式设计与验收范围。
 
-提供 MediaFlow 的 SwiftUI iPhone/iPad 正式 UI。
+## 模块与依赖
 
-## 职责
+`AppModel` 是 KMP 桥接薄层；SwiftUI 六屏使用五态与 stale 语义。`Screen` 的 destination 注册承载媒体详情、确认与既有入口；媒体列表行、分页 Action、主题从正式 `packages/ui-swift` 公开入口消费。独立组件工作台在 `tools/ui-swift-consumer`，不依赖 KMP 或客户端业务。
 
-SwiftUI iPhone/iPad 正式 UI。
+允许依赖 `packages/ui-swift`、`packages/kmp-sdk`、`packages/ui-contract`、`packages/test-fixtures` 和 `contracts`。客户端不实现 Core 业务、内建播放器、Android / TV UI。
 
-## 允许依赖
+## 构建与测试
 
-`packages/ui-swift`、`packages/kmp-sdk`、`packages/ui-contract`、`packages/test-fixtures`、`contracts`。
+工程由 `project.yml` 生成。SDK 声明 iosArm64 / iosSimulatorArm64；模拟器构建限定 arm64，与实际提供的 KMP 二进制架构一致。完整 Xcode、匹配 iOS SDK、Java 和仓库 Gradle 为构建前提。
 
-## 非目标
+```bash
+cd apps/ios
+xcodegen generate
+xcodebuild -project MediaFlow.xcodeproj -scheme MediaFlowiOS -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' build
+xcodebuild -project MediaFlow.xcodeproj -scheme MediaFlowiOS -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:MediaFlowiOSTests test
+```
 
-Core 业务逻辑、Android UI、TV UI、播放以及 `labs` 下的实验。
+Xcode27 / iOS27 SDK 完整类型编译、应用及普通 XCTest 目标构建通过；iPhone17 / iOS26.2 模拟器普通 XCTest 3 项通过，覆盖桥导出、五态消息、未登录安全错误。生成工程、缓存和报告不入库。SwiftLint、XcodeGen 与测试的集中入口为 `just client-check-ios`，工具条件与独立日志见[工程检查](../../docs/development/checks.md)。
 
-## 状态
+## 运行与人工验收
 
-M5 第一批垂直切片已初始化（分支 `feature/m5-client`）：
+工具应用提供无服务依赖的主题、公开 API、表单、模态、状态恢复、原生列表和导航检查。业务客户端的 fixture 步骤见 `tools/client-fixture-server/README.md`。`MediaFlowiOSUI` 真实 Core 测试需要独立测试服务、Web 签发的一次性配对码与正式媒体，不在普通 XCTest 范围；不得把合成数据或编译通过登记为真实业务通过。
 
-- **接入**：KMP 经 `MediaFlowKit` framework（iosArm64/iosSimulatorArm64，XcodeGen 工程经 prebuild 脚本链接）+ Kotlin 侧 `MediaFlowIosBridge`（suspend→async 导出、Swift 友好投影、SSE 事件回调）；Swift 层薄 Facade（`AppModel`）+ SwiftUI 六屏（与 Android 同一状态语义五态 + stale）。
-- **工程**：工程由 `project.yml` 生成（`xcodegen generate`，产物 gitignore）；Swift 6 严格并发；`.swiftlint.yml` 就位（本机无 CLI，见台账 M5-D-0002）。
-- **验证**：`xcodebuild test -scheme MediaFlowiOS`（模拟器 XCTest 3/3：桥存在性/五态语义/未登录优雅错误）；模拟器六屏走查步骤见 `tools/client-fixture-server/README.md`（默认地址 `http://127.0.0.1:8642`）。
-
-## 后续验证
-
-`cd apps/ios && xcodegen generate && xcodebuild test -project MediaFlow.xcodeproj -scheme MediaFlowiOS -destination 'platform=iOS Simulator,name=iPhone 17'`。
-
-## 工程检查
-
-`just client-check-ios` 使用固定版本 SwiftLint、XcodeGen 和 `MediaFlowiOS` 普通 XCTest。工具、模拟器选择与独立日志/xcresult 见[检查说明](../../docs/development/checks.md)。`MediaFlowiOSUI` 的真实 Core UI、真机签名与设备验收是独立出口。
-
-B1基础库消费只覆盖现有媒体列表/主题/分页Action，见[`packages/ui-swift`](../../packages/ui-swift/README.md)。Screen路径到既有目标页的destination注册已补齐，新增正式媒体行进入详情/返回的UI回归用例。完整Xcode/iOS SDK缺失，当前只做语法检查；该回归需要真实Core、Web签发配对码与正式媒体，缺任一项保持待验。这不代表整页高保真、导航运行/真实配对或设备验收已完成。
+媒体行 push / 返回、冷恢复、真实配对与撤销、外部播放、真机签名、VoiceOver、Dynamic Type、键盘和手势均须分别验收。尚未实际人工操作的项目保持 **待人工验收**；不采集截图、不运行 AI 逐图或像素差异验收。
