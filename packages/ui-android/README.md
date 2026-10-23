@@ -10,6 +10,6 @@ MfTheme {
 }
 ```
 
-构建：根目录`./gradlew :packages:ui-android:assembleRelease`。无业务消费者：`tools/ui-android-consumer`；应用必要消费：Android媒体列表卡/分页按钮/主题。仪器测试：`:packages:ui-android:assembleDebugAndroidTest`后在明确指定的模拟器运行`mediaflow.ui.android.test/androidx.test.runner.AndroidJUnitRunner`。不要默认安装到所有连接设备。
+构建：根目录`./gradlew :packages:ui-android:assembleRelease`。独立组件与规范应用：[Foundation studio](../../tools/ui-android-consumer/README.md)，含公开 API、主题、状态、原生采用映射与安装/人工操作清单；应用必要消费：Android媒体列表卡/分页按钮/主题。仪器测试：`:packages:ui-android:assembleDebugAndroidTest`后在明确指定的模拟器运行`mediaflow.ui.android.test/androidx.test.runner.AndroidJUnitRunner`。不要默认安装到所有连接设备。
 
 尚未发布。构建/模拟器不能替代TalkBack、真实设备字体/IME/返回、真实服务及应用完整UI验收。

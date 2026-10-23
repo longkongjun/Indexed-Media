@@ -38,12 +38,16 @@ import mediaflow.ui.tv.MfTvTheme
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { MfTvTheme { Catalog() } }
+        setContent { Catalog() }
     }
 }
 
 @Composable
 private fun Catalog() {
+    var dark by rememberSaveable { mutableStateOf(true) }
+    var busy by rememberSaveable { mutableStateOf(false) }
+    var attempts by rememberSaveable { mutableStateOf(0) }
+    var message by rememberSaveable { mutableStateOf("Content available · local synthetic values") }
     var ids by remember { mutableStateOf((1..12).map { "session-$it" }) }
     var selected by rememberSaveable { mutableStateOf<String?>(null) }
     var lastId by rememberSaveable { mutableStateOf("session-1") }
@@ -59,54 +63,74 @@ private fun Catalog() {
             else -> requesters[lastId]?.requestFocus()
         }
     }
-    Column(
-        Modifier
-            .fillMaxSize()
-            .background(
-                MaterialTheme.colorScheme.background,
-            ).verticalScroll(rememberScrollState())
-            .padding(horizontal = 48.dp, vertical = 27.dp),
-        verticalArrangement = Arrangement.spacedBy(24.dp),
-    ) {
-        Text("Conference sessions", style = MaterialTheme.typography.headlineLarge)
-        if (selected != null) {
-            MfTvButton("Back to sessions", onClick = { selected = null }, modifier = Modifier.focusRequester(detailFocus))
-            Text(sessionTitle(checkNotNull(selected)), style = MaterialTheme.typography.headlineMedium)
-            Text("A long description can be read without a network or a MediaFlow SDK.", fontSize = 20.sp)
-        } else {
-            MfTvButton("Remove focused session", onClick = {
-                val index = ids.indexOf(lastId).coerceAtLeast(0)
-                ids = ids.filterNot { it == lastId }
-                lastIndex = index.coerceAtMost((ids.size - 1).coerceAtLeast(0))
-                lastId = ids.getOrNull(lastIndex).orEmpty()
-            }, enabled = ids.isNotEmpty())
-            if (ids.isEmpty()) {
-                MfTvMessage("No sessions remain.") {
-                    MfTvButton("Reset sessions", modifier = Modifier.focusRequester(resetFocus), onClick = {
-                        ids = (1..12).map { "session-$it" }
-                        lastId = ids.first()
-                    })
-                }
-            }
-            ids.chunked(4).forEach { row ->
-                Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                    row.forEach { id ->
-                        key(id) {
-                            MfTvContentCard(
-                                title = sessionTitle(id),
-                                subtitle = "Room A · 45 minutes",
-                                onClick = { selected = id },
-                                modifier =
-                                    Modifier.weight(1f).focusRequester(requesters.getValue(id)).onFocusChanged {
-                                        if (it.isFocused) {
-                                            lastId = id
-                                            lastIndex = ids.indexOf(id)
-                                        }
-                                    },
-                            )
-                        }
+    MfTvTheme(dark = dark) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .background(
+                    MaterialTheme.colorScheme.background,
+                ).verticalScroll(rememberScrollState())
+                .padding(horizontal = 48.dp, vertical = 27.dp),
+            verticalArrangement = Arrangement.spacedBy(24.dp),
+        ) {
+            Text("Foundation studio · TV", style = MaterialTheme.typography.headlineLarge)
+            Text("Independent Compose for TV application · no SDK, services or credentials", fontSize = 20.sp)
+            Text("MfTvTheme / MfTvButton / MfTvContentCard / MfTvMessage · 20 sp text · 48 dp actions", fontSize = 20.sp)
+            if (selected != null) {
+                MfTvButton("Back to sessions", onClick = { selected = null }, modifier = Modifier.focusRequester(detailFocus))
+                Text(sessionTitle(checkNotNull(selected)), style = MaterialTheme.typography.headlineMedium)
+                Text("A long description can be read without a network or a MediaFlow SDK.", fontSize = 20.sp)
+            } else {
+                MfTvButton("Theme: ${if (dark) "dark" else "light"}", onClick = { dark = !dark })
+                MfTvButton("Reserve seat", onClick = {
+                    attempts++
+                    busy = true
+                }, busy = busy, busyDescription = "Reserving")
+                MfTvButton("Simulate failure", onClick = {
+                    busy = false
+                    message =
+                        "Request failed. Previous content retained; retry is explicit."
+                })
+                MfTvButton("Unavailable", onClick = { attempts += 100 }, enabled = false)
+                MfTvMessage("$message · attempts: $attempts")
+                Text(
+                    "Remote: arrows move focus; center activates; Back returns to the same stable item. Focus and selection differ; no geometric zoom.",
+                    fontSize = 20.sp,
+                )
+                MfTvButton("Remove focused session", onClick = {
+                    val index = ids.indexOf(lastId).coerceAtLeast(0)
+                    ids = ids.filterNot { it == lastId }
+                    lastIndex = index.coerceAtMost((ids.size - 1).coerceAtLeast(0))
+                    lastId = ids.getOrNull(lastIndex).orEmpty()
+                }, enabled = ids.isNotEmpty())
+                if (ids.isEmpty()) {
+                    MfTvMessage("No sessions remain.") {
+                        MfTvButton("Reset sessions", modifier = Modifier.focusRequester(resetFocus), onClick = {
+                            ids = (1..12).map { "session-$it" }
+                            lastId = ids.first()
+                        })
                     }
-                    repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
+                }
+                ids.chunked(4).forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                        row.forEach { id ->
+                            key(id) {
+                                MfTvContentCard(
+                                    title = sessionTitle(id),
+                                    subtitle = "Room A · 45 minutes",
+                                    onClick = { selected = id },
+                                    modifier =
+                                        Modifier.weight(1f).focusRequester(requesters.getValue(id)).onFocusChanged {
+                                            if (it.isFocused) {
+                                                lastId = id
+                                                lastIndex = ids.indexOf(id)
+                                            }
+                                        },
+                                )
+                            }
+                        }
+                        repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
+                    }
                 }
             }
         }

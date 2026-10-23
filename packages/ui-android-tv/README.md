@@ -10,6 +10,6 @@ MfTvTheme {
 }
 ```
 
-独立构建：`./gradlew :packages:ui-android-tv:assembleRelease`；无业务焦点宿主：`tools/ui-tv-consumer`。该宿主是会议条目测试，不是正式TV客户端。测试入口：`:packages:ui-android-tv:assembleDebugAndroidTest`，仅在指定模拟器运行`mediaflow.ui.tv.test/androidx.test.runner.AndroidJUnitRunner`。TV激活使用D-pad确认，触屏点击不是等价输入。
+独立构建：`./gradlew :packages:ui-android-tv:assembleRelease`；独立组件与规范应用：[Foundation studio TV](../../tools/ui-tv-consumer/README.md)。该独立 Foundation studio 应用展示公开 API、主题、受控操作、长标题卡片和稳定焦点恢复，安装启动与人工清单见工具应用 README。正式 TV 产品接入依赖服务端只读授权；现有管理员设备令牌不能仅靠隐藏写操作当作只读设备。测试入口：`:packages:ui-android-tv:assembleDebugAndroidTest`，仅在指定模拟器运行`mediaflow.ui.tv.test/androidx.test.runner.AndroidJUnitRunner`。TV激活使用D-pad确认，触屏点击不是等价输入。
 
 尚未发布。通用Android模拟器上的TV控件与D-pad测试不证明Android TV系统、真实遥控、长按、3m阅读、1080p/4K硬件或外部播放通过；tvOS没有本期实现。

@@ -14,6 +14,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: example.uifoundation.swift
         GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Foundation studio
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
         SWIFT_VERSION: "6.0"
         TARGETED_DEVICE_FAMILY: "1"
     dependencies:
