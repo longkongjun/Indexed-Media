@@ -10,7 +10,7 @@ Jetpack Compose 手机和平板正式 UI。
 
 ## 允许依赖
 
-`packages/kmp-sdk`、`packages/ui-contract`、`packages/test-fixtures`、`contracts`。
+`packages/ui-android`、`packages/kmp-sdk`、`packages/ui-contract`、`packages/test-fixtures`、`contracts`。
 
 ## 非目标
 
@@ -28,3 +28,5 @@ M5 第一批垂直切片已初始化（分支 `feature/m5-client`）：
 ## 后续验证
 
 `just client-check-android`；模拟器走查步骤见 `tools/client-fixture-server/README.md`。
+
+B1基础库消费只覆盖现有媒体列表/主题/分页Action，见[`packages/ui-android`](../../packages/ui-android/README.md)。这不代表整页高保真、导航/真实配对或设备验收已完成。

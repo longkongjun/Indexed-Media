@@ -44,6 +44,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
+import mediaflow.ui.android.MfButton
+import mediaflow.ui.android.MfContentCard
+import mediaflow.ui.android.MfTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -75,10 +78,10 @@ fun AppRoot(container: SdkContainer) {
         }
     }
 
-    MaterialTheme {
+    MfTheme {
         if (!loggedIn) {
             LoginScreen(login)
-            return@MaterialTheme
+            return@MfTheme
         }
         val screen = backStack.lastOrNull() ?: Screen.Wall
         BackHandler(enabled = backStack.isNotEmpty()) { backStack = backStack.dropLast(1) }
@@ -257,27 +260,13 @@ private fun WallList(
     }
     LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
         items(items, key = { it.id }) { item ->
-            Card(
+            MfContentCard(
+                title = item.title,
+                subtitle = "${typeLabel(item.type.toString())} · ${item.year ?: "—"} · ${statusLabel(item.localStatus.toString())}",
                 onClick = { openDetail(item) },
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 4.dp),
-            ) {
-                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        if (item.artworkRef?.state.toString() == "available") "▣" else "□",
-                        style = MaterialTheme.typography.headlineSmall,
-                    )
-                    Column(Modifier.padding(start = 12.dp)) {
-                        Text(item.title, style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            "${typeLabel(item.type.toString())} · ${item.year ?: "—"} · ${statusLabel(item.localStatus.toString())}",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                }
-            }
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                artwork = { Text(if (item.artworkRef?.state.toString() == "available") "▣" else "□") },
+            )
         }
         item {
             Row(
@@ -286,7 +275,7 @@ private fun WallList(
                     .padding(12.dp),
                 horizontalArrangement = Arrangement.Center,
             ) {
-                OutlinedButton(onClick = { vm.loadNext() }) { Text("加载更多") }
+                MfButton("加载更多", onClick = { vm.loadNext() })
             }
         }
     }
