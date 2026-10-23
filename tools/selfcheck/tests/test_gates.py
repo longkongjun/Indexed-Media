@@ -62,6 +62,10 @@ def workflow_policy_errors(text, workflow=""):
                 errors.append("candidate publication requires all trusted main gates")
     if workflow == "docker-publish.yml" and "    needs: promote" not in text:
         errors.append("Release publication requires successful promotion")
+    if workflow == "docker-publish.yml":
+        release = text.split("\n  release:\n", 1)[-1]
+        if "ref: ${{ github.workflow_sha }}" not in release:
+            errors.append("Release tooling must match the executing trusted workflow")
     return errors
 
 
@@ -103,6 +107,11 @@ class WorkflowPolicyTests(unittest.TestCase):
         for old in ("needs: [rust, rust-deps, contracts, web, infra]", "github.event_name == 'push'", "github.ref == 'refs/heads/main'"):
             with self.subTest(old=old):
                 self.assertIn("candidate publication requires all trusted main gates", workflow_policy_errors(text.replace(old, "removed"), "ci.yml"))
+
+    def test_release_recovery_cannot_select_the_old_tag_tooling(self):
+        text = (REPO / ".github/workflows/docker-publish.yml").read_text()
+        old_tag_tooling = text.replace("ref: ${{ github.workflow_sha }}", "ref: ${{ needs.promote.outputs.sha }}")
+        self.assertIn("Release tooling must match the executing trusted workflow", workflow_policy_errors(old_tag_tooling, "docker-publish.yml"))
 
 
 class GateTests(unittest.TestCase):

@@ -100,18 +100,29 @@ class ReleaseTests(unittest.TestCase):
             bundle = Path(directory) / 'bundle'
             publish.bundle(bundle, 'v1.2.3', SHA, publish.proof_for(SHA, DIGEST, 42), self.run)
             assets = {}
+            created = False
             draft = True
             fail_once = True
             edits = []
             def record():
-                return dict(draft=draft, prerelease=False, assets=list(assets.values()))
+                return dict(id=7, tag_name='v1.2.3', draft=draft, prerelease=False, assets=list(assets.values()))
             def command(*args):
-                nonlocal draft, fail_once
-                if args[:3] == ('gh', 'release', 'upload'):
+                nonlocal created, draft, fail_once
+                if args[:2] == ('gh', 'api'):
+                    self.assertEqual(args[4], f'/repos/{publish.REPO}/releases?per_page=100')
+                    self.assertIn('--paginate', args)
+                    self.assertIn('--slurp', args)
+                    return json.dumps([[dict(id=6, tag_name='v1.2.30')], [record()] if created else []])
+                if args[:3] == ('gh', 'release', 'create'):
+                    self.assertFalse(created, 'must resume the existing draft')
+                    self.assertIn('--draft', args)
+                    self.assertIn('--verify-tag', args)
+                    created = True
+                elif args[:3] == ('gh', 'release', 'upload'):
                     name = Path(args[4]).name
                     if name == 'roots.example.json' and fail_once:
                         fail_once = False
-                        raise subprocess.CalledProcessError(1, ['gh'])
+                        raise subprocess.CalledProcessError(1, args)
                     self.assertNotIn(name, assets)
                     assets[name] = dict(name=name, state='uploaded', digest='sha256:' + hashlib.sha256((bundle / name).read_bytes()).hexdigest())
                 elif args[:3] == ('gh', 'release', 'edit'):
@@ -120,16 +131,31 @@ class ReleaseTests(unittest.TestCase):
                     draft = False
                 return ''
             def api_run(*args, **kwargs):
-                return Mock(returncode=0, stdout=json.dumps(record()))
-            with patch.object(publish.subprocess, 'run', side_effect=api_run), patch.object(publish, 'api', side_effect=lambda path: {'sha': SHA} if '/commits/' in path else record()), patch.object(publish, 'command', side_effect=command):
-                with self.assertRaises(subprocess.CalledProcessError):
+                return Mock(returncode=1 if draft else 0, stderr='gh: Not Found (HTTP 404)', stdout=json.dumps(record()))
+            def api(path):
+                if '/commits/' in path:
+                    return {'sha': SHA}
+                if path == f'/repos/{publish.REPO}/releases/7':
+                    self.assertTrue(created)
+                    return record()
+                if '/releases/tags/' in path and draft:
+                    raise subprocess.CalledProcessError(1, ['gh', 'api', path], stderr='gh: Not Found (HTTP 404)')
+                self.fail(f'unexpected release API: {path}')
+            with patch.object(publish.subprocess, 'run', side_effect=api_run), patch.object(publish, 'api', side_effect=api), patch.object(publish, 'command', side_effect=command):
+                with self.assertRaises(subprocess.CalledProcessError) as failed:
                     publish.release('v1.2.3', bundle)
+                self.assertEqual(failed.exception.cmd[:3], ('gh', 'release', 'upload'))
+                self.assertEqual(len(assets), 3)
                 self.assertTrue(draft)
                 self.assertFalse(edits)
                 publish.release('v1.2.3', bundle)
                 self.assertFalse(draft)
                 self.assertEqual(len(edits), 1)
                 publish.release('v1.2.3', bundle)
+                self.assertEqual(len(edits), 1)
+                assets['compose.yaml']['digest'] = 'sha256:' + 'c' * 64
+                with self.assertRaisesRegex(ValueError, 'existing Release asset differs'):
+                    publish.release('v1.2.3', bundle)
                 self.assertEqual(len(edits), 1)
 
     def test_stale_main_candidate_cannot_move_edge(self):
@@ -154,19 +180,21 @@ class ReleaseTests(unittest.TestCase):
                 publish.candidate(proof)
             self.assertFalse(any("push" in call.args or "tag" in call.args for call in calls.call_args_list))
 
-    def test_release_refuses_tag_and_bundle_source_mismatch_before_writing(self):
+    def test_release_refuses_source_or_release_tag_mismatch_before_writing(self):
         import hashlib, json, tempfile
-        from unittest.mock import patch, Mock
+        from unittest.mock import patch
         with tempfile.TemporaryDirectory() as directory:
             bundle = Path(directory) / 'bundle'
             publish.bundle(bundle, 'v1.2.3', SHA, publish.proof_for(SHA, DIGEST, 42), self.run)
             assets = [dict(name=name, state='uploaded', digest='sha256:' + hashlib.sha256((bundle / name).read_bytes()).hexdigest())
                       for name in (*publish.FILES, 'checksums.txt')]
-            record = dict(draft=False, prerelease=False, assets=assets)
-            with patch.object(publish.subprocess, 'run', return_value=Mock(returncode=0, stdout=json.dumps(record))), patch.object(publish, 'api', side_effect=lambda path: {'sha': 'c' * 40} if '/commits/' in path else record), patch.object(publish, 'command') as command:
-                with self.assertRaises(ValueError):
-                    publish.release('v1.2.3', bundle)
-                command.assert_not_called()
+            for source, release_tag, message in [('c' * 40, 'v1.2.3', 'tag and bundle source differ'),
+                                                  (SHA, 'v9.9.9', 'Release tag differs')]:
+                record = dict(id=7, tag_name=release_tag, draft=False, prerelease=False, assets=assets)
+                with self.subTest(source=source, release_tag=release_tag), patch.object(publish, 'find_release', return_value=record), patch.object(publish, 'api', side_effect=lambda path: {'sha': source} if '/commits/' in path else record), patch.object(publish, 'command') as command:
+                    with self.assertRaisesRegex(ValueError, message):
+                        publish.release('v1.2.3', bundle)
+                    command.assert_not_called()
 
     def test_candidate_from_other_event_cannot_even_inspect_artifacts(self):
         from unittest.mock import patch
@@ -175,6 +203,17 @@ class ReleaseTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 publish.trusted_candidate(SHA)
             self.assertEqual(api.call_count, 1)
+
+    def test_release_lookup_rejects_api_errors_and_ambiguous_tag(self):
+        import json
+        import subprocess
+        from unittest.mock import patch
+        with patch.object(publish, 'command', side_effect=subprocess.CalledProcessError(1, ['gh'], stderr='HTTP 403')):
+            with self.assertRaises(subprocess.CalledProcessError):
+                publish.find_release('v1.2.3')
+        with patch.object(publish, 'command', return_value=json.dumps([[{'tag_name': 'v1.2.3', 'id': 7}], [{'tag_name': 'v1.2.3', 'id': 8}]])):
+            with self.assertRaisesRegex(ValueError, 'multiple Releases'):
+                publish.find_release('v1.2.3')
 
 
 if __name__ == '__main__':

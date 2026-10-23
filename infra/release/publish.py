@@ -199,6 +199,15 @@ def promote(tag, output):
     bundle(output, tag, sha, proof, run)
 
 
+def find_release(tag):
+    # The tag endpoint only promises published releases; drafts need the authenticated list.
+    pages = json.loads(command('gh', 'api', '--hostname', 'github.com',
+                               f'/repos/{REPO}/releases?per_page=100', '--paginate', '--slurp'))
+    matches = [record for page in pages for record in page if record.get('tag_name') == tag]
+    require(len(matches) <= 1, 'multiple Releases match the tag')
+    return matches[0] if matches else None
+
+
 def release(tag, output):
     number = version(tag)
     manifest = json.loads((output / 'release.json').read_text())
@@ -210,14 +219,15 @@ def release(tag, output):
     spec.loader.exec_module(installer)
     installer.load_bundle(output, hashlib.sha256((output / 'checksums.txt').read_bytes()).hexdigest())
     require(api(f'/repos/{REPO}/commits/{tag}').get('sha') == manifest['source_sha'], 'tag and bundle source differ')
-    existing = subprocess.run(['gh', 'api', f'/repos/{REPO}/releases/tags/{tag}'], capture_output=True, text=True, timeout=60)
-    if existing.returncode:
-        require('(HTTP 404)' in existing.stderr, 'cannot inspect existing Release')
+    record = find_release(tag)
+    if record is None:
         command('gh', 'release', 'create', tag, '--repo', REPO, '--verify-tag', '--draft', '--title', tag,
                 '--notes-file', str(output / 'release-notes.md'))
-        record = api(f'/repos/{REPO}/releases/tags/{tag}')
-    else:
-        record = json.loads(existing.stdout)
+        record = find_release(tag)
+    require(record is not None, 'created Release is not visible to the publishing token')
+    release_id = record['id']
+    record = api(f'/repos/{REPO}/releases/{release_id}')
+    require(record.get('tag_name') == tag, 'Release tag differs from requested tag')
     require(not record.get('prerelease'), 'prerelease is not an installable version')
     assets = {a['name']: a for a in record['assets']}
     for name in (*FILES, 'checksums.txt'):
@@ -227,7 +237,8 @@ def release(tag, output):
         else:
             require(record['draft'], 'published Release is incomplete; do not mutate it')
             command('gh', 'release', 'upload', tag, str(output / name), '--repo', REPO)
-    final = api(f'/repos/{REPO}/releases/tags/{tag}')
+    final = api(f'/repos/{REPO}/releases/{release_id}')
+    require(final.get('tag_name') == tag, 'Release tag differs from requested tag')
     assets = {a['name']: a for a in final['assets']}
     require(set(assets) == set(FILES) | {'checksums.txt'}, 'unexpected/missing release assets')
     for name, asset in assets.items():
