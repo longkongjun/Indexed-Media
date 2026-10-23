@@ -1,0 +1,37 @@
+name: UIFoundationConsumer
+options:
+  deploymentTarget:
+    iOS: "16.0"
+packages:
+  MediaFlowUI:
+    path: ../../packages/ui-swift
+targets:
+  UIFoundationConsumer:
+    type: application
+    platform: iOS
+    sources: [Sources]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: example.uifoundation.swift
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: "6.0"
+        TARGETED_DEVICE_FAMILY: "1"
+    dependencies:
+      - package: MediaFlowUI
+  UIFoundationConsumerTests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [UITests]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: example.uifoundation.swift.tests
+        GENERATE_INFOPLIST_FILE: YES
+    dependencies:
+      - target: UIFoundationConsumer
+schemes:
+  UIFoundationConsumer:
+    build:
+      targets:
+        UIFoundationConsumer: all
+    test:
+      targets: [UIFoundationConsumerTests]

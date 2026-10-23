@@ -1,4 +1,5 @@
 import MediaFlowKit
+import MediaFlowUI
 import SwiftUI
 
 @main
@@ -7,8 +8,7 @@ struct MediaFlowApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView()
-                .environmentObject(model)
+            MfTheme { RootView().environmentObject(model) }
         }
     }
 }
@@ -115,21 +115,16 @@ struct WallView: View {
     var body: some View {
         List {
             ForEach(model.wallItems, id: \.id) { item in
-                Button {
-                    model.path.append(Screen.detail(id: item.id, title: item.title))
-                } label: {
-                    HStack {
-                        Text(item.hasArtwork ? "▣" : "□").font(.title2)
-                        VStack(alignment: .leading) {
-                            Text(item.title).font(.headline)
-                            Text("\(item.typeLabel) · \(item.yearLabel) · \(item.statusLabel)")
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
+                MfContentRow(
+                    item.title,
+                    subtitle: "\(item.typeLabel) · \(item.yearLabel) · \(item.statusLabel)",
+                    action: { model.path.append(Screen.detail(id: item.id, title: item.title)) }
+                ) {
+                    Text(item.hasArtwork ? "▣" : "□").font(.title2)
                 }
             }
             if model.wallHasMore {
-                Button("加载更多") { model.loadMoreWall() }
+                MfButton("加载更多") { model.loadMoreWall() }
             }
         }
         .refreshable { await model.reloadWall() }

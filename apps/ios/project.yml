@@ -14,6 +14,10 @@ settings:
     CODE_SIGNING_ALLOWED: "YES"
     CODE_SIGN_IDENTITY: "-"
 
+packages:
+  MediaFlowUI:
+    path: ../../packages/ui-swift
+
 targets:
   MediaFlowiOS:
     type: application
@@ -39,6 +43,7 @@ targets:
           cd "$SRCROOT/../.."
           ./gradlew :packages:kmp-sdk:linkDebugFrameworkIosSimulatorArm64 --console=plain
     dependencies:
+      - package: MediaFlowUI
       - framework: ../../packages/kmp-sdk/build/bin/iosSimulatorArm64/debugFramework/MediaFlowKit.framework
         embed: true
         codeSign: false
