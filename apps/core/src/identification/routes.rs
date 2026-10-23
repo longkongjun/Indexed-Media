@@ -1,5 +1,3 @@
-#![allow(clippy::needless_pass_by_value)]
-
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -565,6 +563,8 @@ fn normalize_query(value: &str) -> Result<String, AppError> {
     Ok(normalized)
 }
 
+// 提供方结果按值进入投影，保持现有候选转换边界。
+#[allow(clippy::needless_pass_by_value)]
 fn review_candidate(
     candidate: MetadataCandidate,
     requested_type: ReviewMediaType,

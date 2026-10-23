@@ -18,7 +18,7 @@ export type EventSourceFactory = (url: string) => EventSourceLike;
 /** Vue 注入键，用于在应用或测试中覆盖任务事件连接的创建方式。 */
 export const taskEventSourceFactoryKey: InjectionKey<EventSourceFactory> = Symbol("mediaflow-event-source-factory");
 interface Options {
-  eventSourceFactory?: EventSourceFactory;
+  eventSourceFactory?: EventSourceFactory | undefined;
   refreshRelated?: () => Promise<void>;
   onUnauthorized?: () => unknown;
 }

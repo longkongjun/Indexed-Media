@@ -41,9 +41,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import kotlinx.coroutines.launch
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.launch
+import mediaflow.ui.android.MfButton
+import mediaflow.ui.android.MfContentCard
+import mediaflow.ui.android.MfTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -75,10 +78,10 @@ fun AppRoot(container: SdkContainer) {
         }
     }
 
-    MaterialTheme {
+    MfTheme {
         if (!loggedIn) {
             LoginScreen(login)
-            return@MaterialTheme
+            return@MfTheme
         }
         val screen = backStack.lastOrNull() ?: Screen.Wall
         BackHandler(enabled = backStack.isNotEmpty()) { backStack = backStack.dropLast(1) }
@@ -93,7 +96,10 @@ fun AppRoot(container: SdkContainer) {
                     },
                     actions = {
                         if (backStack.isEmpty()) {
-                            OutlinedButton(onClick = { scope.launch { container.authRepository.logout() } ; login.forceLoggedOut() }) { Text("退出") }
+                            OutlinedButton(onClick = {
+                                scope.launch { container.authRepository.logout() }
+                                login.forceLoggedOut()
+                            }) { Text("退出") }
                         }
                     },
                 )
@@ -174,10 +180,20 @@ fun LoginScreen(vm: LoginViewModel) {
         }
         Text("设备名：$deviceName", style = MaterialTheme.typography.bodySmall)
         if (pairing) {
-            OutlinedTextField(value = code, onValueChange = { code = it }, label = { Text("8 位配对码（Web 管理页签发）") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(
+                value = code,
+                onValueChange = { code = it },
+                label = { Text("8 位配对码（Web 管理页签发）") },
+                modifier = Modifier.fillMaxWidth(),
+            )
         } else {
             OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("管理员") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text("密码") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(
+                value = password,
+                onValueChange = { password = it },
+                label = { Text("密码") },
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
         error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         Button(
@@ -189,7 +205,8 @@ fun LoginScreen(vm: LoginViewModel) {
                 }
             },
             enabled =
-                !busy && baseUrl.isNotBlank() &&
+                !busy &&
+                    baseUrl.isNotBlank() &&
                     if (pairing) code.isNotBlank() else (name.isNotBlank() && password.isNotBlank()),
             modifier = Modifier.fillMaxWidth(),
         ) {
@@ -235,31 +252,21 @@ private fun WallList(
 ) {
     val listState = rememberLazyListState()
     LaunchedEffect(items.size) {
-        val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+        val last =
+            listState.layoutInfo.visibleItemsInfo
+                .lastOrNull()
+                ?.index ?: 0
         if (items.isNotEmpty() && last >= items.size - 4) vm.loadNext()
     }
     LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
         items(items, key = { it.id }) { item ->
-            Card(
+            MfContentCard(
+                title = item.title,
+                subtitle = "${typeLabel(item.type.toString())} · ${item.year ?: "—"} · ${statusLabel(item.localStatus.toString())}",
                 onClick = { openDetail(item) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 4.dp),
-            ) {
-                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        if (item.artworkRef?.state.toString() == "available") "▣" else "□",
-                        style = MaterialTheme.typography.headlineSmall,
-                    )
-                    Column(Modifier.padding(start = 12.dp)) {
-                        Text(item.title, style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            "${typeLabel(item.type.toString())} · ${item.year ?: "—"} · ${statusLabel(item.localStatus.toString())}",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                }
-            }
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                artwork = { Text(if (item.artworkRef?.state.toString() == "available") "▣" else "□") },
+            )
         }
         item {
             Row(
@@ -268,7 +275,7 @@ private fun WallList(
                     .padding(12.dp),
                 horizontalArrangement = Arrangement.Center,
             ) {
-                OutlinedButton(onClick = { vm.loadNext() }) { Text("加载更多") }
+                MfButton("加载更多", onClick = { vm.loadNext() })
             }
         }
     }
@@ -367,9 +374,10 @@ private fun CaseList(
         items(cases, key = { it.id }) { case ->
             Card(
                 onClick = { openConfirm(case.id) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 4.dp),
             ) {
                 Column(Modifier.padding(12.dp)) {
                     Text(case.titleHint ?: case.relativePath, style = MaterialTheme.typography.titleMedium)
@@ -436,9 +444,10 @@ fun ConfirmScreen(
                             val candidate = ui.candidates[index]
                             Card(
                                 onClick = { vm.submitSelectCandidate(index) },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 4.dp),
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 4.dp),
                             ) {
                                 Column(Modifier.padding(12.dp)) {
                                     Text(candidate.title, style = MaterialTheme.typography.titleMedium)
@@ -504,9 +513,10 @@ private fun TaskList(
     LazyColumn(Modifier.fillMaxSize()) {
         items(tasks, key = { it.id }) { task ->
             Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 4.dp),
             ) {
                 Row(
                     Modifier

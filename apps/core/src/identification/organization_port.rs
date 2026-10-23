@@ -80,8 +80,9 @@ impl SqliteOrganizationIdentityPort {
 }
 
 #[async_trait]
-#[allow(clippy::too_many_lines)]
 impl OrganizationIdentityPort for SqliteOrganizationIdentityPort {
+    // 保留单次确认身份查询/解码流程，长度例外仅限此方法。
+    #[allow(clippy::too_many_lines)]
     async fn confirmed_identity(
         &self,
         account_id: Uuid,

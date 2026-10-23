@@ -6,7 +6,7 @@
  */
 import { nextTick, onMounted, ref, watch } from "vue";
 /** 消息、可选字段目标/标题，以及让重复错误再次触发焦点的发生键。 */
-const props = defineProps<{ message?: string; field?: string; heading?: string; focusKey?: string | number }>();
+const props = defineProps<{ message?: string | undefined; field?: string | undefined; heading?: string; focusKey?: string | number }>();
 const summary = ref<HTMLElement | null>(null);
 async function focusSummary(): Promise<void> { if (props.message) { await nextTick(); summary.value?.focus(); } }
 watch([() => props.message, () => props.focusKey], focusSummary);

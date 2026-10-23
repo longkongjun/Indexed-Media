@@ -6,10 +6,10 @@
  * `catalog.media-changed` SSE 事件触发有界刷新，会话状态仅用于认证失败处理。
  */
 import type { MediaItemListOptions, TaskEventEnvelope } from "@mediaflow/api-client-ts";
-import { computed, inject, onBeforeUnmount, onMounted, reactive, watch } from "vue";
+import { MfButton, MfContentCard, MfRequestState } from "@mediaflow/ui-vue";
+import { computed, inject, onBeforeUnmount, onMounted, reactive, watch, nextTick } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useSessionStore } from "../app/session";
-import AsyncState from "../components/AsyncState.vue";
 import CursorPager from "../components/CursorPager.vue";
 import MediaArtwork from "../components/MediaArtwork.vue";
 import { handleAuthenticatedFailure } from "../components/apiErrors";
@@ -59,7 +59,21 @@ async function applyFilters(): Promise<void> {
     query: filters.query.trim() || undefined,
   }) });
 }
-async function refresh(): Promise<void> { await feature.load(context.value); }
+const hasFilters = computed(() => Boolean(context.value.type || context.value.libraryId || context.value.localStatus || context.value.query));
+async function clearFilters(): Promise<void> {
+  await router.replace({ query: {} });
+  await nextTick();
+  document.querySelector<HTMLInputElement>('[data-media-list] input[maxlength="200"]')?.focus();
+}
+async function refresh(restoreFocus = false): Promise<void> {
+  await feature.load(context.value);
+  await nextTick();
+  if (restoreFocus) {
+    const target = feature.state.value.kind === "error" || feature.state.value.kind === "offline"
+      ? '[data-media-list] [data-media-request] button' : '[data-media-list] input[maxlength="200"]';
+    document.querySelector<HTMLElement>(target)?.focus();
+  }
+}
 const events = useProjectionEvents({
   refresh,
   eventTypes: ["catalog.media-changed"],
@@ -84,18 +98,21 @@ watch(() => route.fullPath, () => { syncControls(); return refresh(); });
       <label>本地状态<select v-model="filters.status"><option value="">全部</option><option value="complete">完整</option><option value="partial">部分</option></select></label>
       <label>媒体库 ID<input v-model="filters.library" maxlength="36"></label>
       <label>关键字<input v-model="filters.query" maxlength="200"></label>
-      <button type="submit">应用筛选</button>
+      <MfButton type="submit">应用筛选</MfButton>
     </form>
-    <AsyncState :state="feature.state.value" :error-message="feature.errorMessage.value" empty-message="尚无已整理媒体" offline-message="当前离线，保留上次正式媒体结果" @retry="refresh">
+    <MfRequestState data-media-request :state="feature.state.value" :error-message="feature.errorMessage.value" :empty-message="hasFilters ? '无匹配结果，请调整或清除筛选' : '尚无已整理媒体'" offline-message="当前离线，保留上次正式媒体结果" @retry="refresh(true)">
+      <template #empty><MfButton v-if="hasFilters" @activate="clearFilters">清除筛选</MfButton></template>
       <ul class="card-list media-card-list">
-        <li v-for="item in feature.items.value" :key="item.id" class="resource-card">
-          <MediaArtwork :artwork="item.artwork_ref" :title="item.title" />
-          <RouterLink :to="{ name: 'media-item', params: { id: item.id }, query: queryFor(context) }"><strong>{{ item.title }}</strong><span>{{ item.type }} · {{ item.year ?? '年份未知' }} · {{ item.local_status === 'partial' ? '部分结果' : '完整' }}</span></RouterLink>
+        <li v-for="item in feature.items.value" :key="item.id">
+          <MfContentCard :title="item.title" :subtitle="`${item.type} · ${item.year ?? '年份未知'} · ${item.local_status === 'partial' ? '部分结果' : '完整'}`">
+            <template #artwork><MediaArtwork :artwork="item.artwork_ref" :title="item.title" decorative /></template>
+            <template #title><RouterLink :to="{ name: 'media-item', params: { id: item.id }, query: queryFor(context) }">{{ item.title }}</RouterLink></template>
+          </MfContentCard>
         </li>
       </ul>
       <CursorPager :has-previous-context="Boolean(context.cursor)" :next-cursor="feature.nextCursor.value" @previous="router.push({ query: queryFor({ ...context, cursor: undefined }) })" @next="router.push({ query: queryFor({ ...context, cursor: $event }) })" />
-    </AsyncState>
-    <p v-if="feature.state.value.kind === 'empty'" class="empty-action">处理任务完成并产生已核对本地结果后才会出现在这里。<RouterLink to="/tasks">查看任务</RouterLink></p>
+    </MfRequestState>
+    <p v-if="feature.state.value.kind === 'empty' && !hasFilters" class="empty-action">处理任务完成并产生已核对本地结果后才会出现在这里。<RouterLink to="/tasks">查看任务</RouterLink></p>
     <p v-if="events.diagnostic.value" class="visually-hidden">{{ events.diagnostic.value }}</p>
   </main>
 </template>

@@ -10,7 +10,7 @@ SwiftUI iPhone/iPad 正式 UI。
 
 ## 允许依赖
 
-`packages/kmp-sdk`、`packages/ui-contract`、`packages/test-fixtures`、`contracts`。
+`packages/ui-swift`、`packages/kmp-sdk`、`packages/ui-contract`、`packages/test-fixtures`、`contracts`。
 
 ## 非目标
 
@@ -27,3 +27,9 @@ M5 第一批垂直切片已初始化（分支 `feature/m5-client`）：
 ## 后续验证
 
 `cd apps/ios && xcodegen generate && xcodebuild test -project MediaFlow.xcodeproj -scheme MediaFlowiOS -destination 'platform=iOS Simulator,name=iPhone 17'`。
+
+## 工程检查
+
+`just client-check-ios` 使用固定版本 SwiftLint、XcodeGen 和 `MediaFlowiOS` 普通 XCTest。工具、模拟器选择与独立日志/xcresult 见[检查说明](../../docs/development/checks.md)。`MediaFlowiOSUI` 的真实 Core UI、真机签名与设备验收是独立出口。
+
+B1基础库消费只覆盖现有媒体列表/主题/分页Action，见[`packages/ui-swift`](../../packages/ui-swift/README.md)。Screen路径到既有目标页的destination注册已补齐，新增正式媒体行进入详情/返回的UI回归用例。完整Xcode/iOS SDK缺失，当前只做语法检查；该回归需要真实Core、Web签发配对码与正式媒体，缺任一项保持待验。这不代表整页高保真、导航运行/真实配对或设备验收已完成。

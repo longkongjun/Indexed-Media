@@ -10,6 +10,7 @@ import mediaflow.client.core.error.MediaFlowError
  * 生成 API 调用的统一包装：成功取 body，非 2xx 经 [ErrorMapping] 归类为
  * [MediaFlowError.Http]（尽力解码错误信封），传输异常不外抛。
  */
+@Suppress("TooGenericExceptionCaught") // 统一映射传输/解码错误；先重抛 CancellationException。
 suspend fun <T : Any> apiCall(
     json: Json,
     call: suspend () -> HttpResponse<T>,

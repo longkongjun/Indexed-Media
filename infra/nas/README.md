@@ -21,3 +21,7 @@ M2 说明见[绿联 DXP 4800 Plus 部署与人工验收](ugreen-dxp4800-plus.md)
 ## 后续验证
 
 `just check-nas` 验证 NAS 文档门槛；仍不代表实机验收。
+
+## 镜像发布包首装
+
+[镜像发布与空白NAS首次安装](../../docs/operations/image-release-first-install.md)说明可信Release、JSON配置及`install.py check/plan/install`。仅接受尚不存在的新实例目录；已有实例拒绝覆盖，运行时和目标NAS验收独立于静态检查。边界回归使用`just check-release-tools`。

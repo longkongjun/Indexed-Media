@@ -37,6 +37,7 @@ class AuthRepository(
     private val json: Json,
 ) {
     /** 管理员登录（cookie 会话通道）；成功返回持久化的凭据。 */
+    @Suppress("TooGenericExceptionCaught") // 统一映射传输/解码错误；先重抛 CancellationException。
     suspend fun login(
         administratorName: String,
         password: String,
@@ -100,6 +101,7 @@ class AuthRepository(
      * 设备令牌自轮换：服务端原子替换摘要后返回新令牌；失败时旧令牌保持可用。
      * 成功即更新本地凭据。
      */
+    @Suppress("TooGenericExceptionCaught") // 统一映射传输/解码错误；先重抛 CancellationException。
     suspend fun rotateDeviceToken(): SdkResult<StoredCredentials> =
         try {
             val response = httpClient.post("/api/v1/devices/current/token-rotation")
@@ -124,6 +126,7 @@ class AuthRepository(
      * 登出：按通道失效服务端凭据并清空本地；网络失败也清本地（会话终将过期，
      * 设备令牌可在管理面吊销）。
      */
+    @Suppress("TooGenericExceptionCaught") // 统一映射传输/解码错误；先重抛 CancellationException。
     suspend fun logout(): SdkResult<Unit> =
         try {
             when (val credentials = authCache.current()) {
@@ -165,6 +168,7 @@ class AuthRepository(
             SdkResult.Failure(ErrorMapping.fromThrowable(failure))
         }
 
+    @Suppress("TooGenericExceptionCaught") // 统一映射传输/解码错误；先重抛 CancellationException。
     private suspend fun enroll(input: DeviceEnrollmentInput): SdkResult<StoredCredentials> =
         try {
             val response =

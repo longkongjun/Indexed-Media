@@ -40,16 +40,7 @@ async fn identical_searches_single_flight_then_use_fresh_and_stale_cache() {
         },
     )
     .unwrap();
-    let provider = TmdbProvider::new(
-        db.pool().clone(),
-        client,
-        TmdbCachePolicy {
-            search_fresh: Duration::from_millis(40),
-            detail_fresh: Duration::from_millis(40),
-            negative_fresh: Duration::from_millis(20),
-            stale_grace: Duration::from_secs(1),
-        },
-    );
+    let provider = TmdbProvider::new(db.pool().clone(), client, TmdbCachePolicy::default());
     let request = TmdbSearchRequest {
         media_kind: ProviderMediaKind::Movie,
         title: "Dune".to_owned(),
@@ -87,7 +78,7 @@ async fn identical_searches_single_flight_then_use_fresh_and_stale_cache() {
     assert_eq!(fresh[0].cache_status, CacheStatus::Fresh);
     assert_eq!(state.calls.load(Ordering::SeqCst), 1);
 
-    tokio::time::sleep(Duration::from_millis(60)).await;
+    expire_cache_freshness(db.pool()).await;
     state.mode.store(1, Ordering::SeqCst);
     let stale_candidates = provider
         .search(
@@ -155,6 +146,15 @@ async fn negative_results_use_the_short_negative_cache_ttl() {
             .unwrap(),
         "not-found"
     );
+    let fresh_for_us = sqlx::query_scalar::<_, i64>(
+        "SELECT fresh_until_us-updated_at_us FROM connectors_tmdb_cache",
+    )
+    .fetch_one(db.pool())
+    .await
+    .unwrap();
+    let fresh_for = Duration::from_micros(u64::try_from(fresh_for_us).unwrap());
+    assert_eq!(fresh_for, TmdbCachePolicy::default().negative_fresh);
+    assert!(fresh_for < TmdbCachePolicy::default().search_fresh);
 }
 
 #[tokio::test]
@@ -171,11 +171,7 @@ async fn cached_detail_is_available_during_a_temporary_provider_outage() {
     let provider = TmdbProvider::new(
         db.pool().clone(),
         TmdbClient::for_test_loopback(server.origin.clone(), TmdbClientOptions::default()).unwrap(),
-        TmdbCachePolicy {
-            detail_fresh: Duration::from_millis(20),
-            stale_grace: Duration::from_secs(1),
-            ..TmdbCachePolicy::default()
-        },
+        TmdbCachePolicy::default(),
     );
 
     let first = provider
@@ -190,7 +186,7 @@ async fn cached_detail_is_available_during_a_temporary_provider_outage() {
     assert_eq!(first.summaries.len(), 2);
     assert_eq!(state.calls.load(Ordering::SeqCst), 3);
 
-    tokio::time::sleep(Duration::from_millis(30)).await;
+    expire_cache_freshness(db.pool()).await;
     state.mode.store(1, Ordering::SeqCst);
     let stale_detail = provider
         .details(
@@ -262,6 +258,14 @@ async fn cancelling_the_single_flight_owner_does_not_leave_a_stuck_query_key() {
     .expect("single-flight key released")
     .unwrap();
     assert_eq!(result[0].identity.provider_id, 438_631);
+}
+
+async fn expire_cache_freshness(pool: &sqlx::SqlitePool) {
+    let result = sqlx::query("UPDATE connectors_tmdb_cache SET fresh_until_us=0")
+        .execute(pool)
+        .await
+        .unwrap();
+    assert_eq!(result.rows_affected(), 1);
 }
 
 #[derive(Default)]

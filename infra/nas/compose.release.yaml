@@ -1,0 +1,62 @@
+services:
+  mediaflow:
+    image: "${MEDIAFLOW_IMAGE:?Use the verified release digest}"
+    user: "${PUID:-1000}:${PGID:-1000}"
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    ports:
+      - "${MEDIAFLOW_BIND_ADDRESS:-0.0.0.0}:${MEDIAFLOW_PORT:-3000}:3000"
+    environment:
+      MEDIAFLOW_MODE: production
+      MEDIAFLOW_LISTEN: 0.0.0.0:3000
+      MEDIAFLOW_CONFIG_DIR: /config
+      MEDIAFLOW_WEB_DIST: /app/web
+      MEDIAFLOW_DEPLOYMENT_ROOTS_FILE: /run/mediaflow/deployment-roots.json
+      MEDIAFLOW_BOOTSTRAP_SECRET_FILE: /run/secrets/mediaflow-bootstrap
+      MEDIAFLOW_PUBLIC_ORIGIN: "${MEDIAFLOW_PUBLIC_ORIGIN:?Set the trusted public HTTPS origin}"
+      MEDIAFLOW_TRUSTED_PROXY_CIDRS: "${MEDIAFLOW_TRUSTED_PROXY_CIDRS:?Set the reverse proxy source CIDR}"
+      TZ: "${TZ:-Asia/Shanghai}"
+    volumes:
+      - type: bind
+        source: "${MEDIAFLOW_CONFIG_PATH:?Set the verified installation path}"
+        target: /config
+        read_only: false
+        bind:
+          create_host_path: false
+      - type: bind
+        source: "${MEDIAFLOW_INCOMING_PATH:?Set the verified installation path}"
+        target: /data/incoming
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: "${MEDIAFLOW_MEDIA_PATH:?Set the verified installation path}"
+        target: /data/media
+        read_only: false
+        bind:
+          create_host_path: false
+      - type: bind
+        source: "${MEDIAFLOW_ROOTS_CONFIG_PATH:?Set the verified installation path}"
+        target: /run/mediaflow/deployment-roots.json
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: "${MEDIAFLOW_BOOTSTRAP_SECRET_PATH:?Set the verified installation path}"
+        target: /run/secrets/mediaflow-bootstrap
+        read_only: true
+        bind:
+          create_host_path: false
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/healthcheck.sh"]
+      interval: 30s
+      timeout: 6s
+      start_period: 15s
+      retries: 3
+    stop_grace_period: 30s

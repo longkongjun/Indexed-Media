@@ -8,7 +8,7 @@ import { isAmbiguousWriteFailure, isOffline, safeApiError, type AuthenticatedFai
  *
  * `status` 是客户端过滤条件，`cursor` 选择服务端页面，`scrollKey` 标识从详情页返回后应恢复的列表卡片。
  */
-export interface TaskListContext { status?: string; cursor?: string; scrollKey?: string }
+export interface TaskListContext { status?: string | undefined; cursor?: string | undefined; scrollKey?: string | undefined }
 
 /**
  * 管理一页游标扫描任务及其可恢复的路由上下文。

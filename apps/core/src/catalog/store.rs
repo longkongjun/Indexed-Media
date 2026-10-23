@@ -1,5 +1,3 @@
-#![allow(clippy::too_many_lines)]
-
 use std::collections::{HashMap, HashSet};
 
 use base64::Engine as _;
@@ -72,6 +70,8 @@ impl CatalogStore {
     /// 媒体树不合法时返回校验错误，任务或 revision 不属于账户时返回未找到；同一
     /// `result_id` 被不同内容复用时返回冲突，数据库事务失败时返回内部错误。相同账户、
     /// 标识和内容的重放是幂等的，不会重复生成目录变更事件。
+    // 保留现有事务/投影流程的连续性，拆分需另行行为验证。
+    #[allow(clippy::too_many_lines)]
     pub async fn apply_verified_local_result(
         &self,
         account_id: Uuid,
@@ -353,6 +353,8 @@ impl CatalogStore {
     /// # Errors
     ///
     /// 跨账户读取时返回未找到；已存图超过边界、持久化或解码失败时返回内部错误。
+    // 保留现有事务/投影流程的连续性，拆分需另行行为验证。
+    #[allow(clippy::too_many_lines)]
     pub async fn detail(
         &self,
         account_id: Uuid,
@@ -526,6 +528,8 @@ async fn clear_projection(
     Ok(())
 }
 
+// 保留现有事务/投影流程的连续性，拆分需另行行为验证。
+#[allow(clippy::too_many_lines)]
 async fn insert_projection(
     tx: &mut sqlx::Transaction<'_, Sqlite>,
     account_id: Uuid,
@@ -633,6 +637,8 @@ async fn insert_projection(
     Ok(())
 }
 
+// 保留现有事务/投影流程的连续性，拆分需另行行为验证。
+#[allow(clippy::too_many_lines)]
 fn validate_result(result: &VerifiedLocalResult) -> Result<(), AppError> {
     validate_text(&result.media.title, 512, "catalog title")?;
     if result

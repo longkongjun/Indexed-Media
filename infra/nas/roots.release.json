@@ -1,0 +1,6 @@
+{
+  "roots": [
+    {"id":"incoming","label":"下载完成","container_path":"/data/incoming","access":"read-only"},
+    {"id":"media","label":"媒体目标","container_path":"/data/media","access":"read-write"}
+  ]
+}

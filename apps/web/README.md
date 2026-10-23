@@ -10,7 +10,7 @@ Vue Web/PWA 正式 UI。
 
 ## 允许依赖
 
-`packages/api-client-ts`、`packages/ui-contract`、`packages/test-fixtures`、`contracts`。
+`packages/ui-vue`、`packages/api-client-ts`、`packages/ui-contract`、`packages/test-fixtures`、`contracts`。
 
 ## 非目标
 
@@ -27,3 +27,7 @@ Core 业务逻辑、原生移动端或 TV UI、播放以及 `labs` 下的实验�
 ## 后续验证
 
 `just check-web` 验证类型、全量组件、生产构建/体积与 M2/M3/M4/审批链/主题桌面移动 Playwright；`just check-ui-contract` 验证页面状态权威包；设计 token 与对比度基线由 `labs/design-system` 自带检查维护；M3 人工审核聚合使用 `just check-m3-review-admin`，安全整理聚合使用 `just check-m3-safe-organization`，M4 Change 2 聚合使用 `CI=true just check-m4-source-automation`。真实文件/mount、RSS、下载器和 Ollama 验收由 Core 的独立 live 入口负责，Web mock/E2E 不替代它们。M2 单容器与目标 NAS 部署证据由对应运维门禁独立维护。
+
+Web公开的build/typecheck/test/lint命令会先构建`@mediaflow/ui-vue`，不依赖工作区已有dist；容器Web阶段同时复制该包的manifest与源码。
+
+B1必要消费：媒体筛选提交使用正式`MfButton`，CSS从公开入口在应用token前加载；表单提交仍由页面处理。该消费不代表媒体页高保真或完整Web基础库完成。

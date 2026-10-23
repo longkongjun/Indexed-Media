@@ -1,4 +1,5 @@
 import MediaFlowKit
+import MediaFlowUI
 import SwiftUI
 
 @main
@@ -7,8 +8,7 @@ struct MediaFlowApp: App {
 
     var body: some Scene {
         WindowGroup {
-            RootView()
-                .environmentObject(model)
+            MfTheme { RootView().environmentObject(model) }
         }
     }
 }
@@ -47,10 +47,24 @@ struct RootView: View {
 
     var body: some View {
         NavigationStack(path: $model.path) {
-            if model.loggedIn {
-                TabRootView()
-            } else {
-                LoginView()
+            Group {
+                if model.loggedIn {
+                    TabRootView()
+                } else {
+                    LoginView()
+                }
+            }
+            .navigationDestination(for: Screen.self) { screen in
+                switch screen {
+                case .detail:
+                    DetailView(screen: screen)
+                case .confirm:
+                    ConfirmView(screen: screen)
+                case .login:
+                    LoginView()
+                case let .tab(tab):
+                    TabRootView().onAppear { model.tab = tab }
+                }
             }
         }
     }
@@ -115,21 +129,17 @@ struct WallView: View {
     var body: some View {
         List {
             ForEach(model.wallItems, id: \.id) { item in
-                Button {
-                    model.path.append(Screen.detail(id: item.id, title: item.title))
-                } label: {
-                    HStack {
-                        Text(item.hasArtwork ? "▣" : "□").font(.title2)
-                        VStack(alignment: .leading) {
-                            Text(item.title).font(.headline)
-                            Text("\(item.typeLabel) · \(item.yearLabel) · \(item.statusLabel)")
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
+                MfContentRow(
+                    item.title,
+                    subtitle: "\(item.typeLabel) · \(item.yearLabel) · \(item.statusLabel)",
+                    action: { model.path.append(Screen.detail(id: item.id, title: item.title)) }
+                ) {
+                    Text(item.hasArtwork ? "▣" : "□").font(.title2)
                 }
+                .accessibilityIdentifier("media-row-\(item.id)")
             }
             if model.wallHasMore {
-                Button("加载更多") { model.loadMoreWall() }
+                MfButton("加载更多") { model.loadMoreWall() }
             }
         }
         .refreshable { await model.reloadWall() }
@@ -181,6 +191,7 @@ struct DetailView: View {
             }
         }
         .navigationTitle(screenTitle(screen))
+        .accessibilityIdentifier("media-detail")
         .overlay { if model.detailLoading { ProgressView("加载中…") } }
         .task(id: screen) { await model.loadDetail(screen) }
     }
@@ -236,7 +247,7 @@ struct ConfirmView: View {
                 Section { ProgressView() }
             } else if !model.candidates.isEmpty {
                 Section("候选") {
-                    ForEach(Array(model.candidates.enumerated()), id: \.offset) { index, candidate in
+                    ForEach(Array(model.candidates.enumerated()), id: \.offset) { _, candidate in
                         Button {
                             Task { await model.submitCandidate(screen, candidate: candidate) }
                         } label: {

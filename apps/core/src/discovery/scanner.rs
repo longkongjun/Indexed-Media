@@ -1,5 +1,3 @@
-#![allow(clippy::needless_pass_by_value, clippy::too_many_lines)]
-
 use std::collections::VecDeque;
 use std::ffi::OsStr;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -223,6 +221,8 @@ impl Scanner for BoundedScanner {
     }
 }
 
+// 工作器入口持有发送端和停止信号，再为各线程克隆。
+#[allow(clippy::needless_pass_by_value)]
 fn run_workers(
     source: ScanSource,
     sender: mpsc::Sender<ScanMessage>,
@@ -289,6 +289,8 @@ fn worker_loop(
     }
 }
 
+// 保留现有事务/投影流程的连续性，拆分需另行行为验证。 目录工作单元按值移交，保持队列取出后的所有权边界。
+#[allow(clippy::too_many_lines, clippy::needless_pass_by_value)]
 fn process_directory(
     item: WorkItem,
     shared: &(Mutex<WorkState>, Condvar),

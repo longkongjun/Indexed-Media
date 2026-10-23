@@ -10,6 +10,8 @@ trim_trailing_whitespace = true
 [*.{kt,kts}]
 indent_size = 4
 max_line_length = 140
+# Compose UI functions use PascalCase by framework convention.
+ktlint_function_naming_ignore_when_annotated_with = Composable
 
 # 生成产物不做 ktlint 检查（ktlint 官方豁免机制；契约一致性由编译 + fixtures 回放保证）。
 [**/build/generated/**/*.kt]

@@ -1,4 +1,5 @@
 import type { MediaFlowClient, MediaItemDetail, MediaItemPage } from "@mediaflow/api-client-ts";
+import { MfButton, MfContentCard, MfImage, MfRequestState } from "@mediaflow/ui-vue";
 import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { describe, expect, it, vi } from "vitest";
@@ -68,6 +69,24 @@ describe("formal media catalog", () => {
     wrapper.unmount();
   });
 
+  it("uses the public action button while preserving native form filtering", async () => {
+    const client = api();
+    const pinia = createPinia(); setActivePinia(pinia); const appRouter = router(); await appRouter.push("/media");
+    const wrapper = mount(MediaListView, { global: { plugins: [pinia, appRouter], provide: { [identityClientKey as symbol]: client } } });
+    await flushPromises();
+    expect(wrapper.findComponent(MfButton).exists()).toBe(true);
+    expect(wrapper.findComponent(MfContentCard).props("title")).toBe("沙丘");
+    expect(wrapper.findComponent(MfImage).props("alt")).toBe("");
+    expect(wrapper.findComponent(MfRequestState).exists()).toBe(true);
+    expect(wrapper.get(`a[href^="/media/${itemId}"]`).text()).toBe("沙丘");
+    await wrapper.find('input[maxlength="200"]').setValue("沙丘");
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+    expect(appRouter.currentRoute.value.query.q).toBe("沙丘");
+    expect(client.listMediaItems).toHaveBeenLastCalledWith(expect.objectContaining({ query: "沙丘" }));
+    wrapper.unmount();
+  });
+
   it("never turns an opaque artwork reference into a remote image URL", () => {
     const missing = mount(MediaArtwork, { props: { artwork: null, title: "沙丘" } });
     expect(missing.text()).toContain("暂无本地封面");
@@ -84,10 +103,68 @@ describe("formal media catalog", () => {
     const wrapper = mount(MediaDetailView, { global: { plugins: [pinia, appRouter], provide: { [identityClientKey as symbol]: client } } });
     await flushPromises();
     expect(wrapper.text()).toContain("元数据缺失");
+    expect(wrapper.findComponent(MfRequestState).exists()).toBe(true);
+    expect(wrapper.findComponent(MfImage).exists()).toBe(true);
     expect(wrapper.text()).toContain("NFO：生成失败");
     expect(wrapper.text()).toContain("movies/Dune (2021)/Dune (2021).mkv");
     expect(wrapper.text()).toContain("花絮");
     expect(wrapper.text()).not.toMatch(/Jellyfin|remote.*image|http:\/\//i);
     wrapper.unmount();
+  });
+
+  it("重试保留筛选，旧结果可读且不可操作，恢复后重新启用", async () => {
+    const list = vi.fn().mockResolvedValueOnce(page).mockRejectedValueOnce(new Error("unavailable")).mockResolvedValueOnce(page);
+    const client = api({ listMediaItems: list });
+    const pinia = createPinia(); setActivePinia(pinia); const appRouter = router(); await appRouter.push("/media?q=沙丘");
+    const wrapper = mount(MediaListView, { global: { plugins: [pinia, appRouter], provide: { [identityClientKey as symbol]: client } } });
+    await flushPromises();
+    await wrapper.get("form").trigger("submit");
+    // 路由不变时不发起新请求，通过组件的公开恢复事件模拟局部刷新。
+    wrapper.findComponent(MfRequestState).vm.$emit("retry");
+    await flushPromises();
+    expect(wrapper.get(".mf-request-state__content").attributes("inert")).toBeDefined();
+    expect(wrapper.text()).toContain("沙丘");
+    await wrapper.get('[role="alert"] button').trigger("click");
+    await flushPromises();
+    expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ query: "沙丘" }));
+    expect(wrapper.get(".mf-request-state__content").attributes("inert")).toBeUndefined();
+    wrapper.unmount();
+  });
+
+  it("有筛选的空结果提供清除筛选，恢复到无筛选目录", async () => {
+    const list = vi.fn().mockResolvedValueOnce({ items: [], next_cursor: null }).mockResolvedValueOnce(page);
+    const client = api({ listMediaItems: list });
+    const pinia = createPinia(); setActivePinia(pinia); const appRouter = router(); await appRouter.push("/media?q=不存在");
+    const wrapper = mount(MediaListView, { global: { plugins: [pinia, appRouter], provide: { [identityClientKey as symbol]: client } } });
+    await flushPromises();
+    expect(wrapper.text()).toContain("无匹配结果");
+    await wrapper.get(".mf-request-state__notice button").trigger("click");
+    await flushPromises();
+    expect(appRouter.currentRoute.value.query).toEqual({});
+    expect(list).toHaveBeenCalledTimes(2);
+    expect(wrapper.findComponent(MfContentCard).exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("重复失败回到恢复按钮，成功回到搜索；详情成功回完整标题", async () => {
+    const list = vi.fn().mockRejectedValueOnce(new Error("down")).mockRejectedValueOnce(new Error("still down")).mockResolvedValueOnce(page);
+    const client = api({ listMediaItems: list, getMediaItem: vi.fn().mockRejectedValueOnce(new Error("down")).mockResolvedValueOnce(detail) });
+    const pinia = createPinia(); setActivePinia(pinia); const appRouter = router(); await appRouter.push("/media?q=keep");
+    const global = { plugins: [pinia, appRouter], provide: { [identityClientKey as symbol]: client } };
+    const wrapper = mount(MediaListView, { attachTo: document.body, global });
+    await flushPromises();
+    (wrapper.get('[role="alert"] button').element as HTMLElement).focus();
+    await wrapper.get('[role="alert"] button').trigger("click"); await flushPromises();
+    expect(document.activeElement).toBe(wrapper.get('[role="alert"] button').element);
+    await wrapper.get('[role="alert"] button').trigger("click"); await flushPromises();
+    expect(document.activeElement).toBe(wrapper.get('input[maxlength="200"]').element);
+    wrapper.unmount();
+    await appRouter.push(`/media/${itemId}`);
+    const single = mount(MediaDetailView, { attachTo: document.body, global });
+    await flushPromises();
+    (single.get('[role="alert"] button').element as HTMLElement).focus();
+    await single.get('[role="alert"] button').trigger("click"); await flushPromises();
+    expect(document.activeElement).toBe(single.get("h2").element);
+    single.unmount();
   });
 });

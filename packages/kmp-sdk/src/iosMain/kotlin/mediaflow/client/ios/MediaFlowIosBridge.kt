@@ -108,7 +108,7 @@ data class Outcome(
  * 投影只用基本类型与 List<投影>，避免泛型 StateFlow / kotlinx 时间类型跨桥。
  * SSE 事件经 [setEventHandler] 以契约 type 字符串回调（Swift 侧映射为刷新信号）。
  */
-@Suppress("TooGenericExceptionCaught", "TooManyFunctions")
+@Suppress("TooManyFunctions")
 class MediaFlowIosBridge {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var cache = SessionAuthCache()

@@ -3,24 +3,25 @@ package mediaflow.androidapp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import java.util.UUID
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import mediaflow.api.models.MediaItemDetail
 import mediaflow.api.models.MediaItemSummary
 import mediaflow.api.models.ProcessingTask
 import mediaflow.api.models.ReviewCase
 import mediaflow.client.core.SdkResult
-import mediaflow.client.core.getOrNull
 import mediaflow.client.core.events.ProjectionRefresher
 import mediaflow.client.core.events.TaskEventEnvelope
+import mediaflow.client.core.getOrNull
 import mediaflow.client.core.paging.CursorPager
 import mediaflow.client.core.paging.PageState
+import java.util.UUID
 
 /** 登录屏状态机：双模式 enrollment（配对码 / 管理员凭据），统一产设备令牌。 */
-class LoginViewModel(private val container: SdkContainer) : ViewModel() {
+class LoginViewModel(
+    private val container: SdkContainer,
+) : ViewModel() {
     val busy = MutableStateFlow(false)
     val error = MutableStateFlow<String?>(null)
     val loggedIn = MutableStateFlow(false)
@@ -29,12 +30,21 @@ class LoginViewModel(private val container: SdkContainer) : ViewModel() {
     val initialBaseUrl: String get() = container.lastKnownBaseUrl() ?: "http://10.0.2.2:8642"
 
     /** 配对码模式：Web 管理面签发的一次性码 → 设备令牌。 */
-    fun pair(baseUrl: String, pairingCode: String, deviceName: String) {
+    fun pair(
+        baseUrl: String,
+        pairingCode: String,
+        deviceName: String,
+    ) {
         enroll(baseUrl) { container.authRepository.enrollWithPairingCode(pairingCode, deviceName) }
     }
 
     /** 凭据模式：管理员密码直接 enrollment（走登录限流）→ 设备令牌。 */
-    fun login(baseUrl: String, name: String, password: String, deviceName: String) {
+    fun login(
+        baseUrl: String,
+        name: String,
+        password: String,
+        deviceName: String,
+    ) {
         enroll(baseUrl) { container.authRepository.enrollWithCredentials(name, password, deviceName) }
     }
 
@@ -48,7 +58,10 @@ class LoginViewModel(private val container: SdkContainer) : ViewModel() {
         loggedIn.value = true
     }
 
-    private fun enroll(baseUrl: String, call: suspend () -> SdkResult<mediaflow.client.core.auth.StoredCredentials>) {
+    private fun enroll(
+        baseUrl: String,
+        call: suspend () -> SdkResult<mediaflow.client.core.auth.StoredCredentials>,
+    ) {
         if (busy.value) return
         busy.value = true
         error.value = null
@@ -70,7 +83,9 @@ class LoginViewModel(private val container: SdkContainer) : ViewModel() {
 }
 
 /** 媒体墙：分页 + SSE 权威刷新 + 缓存预热（离线首屏）。 */
-class WallViewModel(private val container: SdkContainer) : ViewModel() {
+class WallViewModel(
+    private val container: SdkContainer,
+) : ViewModel() {
     private var pager: CursorPager<MediaItemSummary>? = null
     private var refresher: Job? = null
 
@@ -122,7 +137,9 @@ class WallViewModel(private val container: SdkContainer) : ViewModel() {
 }
 
 /** 详情：单条快照 + 外部播放入口。 */
-class DetailViewModel(private val container: SdkContainer) : ViewModel() {
+class DetailViewModel(
+    private val container: SdkContainer,
+) : ViewModel() {
     data class Ui(
         val loading: Boolean = true,
         val detail: MediaItemDetail? = null,
@@ -167,7 +184,9 @@ class DetailViewModel(private val container: SdkContainer) : ViewModel() {
 }
 
 /** 人工确认：案件列表 → 单案确认（候选搜索 + 提交决定）。 */
-class ReviewQueueViewModel(private val container: SdkContainer) : ViewModel() {
+class ReviewQueueViewModel(
+    private val container: SdkContainer,
+) : ViewModel() {
     private var pager: CursorPager<ReviewCase>? = null
 
     val state = MutableStateFlow<PageState>(PageState.Loading(false))
@@ -204,7 +223,9 @@ class ReviewQueueViewModel(private val container: SdkContainer) : ViewModel() {
     }
 }
 
-class ConfirmViewModel(private val container: SdkContainer) : ViewModel() {
+class ConfirmViewModel(
+    private val container: SdkContainer,
+) : ViewModel() {
     data class Ui(
         val case: ReviewCase? = null,
         val loading: Boolean = true,
@@ -234,7 +255,10 @@ class ConfirmViewModel(private val container: SdkContainer) : ViewModel() {
     }
 
     /** 候选搜索（locale 固定 zh-CN：第一批中文家庭场景）。 */
-    fun search(reviewCaseId: String, query: String) {
+    fun search(
+        reviewCaseId: String,
+        query: String,
+    ) {
         if (ui.value.case == null || query.isBlank()) return
         viewModelScope.launch {
             ui.value = ui.value.copy(searching = true, candidates = emptyList())
@@ -298,7 +322,7 @@ class ConfirmViewModel(private val container: SdkContainer) : ViewModel() {
                 container.reviewRepository.submitDecision(
                     reviewCaseId = case.id,
                     caseVersion = case.version,
-                    idempotencyKey = "android-${kindLabel}-${UUID.randomUUID()}",
+                    idempotencyKey = "android-$kindLabel-${UUID.randomUUID()}",
                     command = command(),
                 )
             ui.value =
@@ -314,7 +338,9 @@ class ConfirmViewModel(private val container: SdkContainer) : ViewModel() {
 }
 
 /** 任务中心：处理任务列表 + 取消。 */
-class TasksViewModel(private val container: SdkContainer) : ViewModel() {
+class TasksViewModel(
+    private val container: SdkContainer,
+) : ViewModel() {
     private var pager: CursorPager<ProcessingTask>? = null
 
     val state = MutableStateFlow<PageState>(PageState.Loading(false))
@@ -372,7 +398,9 @@ class TasksViewModel(private val container: SdkContainer) : ViewModel() {
 }
 
 /** 简单工厂（无依赖注入框架；参数即依赖）。 */
-class VmFactory(private val container: SdkContainer) : ViewModelProvider.Factory {
+class VmFactory(
+    private val container: SdkContainer,
+) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T =
         when (modelClass.simpleName) {
             "LoginViewModel" -> LoginViewModel(container)

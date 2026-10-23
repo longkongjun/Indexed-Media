@@ -5,16 +5,16 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.call
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.embeddedServer
-import io.ktor.server.response.header
-import io.ktor.server.response.respondTextWriter
-import io.ktor.server.response.respondText
 import io.ktor.server.request.receiveText
+import io.ktor.server.response.header
+import io.ktor.server.response.respondText
+import io.ktor.server.response.respondTextWriter
+import io.ktor.server.routing.delete
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
-import io.ktor.server.routing.delete
 import io.ktor.server.routing.routing
-import java.io.File
 import kotlinx.coroutines.delay
+import java.io.File
 
 /**
  * 契约 fixtures 本地服务器：把 `contracts/examples/v1/` 的 golden 样例按 REST/SSE

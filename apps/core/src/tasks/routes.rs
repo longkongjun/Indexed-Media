@@ -1,5 +1,3 @@
-#![allow(clippy::needless_pass_by_value)]
-
 use std::sync::Arc;
 
 use axum::extract::{OriginalUri, State};
@@ -82,6 +80,8 @@ pub fn router(config: AppConfig, db: &Db, discovery: DiscoveryService) -> Router
 ///
 /// 读取需要有效管理员会话；变更还需要同源、CSRF 和 `Idempotency-Key` 请求头。创建、重试和取消成功的请求
 /// 会追加审计记录。
+// 保留公开路由构造器接收配置所有权的接口。
+#[allow(clippy::needless_pass_by_value)]
 pub fn router_with_notifier(
     config: AppConfig,
     db: &Db,

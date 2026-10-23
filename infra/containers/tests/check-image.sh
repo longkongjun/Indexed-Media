@@ -1,6 +1,6 @@
 #!/bin/sh
 # 验证镜像构建不变量，并可选地构建和冒烟测试单进程 linux/amd64 容器镜像。
-# 输入：可选 `--static-only`；`MEDIAFLOW_TEST_IMAGE` 选择带标签的镜像，`TMPDIR` 选择临时存储位置。
+# 输入：可选 `--static-only` 或 `--existing-image`（验证已构建产物）；`MEDIAFLOW_TEST_IMAGE` 选择带标签的镜像，`TMPDIR` 选择临时存储位置。
 # 输出/副作用：输出诊断信息；在运行时模式下构建镜像并创建/删除临时容器和夹具。
 # 退出：成功时为 0；检查器发现条件时 `fail` 退出 1，而 `set -e` 下的直接外部命令（包括 Docker）传播其非零状态；清理仅会将原本成功的运行升级为 1；HUP/INT/TERM 分别映射为 129/130/143。
 set -eu
@@ -25,6 +25,8 @@ require_fixed() {
 [ -f "$dockerfile" ] || fail "$dockerfile is missing"
 [ -f "$dockerignore" ] || fail "$dockerignore is missing"
 
+python3 -B "$repo_root/infra/containers/tests/test_web_build_inputs.py"
+
 require_fixed "$dockerfile" 'node:24.18.0-bookworm-slim'
 require_fixed "$dockerfile" 'rust:1.97.0-bookworm'
 require_fixed "$dockerfile" 'debian:bookworm-slim'
@@ -34,7 +36,8 @@ require_fixed "$dockerfile" 'cargo build --manifest-path apps/core/Cargo.toml --
 require_fixed "$dockerfile" 'USER 10001:10001'
 require_fixed "$dockerfile" 'ENTRYPOINT ["/usr/local/bin/mediaflow-core"]'
 require_fixed "$dockerfile" 'CMD ["serve"]'
-require_fixed "$dockerfile" 'org.opencontainers.image.version="0.3.0"'
+require_fixed "$dockerfile" 'org.opencontainers.image.version="git-${SOURCE_REVISION}"'
+require_fixed "$dockerfile" 'COPY patches patches'
 require_fixed "$dockerfile" '/usr/lib/apt'
 require_fixed "$dockerfile" '/usr/bin/apt*'
 require_fixed "$dockerfile" '/usr/bin/dpkg*'
@@ -52,11 +55,15 @@ for marker in 'host_uid=$(id -u)' 'host_gid=$(id -g)' 'original_status=$?' 'clea
     || fail "cleanup gate must preserve host removability and exit status: $marker"
 done
 # Docker 29 的本地容器镜像存储必须获得单平台 manifest，而不是仅保留带证明的索引。
-build_command=$(sed -n '/^docker build /p' "$0")
+build_command=$(sed -n '/^[[:space:]]*docker build /p' "$0")
 printf '%s\n' "$build_command" | grep -F -- '--provenance=false' >/dev/null \
   || fail 'runtime build must disable provenance for a durable local image tag'
 
-[ "${1:-}" = "--static-only" ] && exit 0
+case "${1:-}" in
+  --static-only) exit 0 ;;
+  ''|--existing-image) ;;
+  *) fail 'usage: check-image.sh [--static-only|--existing-image]' ;;
+esac
 
 # Docker-backed runtime gate
 # 以下为由 Docker 支撑的运行时检查；上一行是自检脚本读取的稳定边界标记。
@@ -65,12 +72,14 @@ docker info >/dev/null 2>&1 || fail "docker daemon is required for the image run
 command -v python3 >/dev/null 2>&1 || fail "python3 is required for same-origin HTTP checks"
 
 # `MEDIAFLOW_TEST_IMAGE` 可选地选择此检查构建和运行的不可变本地标签。
-image=${MEDIAFLOW_TEST_IMAGE:-mediaflow:0.3.0}
+image=${MEDIAFLOW_TEST_IMAGE:-mediaflow:0.2.0-m2}
 case "$image" in
   *:latest|latest) fail "test image must use an immutable non-latest tag" ;;
 esac
 
-docker build --platform linux/amd64 --provenance=false --file "$dockerfile" --tag "$image" "$repo_root"
+if [ "${1:-}" != "--existing-image" ]; then
+  docker build --platform linux/amd64 --provenance=false --file "$dockerfile" --tag "$image" "$repo_root"
+fi
 
 architecture=$(docker image inspect --format '{{.Architecture}}' "$image")
 [ "$architecture" = "amd64" ] || fail "image architecture is $architecture, expected amd64"

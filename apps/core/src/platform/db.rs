@@ -133,7 +133,8 @@ pub fn validate_config_directory(path: &Path) -> Result<(), AppError> {
 fn is_known_incompatible_filesystem(path: &Path) -> Result<bool, AppError> {
     let filesystem_type = rustix::fs::statfs(path)
         .map_err(|error| AppError::with_source(ErrorCode::ConfigInvalid, error))?
-        .f_type as u64;
+        .f_type
+        .cast_unsigned();
     Ok(is_incompatible_filesystem_magic(filesystem_type))
 }
 

@@ -1,4 +1,4 @@
-// MediaFlow 客户端（M5）gradle 工程入口：KMP SDK 与移动端应用。
+// MediaFlow 客户端与原生基础库的 Gradle 工程入口。
 // 仓库其余工程（Rust/pnpm）不受本文件影响；本工程只包含客户端模块。
 pluginManagement {
     repositories {
@@ -27,3 +27,8 @@ rootProject.name = "mediaflow-clients"
 include(":packages:kmp-sdk")
 include(":apps:android")
 include(":tools:client-fixture-server")
+
+include(":packages:ui-android")
+include(":packages:ui-android-tv")
+include(":tools:ui-android-consumer")
+include(":tools:ui-tv-consumer")

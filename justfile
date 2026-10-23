@@ -266,11 +266,15 @@ check-m4-downloader-management:
 test-m4-source-automation-live:
     @bash apps/core/scripts/test-m4-source-automation-live.sh
 
-# 汇总 M4 Change 2 自动门禁；真实网络、NAS、下载器和模型验收必须由独立 live 入口提供。
-check-m4-source-automation:
+# Rust 格式、Clippy 与全目标测试的公共入口。
+check-rust:
     @cargo fmt --manifest-path apps/core/Cargo.toml -- --check
     @cargo clippy --manifest-path apps/core/Cargo.toml --all-targets -- -D warnings
     @cargo test --manifest-path apps/core/Cargo.toml --all-targets
+
+# 汇总 M4 Change 2 自动门禁；真实网络、NAS、下载器和模型验收必须由独立 live 入口提供。
+check-m4-source-automation:
+    @just check-rust
     @CI=true just check-contracts
     @CI=true just check-api-client-ts
     @CI=true just check-test-fixtures
@@ -322,7 +326,9 @@ check-web:
     #!/usr/bin/env bash
     set -euo pipefail
     output_root="$(mktemp -d "${TMPDIR:-/tmp}/mediaflow-web-check.XXXXXX")"
-    trap 'rm -rf "$output_root"' EXIT
+    exec 3>&1
+    exec >"$output_root/check.log" 2>&1
+    trap 'result=$?; tail -30 "$output_root/check.log" >&3; printf "Web 检查报告：%s\n" "$output_root" >&3; exit "$result"' EXIT
     export MEDIAFLOW_TEST_OUTPUT_DIR="$output_root/playwright"
     CI=true pnpm --filter @mediaflow/api-client-ts check-generated
     CI=true pnpm --filter @mediaflow/web typecheck
@@ -338,20 +344,18 @@ test-web-identity:
     @CI=true pnpm --filter @mediaflow/web typecheck
     @CI=true pnpm --filter @mediaflow/web test -- --run tests/router.test.ts tests/identity.test.ts tests/accessibility.test.ts
 
-# 检查全部移动端和 TV 应用；当前模块未初始化，因此返回状态 2。
+# 检查当前 Android/iOS；TV 仍使用独立未初始化入口。
 check-mobile:
-    @printf '未初始化：apps/android, apps/ios, apps/android-tv, apps/tvos\n' >&2
-    @exit 2
+    @just check-android
+    @just check-ios
 
-# 检查 Android 应用；当前模块未初始化，因此返回状态 2。
+# 检查 Android 应用。
 check-android:
-    @printf '未初始化：apps/android\n' >&2
-    @exit 2
+    @just client-check-android
 
-# 检查 iOS 应用；当前模块未初始化，因此返回状态 2。
+# 检查 iOS 应用。
 check-ios:
-    @printf '未初始化：apps/ios\n' >&2
-    @exit 2
+    @just client-check-ios
 
 # 检查 Android TV 应用；当前模块未初始化，因此返回状态 2。
 check-android-tv:
@@ -363,10 +367,9 @@ check-tvos:
     @printf '未初始化：apps/tvos\n' >&2
     @exit 2
 
-# 检查 KMP SDK；当前模块未初始化，因此返回状态 2。
+# 检查 KMP SDK。
 check-kmp-sdk:
-    @printf '未初始化：packages/kmp-sdk\n' >&2
-    @exit 2
+    @just client-check-kmp-sdk
 
 # 检查 TypeScript API Client。
 check-api-client-ts:
@@ -472,6 +475,12 @@ check-m2:
     @just check-compose
     @just smoke-m2-compose
 
+# 发布/首装边界的本地回归；不连接registry或NAS，也不代替Docker验收。
+check-release-tools:
+    @python3 -B -m unittest discover -s infra/release/tests -v
+    @python3 -B -m unittest discover -s infra/nas/tests -p 'test_*.py' -v
+    @python3 -B -m unittest discover -s infra/compose/tests -p 'test_*.py' -v
+
 # 检查 NAS 安装、代理和备份恢复文档门槛。
 check-nas:
     @./infra/nas/tests/check-docs.sh
@@ -489,32 +498,52 @@ check-rust-docs:
 test-rust-doc:
     @cargo test --manifest-path apps/core/Cargo.toml --doc
 
-# 检查依赖治理：advisory/许可扫描（cargo-deny）与未用依赖清理（cargo-machete）。
-check-rust-deps:
-    @cargo deny --manifest-path apps/core/Cargo.toml --config apps/core/deny.toml check
+# advisory 独立于其他依赖检查，离线待验不影响其他检查执行。
+check-rust-advisories:
+    @cargo deny --manifest-path apps/core/Cargo.toml --config apps/core/deny.toml check advisories
+
+# 无 advisory 拉取的依赖静态检查；仍检查许可、来源、重复依赖和未用依赖。
+check-rust-deps-static:
+    @cargo deny --manifest-path apps/core/Cargo.toml --config apps/core/deny.toml check bans licenses sources
     @cargo machete apps/core
 
-# 执行当前已初始化正式能力的完整自动门禁；真实外部系统验收由独立 live 入口负责。
-check:
+check-rust-deps:
+    @just check-rust-deps-static
+    @just check-rust-advisories
+
+# 公共源码检查（不含依赖治理）；供在线/离线自检共用。
+check-source:
     @just check-m4-source-automation
+    @just check-ui-contract
+    @just check-gate-regressions
+    @just check-release-tools
     @just check-rust-docs
     @just test-rust-doc
+
+# 公共源码与依赖门禁；原生客户端和部署检查使用对应入口。
+check:
+    @just check-source
     @just check-rust-deps
 
-# 一键自检：环境探测 + 全量门禁 + 静态部署边界（实机验收前的单命令确认）。
+# 源码部署自检：公共源码、依赖与部署静态检查，不代表原生客户端或运行时验收。
 selfcheck:
     @./tools/selfcheck/selfcheck.sh
 
-# 一键自检（离线模式：跳过 cargo-deny advisory 在线拉取）。
+# 源码部署自检（离线 advisory 待验，返回非零；其他检查继续）。
 selfcheck-offline:
     @./tools/selfcheck/selfcheck.sh --offline
 
-# 本地一键全量门禁聚合（与远端 CI 同构）：check 全量 + 容器/Compose/NAS 静态门禁。
+# 工程完整集合；缺少任一必需平台会失败。跨宿主验收仍需汇合同基线报告。
 check-all:
     @just check
-    @just check-containers-static
-    @just check-compose-static
+    @just client-check
+    @just check-containers
+    @just check-compose
     @just check-nas
+
+# 门禁自身的隔离失败传播回归；不代表产品/原生平台运行通过。
+check-gate-regressions:
+    @python3 -B -m unittest discover -s tools/selfcheck/tests -v
 
 # ==== M5 客户端（追加于 m5-client 任务；只允许在此之后继续追加，勿插入上方） ====
 
@@ -524,7 +553,16 @@ client-generate:
 
 # KMP SDK 全目标门禁：格式（ktlint）+ 静态分析（detekt）+ 测试 + 覆盖率。
 client-check-kmp-sdk:
-    @./gradlew :packages:kmp-sdk:check :packages:kmp-sdk:koverLog
+    @xcrun --sdk iphoneos --show-sdk-path >/dev/null
+    @xcrun --sdk iphonesimulator --show-sdk-path >/dev/null
+    @./gradlew :packages:kmp-sdk:check :packages:kmp-sdk:koverLog :packages:kmp-sdk:compileKotlinIosArm64 :packages:kmp-sdk:compileKotlinIosSimulatorArm64
+
+# Linux/JVM 快速子集；不代签 Native、Android 或客户端全量。
+client-check-kmp-jvm:
+    @./gradlew :packages:kmp-sdk:ktlintCheck :packages:kmp-sdk:detekt :packages:kmp-sdk:jvmTest :packages:kmp-sdk:koverLogJvm
+
+client-check-build-scripts:
+    @./gradlew :ktlintKotlinScriptCheck
 
 # KMP SDK API 文档（dokka HTML）。
 client-docs-kmp-sdk:
@@ -532,18 +570,30 @@ client-docs-kmp-sdk:
 
 # Android 应用门禁：构建 + 单元测试。
 client-check-android:
-    @./gradlew :apps:android:assembleDebug :apps:android:testDebugUnitTest
+    @./gradlew :apps:android:ktlintCheck :apps:android:lintDebug :apps:android:assembleDebug :apps:android:testDebugUnitTest
+
+# 夹具服务构建与格式检查；没有测试源时不宣称单测通过。
+client-check-fixture-server:
+    @./gradlew :tools:client-fixture-server:ktlintCheck :tools:client-fixture-server:build
 
 # 启动契约 fixtures 本地服务器（默认 0.0.0.0:8642；FIXTURE_PORT 可覆盖；Ctrl-C 停止）。
 client-fixture-server:
     @./gradlew :tools:client-fixture-server:run
 
+# SwiftLint 独立入口；CLI 必须匹配工具清单中的固定版本。
+client-lint-ios:
+    @. tools/selfcheck/tool-versions.env; test "$(swiftlint version)" = "$SWIFTLINT_VERSION"
+    @cd apps/ios && swiftlint lint --strict --no-cache --config .swiftlint.yml
+
 # iOS 应用门禁：生成工程 + 模拟器构建与测试（需 XcodeGen：brew install xcodegen）。
 client-check-ios:
-    @cd apps/ios && xcodegen generate && xcodebuild test -project MediaFlow.xcodeproj -scheme MediaFlowiOS -destination 'platform=iOS Simulator,name=iPhone 17' 2>&1 | tail -5
+    @bash tools/selfcheck/ios.sh
 
 # 客户端全量门禁聚合。
 client-check:
+    @just client-check-build-scripts
     @just client-check-kmp-sdk
+    @just client-docs-kmp-sdk
     @just client-check-android
+    @just client-check-fixture-server
     @just client-check-ios

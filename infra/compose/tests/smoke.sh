@@ -240,6 +240,16 @@ def request(method, path, body=None, headers=None, expected=200):
             return value
     except urllib.error.HTTPError as error:
         raise SystemExit(f"{method} {path} returned HTTP {error.code}: {error.read().decode(errors='replace')[:300]}")
+def check_sse(auth):
+    headers = {**auth, "Origin": "https://mediaflow.example.test", "Accept": "text/event-stream"}
+    with opener.open(urllib.request.Request(base + "/api/v1/events", headers=headers), timeout=10) as response:
+        if response.status != 200 or response.headers.get_content_type() != "text/event-stream":
+            raise SystemExit("authenticated SSE did not return an event stream")
+        for _ in range(64):
+            line = response.readline(8192)
+            if line.startswith(b"data:"): return
+            if not line: break
+        raise SystemExit("authenticated SSE did not deliver event data")
 def get(path, headers=None): return request("GET", path, headers=headers)
 def post(path, body=None, headers=None, expected=201): return request("POST", path, body, headers, expected)
 status = get("/api/v1/system/bootstrap-status")
@@ -271,6 +281,7 @@ else:
     if len(matches) != 1: raise SystemExit(f"task duplicated or lost: {page!r}")
     files = get(f"/api/v1/scan-tasks/{task_id}/files", auth); items = files.get("items", [])
     if len(items) != 1 or items[0].get("id") != fact["file_id"] or items[0].get("relative_path") != "m2-smoke.txt": raise SystemExit(f"file result duplicated or lost: {files!r}")
+check_sse(auth)
 print(json.dumps({"mode": mode, "task_id": task_id, "status": task["status"], "file_count": len(items)}, sort_keys=True))
 PY_API
 

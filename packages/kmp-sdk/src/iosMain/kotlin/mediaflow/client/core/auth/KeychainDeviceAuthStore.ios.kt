@@ -13,17 +13,15 @@ import platform.CoreFoundation.CFDataCreate
 import platform.CoreFoundation.CFDictionaryAddValue
 import platform.CoreFoundation.CFDictionaryCreateMutable
 import platform.CoreFoundation.CFMutableDictionaryRef
-import platform.CoreFoundation.CFPropertyListCreateWithData
 import platform.CoreFoundation.CFRelease
 import platform.CoreFoundation.CFStringCreateWithCString
-import platform.CoreFoundation.kCFBooleanTrue
 import platform.CoreFoundation.CFStringRef
 import platform.CoreFoundation.CFTypeRefVar
+import platform.CoreFoundation.kCFBooleanTrue
 import platform.Foundation.NSData
 import platform.Security.SecItemAdd
 import platform.Security.SecItemCopyMatching
 import platform.Security.SecItemDelete
-import platform.Security.SecItemUpdate
 import platform.Security.errSecSuccess
 
 /**
@@ -108,26 +106,6 @@ class KeychainDeviceAuthStore(
             CFRelease(dictionary)
             owned.forEach { CFRelease(it) }
             if (status != errSecSuccess) throw KeychainException("keychain add failed: $status")
-        }
-
-    private fun update(payload: ByteArray): Unit =
-        memScoped {
-            val owned = mutableListOf<CFStringRef>()
-            val search = CFDictionaryCreateMutable(null, 0, null, null)!!
-            fillBase(search, owned)
-            val updates = CFDictionaryCreateMutable(null, 0, null, null)!!
-            val valueKey = cfstr(KEY_VALUE_DATA)
-            owned.add(valueKey)
-            CFDictionaryAddValue(
-                updates,
-                valueKey,
-                CFDataCreate(null, payload.toUByteArray().toCValues(), payload.size.toLong()),
-            )
-            val status = SecItemUpdate(search, updates)
-            CFRelease(updates)
-            CFRelease(search)
-            owned.forEach { CFRelease(it) }
-            if (status != errSecSuccess) throw KeychainException("keychain update failed: $status")
         }
 
     private fun delete(): Unit =

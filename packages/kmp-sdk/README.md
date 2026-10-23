@@ -26,4 +26,4 @@ KMP SDK 公共 API：Ktor client、serialization、SQLDelight、repository、use
 
 ## 后续验证
 
-`just client-check-kmp-sdk`（lint + 全目标测试 + 覆盖率）；`just client-generate` 单独重生成契约客户端；`just client-docs-kmp-sdk` 生成 API 文档。
+`just client-check-kmp-sdk`（macOS/Xcode：lint + 全目标测试 + 覆盖率 + 声明 Native 目标编译）或 `just client-check-kmp-jvm`（JVM 快速子集，不代签 Native）；`just client-generate` 单独重生成契约客户端；`just client-docs-kmp-sdk` 生成 API 文档。

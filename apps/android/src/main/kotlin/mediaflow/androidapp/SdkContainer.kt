@@ -23,7 +23,9 @@ import mediaflow.client.core.tasks.TaskRepository
  * base URL 可在登录页配置（fixture server 或局域 NAS）；凭据经 Android Keystore
  * 加密落盘（第二批），任意屏 401 经 [sessionExpired] 统一回登录页。
  */
-class SdkContainer(context: Context) {
+class SdkContainer(
+    context: Context,
+) {
     private val prefs = context.getSharedPreferences("mediaflow-container", Context.MODE_PRIVATE)
     val authStore = KeystoreDeviceAuthStore(context)
     val authCache: SessionAuthCache = SessionAuthCache()
@@ -61,7 +63,10 @@ class SdkContainer(context: Context) {
     /** 分页状态流的 401 转发：墙/确认/任务三屏的 PageState.Error 同样触发统一登出。 */
     suspend fun propagateAuthFailure(collected: mediaflow.client.core.paging.PageState) {
         val error = (collected as? mediaflow.client.core.paging.PageState.Error)?.error ?: return
-        handleAuthFailure(mediaflow.client.core.SdkResult.failure(error))
+        handleAuthFailure(
+            mediaflow.client.core.SdkResult
+                .failure(error),
+        )
     }
 
     /** 登录前/切换服务器时重建传输层；幂等。 */

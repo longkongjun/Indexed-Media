@@ -131,14 +131,14 @@ export type OrganizationTargetPreflight = components["schemas"]["OrganizationTar
 /** 一个 ProcessingTask 的计划、journal、本地结果和服务端允许动作。 */
 export type ProcessingTaskOrganization = components["schemas"]["ProcessingTaskOrganization"];
 
-/** ProcessingTask 中心的稳定服务端筛选。 */
+/** ProcessingTask 中心的稳定服务端筛选；查询选项将显式 undefined 视为省略。 */
 export interface ProcessingTaskListOptions {
-  cursor?: string;
-  view?: "pending" | "running" | "all" | "completed";
-  stage?: ProcessingTask["stage"];
-  status?: ProcessingTask["status"] | "partial-success" | "completed" | "failed";
-  inboxDirectoryId?: string;
-  query?: string;
+  cursor?: string | undefined;
+  view?: "pending" | "running" | "all" | "completed" | undefined;
+  stage?: ProcessingTask["stage"] | undefined;
+  status?: ProcessingTask["status"] | "partial-success" | "completed" | "failed" | undefined;
+  inboxDirectoryId?: string | undefined;
+  query?: string | undefined;
 }
 
 /** ReviewCase 上下文内的有界临时候选搜索。 */
@@ -151,11 +151,11 @@ export interface ReviewCandidateSearchOptions {
 
 /** 正式 Catalog 列表的稳定服务端筛选。 */
 export interface MediaItemListOptions {
-  cursor?: string;
-  type?: "movie" | "series" | "generic-video";
-  libraryId?: string;
-  localStatus?: "complete" | "partial";
-  query?: string;
+  cursor?: string | undefined;
+  type?: "movie" | "series" | "generic-video" | undefined;
+  libraryId?: string | undefined;
+  localStatus?: "complete" | "partial" | undefined;
+  query?: string | undefined;
 }
 
 /** ReviewCase 列表的可选稳定筛选条件。 */
@@ -168,17 +168,17 @@ export interface ReviewCaseListOptions {
 
 /** 下载任务列表的稳定服务端筛选。 */
 export interface DownloadTaskListOptions {
-  cursor?: string;
-  connectionId?: string;
-  status?: DownloadTask["status"];
-  query?: string;
+  cursor?: string | undefined;
+  connectionId?: string | undefined;
+  status?: DownloadTask["status"] | undefined;
+  query?: string | undefined;
 }
 
 /** 应用内通知列表的查询参数。 */
 export interface NotificationListOptions {
-  cursor?: string;
-  limit?: number;
-  unreadOnly?: boolean;
+  cursor?: string | undefined;
+  limit?: number | undefined;
+  unreadOnly?: boolean | undefined;
 }
 
 /** AI 能力通道事件列表的分页参数。 */
@@ -189,10 +189,10 @@ export interface CapabilityEventListOptions {
 
 /** 自动化事件列表的稳定服务端筛选。 */
 export interface AutomationEventListOptions {
-  cursor?: string;
-  sourceId?: string;
-  status?: AutomationEvent["status"];
-  action?: AutomationEvent["action"];
+  cursor?: string | undefined;
+  sourceId?: string | undefined;
+  status?: AutomationEvent["status"] | undefined;
+  action?: AutomationEvent["action"] | undefined;
 }
 
 /**
@@ -495,7 +495,8 @@ export function createMediaFlowClient(options: { baseUrl?: string; fetch?: typeo
   const fetcher = options.fetch ?? globalThis.fetch;
   let csrfToken: string | null = null;
 
-  async function request<T>(operation: OperationId, requestOptions: { path?: Record<string, string>; body?: unknown; cursor?: string; query?: Record<string, string | undefined>; idempotencyKey?: string; ifMatch?: number } = {}): Promise<T> {
+  // Optional positional arguments are forwarded here; explicit undefined means omitted.
+  async function request<T>(operation: OperationId, requestOptions: { path?: Record<string, string>; body?: unknown; cursor?: string | undefined; query?: Record<string, string | undefined>; idempotencyKey?: string | undefined; ifMatch?: number | undefined } = {}): Promise<T> {
     const [method, template] = operations[operation];
     const path = Object.entries(requestOptions.path ?? {}).reduce<string>((value, [key, id]) => value.replace(`{${key}}`, encodeURIComponent(id)), template);
     const url = new URL(path, options.baseUrl ?? "http://mediaflow.local");
@@ -508,7 +509,7 @@ export function createMediaFlowClient(options: { baseUrl?: string; fetch?: typeo
     if (requestOptions.idempotencyKey) headers["Idempotency-Key"] = requestOptions.idempotencyKey;
     if (requestOptions.ifMatch !== undefined) headers["If-Match"] = String(requestOptions.ifMatch);
     if (method !== "GET" && csrfToken) headers["X-CSRF-Token"] = csrfToken;
-    const response = await fetcher(options.baseUrl ? url.toString() : `${path}${url.search}`, { method, headers, body: requestOptions.body === undefined ? undefined : JSON.stringify(requestOptions.body), credentials: "same-origin" });
+    const response = await fetcher(options.baseUrl ? url.toString() : `${path}${url.search}`, { method, headers, ...(requestOptions.body === undefined ? {} : { body: JSON.stringify(requestOptions.body) }), credentials: "same-origin" });
     if (!response.ok) {
       let body: ApiErrorBody | undefined;
       if (response.headers.get("content-type")?.includes("application/json")) {

@@ -1,4 +1,5 @@
 plugins {
+    alias(libs.plugins.ktlint)
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization) // AGP 9 内置 Kotlin 工具链
@@ -45,6 +46,7 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
 
     implementation(project(":packages:kmp-sdk"))
+    implementation(project(":packages:ui-android"))
 
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:2.4.21")
     testImplementation(libs.kotlinx.coroutines.test)

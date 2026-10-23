@@ -29,12 +29,7 @@ export default tseslint.config(
         'error',
         { assertionStyle: 'as', objectLiteralTypeAssertions: 'never' },
       ],
-      // Vue 模板中的 any 由类型层拦截，这里关闭避免与 vue-tsc 重复误报。
-      '@typescript-eslint/no-unsafe-assignment': 'off',
-      '@typescript-eslint/no-unsafe-member-access': 'off',
-      '@typescript-eslint/no-unsafe-call': 'off',
-      '@typescript-eslint/no-unsafe-argument': 'off',
-      '@typescript-eslint/no-unsafe-return': 'off',
+
     },
   },
   {

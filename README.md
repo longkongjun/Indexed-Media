@@ -27,6 +27,10 @@ MediaFlow/
 |   |-- kmp-sdk/                  # Android / iOS 共享业务与数据逻辑
 |   |-- api-client-ts/            # Vue 使用的 TypeScript API 客户端
 |   |-- api-client-dart/          # Flutter 实验使用的 Dart API 客户端
+|   |-- ui-vue/                   # Vue正式基础组件（C01）
+|   |-- ui-android/               # Compose正式基础组件
+|   |-- ui-android-tv/            # Compose for TV正式基础组件
+|   |-- ui-swift/                 # iOS SwiftUI基础组件（验收待补）
 |   |-- ui-contract/              # 跨端页面状态与交互约定
 |   `-- test-fixtures/            # 跨端共用测试样例
 |
@@ -46,16 +50,17 @@ MediaFlow/
 
 正式代码的依赖方向是 `apps -> packages -> contracts`。`labs` 可以使用 `packages` 和 `contracts`，但正式应用与共享包不能依赖 `labs` 或 `archive`。
 
-当前实现以 Rust Core、Vue Web、版本化 OpenAPI/事件契约、TypeScript 客户端、测试夹具和单容器 NAS 部署为主。Android、iOS、TV、KMP、Flutter 与部分实验模块仍保留目录边界，尚未进入正式交付范围。
+当前已实现 Rust Core、Vue Web、契约/TS 包、KMP SDK、Android、iOS、JVM 夹具服务及单容器部署入口。TV、Dart、Flutter 等未初始化模块保留独立边界；已实现不等于已经通过真实服务、设备或正式交付验收。
 
 ## 检查状态
 
-公开仓库的默认自动门禁通过以下命令运行：
+工程入口、工具环境、测试发现和报告位置见[检查说明](docs/development/checks.md)。
 
-- `just check`：执行 Core 格式、Clippy（pedantic）、全目标测试、doctest、rustdoc、依赖治理（cargo-deny/cargo-machete）、契约、客户端、共享夹具、Web lint/类型/测试/构建/E2E 与差异检查。
-- `just check-all`：本地一键全量门禁聚合（`check` + 容器/Compose 静态 + NAS 文档门禁），与远端 CI（`.github/workflows/ci.yml`）同构。
-- `just check-m4-source-automation`：当前里程碑自动门禁的既有聚合入口。
-- 真实 NAS、下载器、RSS 与模型验收使用对应 `*-live` 命令，环境缺失时不得冒充通过。
+- `just check`：公共源码集合（Rust、契约、TS/UI contract、Web、门禁回归、文档/依赖），不代签原生客户端。
+- `just client-check`：客户端完整集合（SDK 全目标、文档、Android、iOS、夹具服务及构建脚本），需要对应平台工具。
+- `just check-all`：工程完整集合，加容器镜像构建、Compose 解析和 NAS 静态检查；缺少任何必需平台会失败。跨宿主校准须汇合同基线平台/CI 报告，单机局部成功不代表全量通过。
+- `just selfcheck`／`just selfcheck-offline`：源码部署自检，仅公共源码、依赖及部署静态集合；离线 advisory 未执行时明确待验并返回 2，不要求在源码 NAS 上安装 Xcode。
+- `just check-m4-source-automation` 保留为既有里程碑子集。真实 NAS、下载器、RSS、模型及真实 Core UI 使用独立 live/验收入口，环境缺失不算通过。
 
 本地项目结构与 AI 工作流门禁由 StudySpace 的 `workflow-packs/mediaflow/` 提供；从 StudySpace 根目录调用对应检查脚本，不向本仓库注入入口或脚本副本。项目仓库的构建与测试入口以根 `justfile` 和各模块文档为准。
 

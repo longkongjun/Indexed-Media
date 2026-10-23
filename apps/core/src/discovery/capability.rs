@@ -297,6 +297,9 @@ fn read_config_snapshot(path: &Path) -> Result<(Vec<u8>, DeploymentRootsFingerpr
         .read_to_end(&mut bytes)
         .map_err(|error| AppError::with_source(ErrorCode::ConfigInvalid, error))?;
     let fingerprint = DeploymentRootsFingerprint {
+        #[cfg(target_os = "linux")]
+        device: stat.st_dev,
+        #[cfg(not(target_os = "linux"))]
         device: u64::try_from(stat.st_dev).map_err(|_| config_error("config identity invalid"))?,
         inode: stat.st_ino as u64,
         length: u64::try_from(stat.st_size).map_err(|_| config_error("config size invalid"))?,

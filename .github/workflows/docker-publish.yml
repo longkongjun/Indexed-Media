@@ -1,0 +1,101 @@
+name: docker-publish
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing vX.Y.Z tag to promote from a successful main candidate
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: mediaflow-release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+defaults:
+  run:
+    shell: bash
+jobs:
+  promote:
+    if: >-
+      github.repository == 'longkongjun/Indexed-Media' &&
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') ||
+       github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+      packages: write
+    outputs:
+      tag: ${{ steps.target.outputs.tag }}
+      sha: ${{ steps.target.outputs.sha }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate release target before publishing
+        id: target
+        env:
+          REQUESTED_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          python3 - <<'PY'
+          import os, re, subprocess
+          tag = os.environ['REQUESTED_TAG']
+          if not re.fullmatch(r'v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)', tag):
+              raise SystemExit('expected existing vX.Y.Z tag')
+          sha = subprocess.check_output(['git', 'rev-parse', f'{tag}^{{commit}}'], text=True).strip()
+          subprocess.run(['git', 'merge-base', '--is-ancestor', sha, 'origin/main'], check=True)
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
+              out.write(f'tag={tag}\nsha={sha}\n')
+          PY
+      - name: Use exactly the validated release source
+        env:
+          SOURCE_SHA: ${{ steps.target.outputs.sha }}
+        run: git checkout --detach "$SOURCE_SHA"
+      - name: Isolate temporary registry credentials
+        run: echo "DOCKER_CONFIG=$RUNNER_TEMP/mediaflow-docker-auth" >> "$GITHUB_ENV"
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+        with:
+          version: v0.38.1
+      - name: Authenticate package promotion
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: printf '%s' "$GH_TOKEN" | docker login ghcr.io --username longkongjun --password-stdin
+      - name: Promote the trusted candidate without building
+        env:
+          RELEASE_TAG: ${{ steps.target.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: python3 infra/release/publish.py promote --tag "$RELEASE_TAG" --output "$RUNNER_TEMP/bundle"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-bundle
+          path: ${{ runner.temp }}/bundle/
+          if-no-files-found: error
+          overwrite: true
+      - name: Remove registry login
+        if: always()
+        env:
+          DOCKER_CONFIG: ${{ runner.temp }}/mediaflow-docker-auth
+        run: docker logout ghcr.io
+  release:
+    needs: promote
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # Recover older release tags with tooling pinned to this trusted workflow run.
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-bundle
+          path: ${{ runner.temp }}/bundle
+      - name: Publish only the complete immutable Release
+        env:
+          RELEASE_TAG: ${{ needs.promote.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: python3 infra/release/publish.py release --tag "$RELEASE_TAG" --output "$RUNNER_TEMP/bundle"

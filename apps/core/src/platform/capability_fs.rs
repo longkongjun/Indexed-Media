@@ -255,6 +255,9 @@ impl CapabilityFs for OsCapabilityFs {
         Ok(EntryMetadata::new(
             kind,
             FileIdentity {
+                #[cfg(target_os = "linux")]
+                device: stat.st_dev,
+                #[cfg(not(target_os = "linux"))]
                 device: u64::try_from(stat.st_dev).map_err(|_| FsBoundaryError::Internal)?,
                 inode: stat.st_ino as u64,
                 mount_id: capability.directory_identity.mount_id,
@@ -1276,10 +1279,11 @@ fn open_root(path: &Path) -> Result<OwnedFd, FsBoundaryError> {
 
 #[cfg(target_os = "linux")]
 fn validate_root_mode(fd: impl AsFd, mode: RunMode) -> Result<(), FsBoundaryError> {
+    use rustix::fs::{StatxAttributes, StatxFlags};
+
     if !matches!(mode, RunMode::Production) {
         return Ok(());
     }
-    use rustix::fs::{StatxAttributes, StatxFlags};
     let stat = rustix::fs::statx(
         fd,
         "",
@@ -1359,6 +1363,9 @@ fn file_identity(fd: impl AsFd) -> rustix::io::Result<FileIdentity> {
     let fd = fd.as_fd();
     let stat = rustix::fs::fstat(fd)?;
     Ok(FileIdentity {
+        #[cfg(target_os = "linux")]
+        device: stat.st_dev,
+        #[cfg(not(target_os = "linux"))]
         device: u64::try_from(stat.st_dev).map_err(|_| rustix::io::Errno::OVERFLOW)?,
         inode: stat.st_ino as u64,
         mount_id: mount_id(fd)?,

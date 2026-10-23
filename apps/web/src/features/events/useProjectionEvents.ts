@@ -10,7 +10,7 @@ interface ProjectionEventOptions {
   eventTypes: readonly TaskEventEnvelope["type"][];
   matches: (event: TaskEventEnvelope) => boolean;
   versionOf?: (event: TaskEventEnvelope) => ProjectionVersion | null;
-  eventSourceFactory?: EventSourceFactory;
+  eventSourceFactory?: EventSourceFactory | undefined;
   probeClient?: Pick<MediaFlowClient, "getSession">;
   onUnauthorized?: () => unknown;
 }
