@@ -1,5 +1,8 @@
 package mediaflow.client.core.paging
 
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 
 /** 一页数据：条目 + 下一页游标（null = 到达末页，契约 next_cursor 语义）。 */
@@ -20,7 +23,8 @@ class MediaFlowErrorTunnel(
  *   失败）一律丢弃，避免旧数据覆盖新上下文（并发触发时只有最新请求可写状态）；
  * - **加载更多**：[loadNext] 追加下一页；无更多页返回 false；
  * - **状态语义**：[state] 遵循 [PageState]（Loading/Content/Empty/Error/Offline
- *   + stale），翻页失败保留已有内容并标记 stale。
+ *   + stale），翻页失败保留已有内容并标记 stale；
+ * - **取消**：向调用者传播，保留已有条目和游标；加载状态留待下一次调用恢复。
  */
 class CursorPager<T>(
     private val fetch: suspend (cursor: String?, limit: Int) -> PageResult<T>,
@@ -65,7 +69,7 @@ class CursorPager<T>(
      * 执行一次取数并按代次判定写入权。
      *
      * Suppress 说明：fetch 的 catch(Exception) 是边界映射点（异常经 ErrorMapping
-     * 归类为统一错误模型，不外抛）；多出口来自代次守卫的早退语义。
+     * 归类为统一错误模型；取消始终重抛）；多出口来自代次守卫的早退语义。
      */
     @Suppress("TooGenericExceptionCaught", "SwallowedException", "ReturnCount")
     private suspend fun execute(
@@ -77,7 +81,10 @@ class CursorPager<T>(
         val result =
             try {
                 fetch(cursor, limit)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (failure: Exception) {
+                currentCoroutineContext().ensureActive()
                 if (myEpoch != epoch) return false
                 // fetch 闭包可能经隧道送入统一错误模型（Repository 层）；解包透传，其余异常边界映射。
                 val error =
@@ -87,6 +94,7 @@ class CursorPager<T>(
                 state.value = PageState.fromError(error, stale)
                 return true
             }
+        currentCoroutineContext().ensureActive()
         if (myEpoch != epoch) return false
         nextCursor = result.nextCursor
         items.value =
