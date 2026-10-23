@@ -1,5 +1,5 @@
 /*
- * @mediaflow/ui-vue 主题入口：MfButton 消费的 --mfd-* 语义 token 子集（evergreen 浅/暗基线）。
+ * @mediaflow/ui-vue 主题入口：B1 组件消费的 --mfd-* 语义 token 子集（evergreen 浅/暗基线）。
  *
  * 值源：labs/design-system/tokens/tokens.json v2.0.0（唯一源），与 apps/web/src/styles/tokens.css 同源。
  * 本文件不是生成产物：调整取值必须先改 tokens.json 再同步此处，tests/package-contract.test.ts
@@ -10,6 +10,16 @@
 
 :root,
 [data-theme="light"] {
+  --mfd-font-size-xs: 0.75rem;
+  --mfd-space-8: 2rem;
+  --mfd-radius-lg: 0.75rem;
+  --mfd-color-media-placeholder: #dce7e1;
+  --mfd-color-text-secondary: #50655c;
+  --mfd-color-border-default: #b9c9c1;
+  --mfd-color-bg-surface: #ffffff;
+  --mfd-color-state-danger: #8b2a2a;
+  --mfd-color-state-danger-bg: #fff7f7;
+  --mfd-color-state-warning-border: #98771a;
   --mfd-font-family-ui: Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Segoe UI', Roboto, sans-serif;
   --mfd-font-size-base: 1rem;
   --mfd-font-line-height-normal: 1.5;
@@ -40,6 +50,13 @@
 }
 
 [data-theme="dark"] {
+  --mfd-color-media-placeholder: #1d2a23;
+  --mfd-color-text-secondary: #9fb3a7;
+  --mfd-color-border-default: #2a3a32;
+  --mfd-color-bg-surface: #121b16;
+  --mfd-color-state-danger: #e57373;
+  --mfd-color-state-danger-bg: #3a1a1a;
+  --mfd-color-state-warning-border: #8a6d1f;
   --mfd-color-bg-hover: rgba(230 237 232 / 0.06);
   --mfd-color-text-primary: #e6ede8;
   --mfd-color-text-on-action: #0a1410;
@@ -56,6 +73,13 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) {
+    --mfd-color-media-placeholder: #1d2a23;
+    --mfd-color-text-secondary: #9fb3a7;
+    --mfd-color-border-default: #2a3a32;
+    --mfd-color-bg-surface: #121b16;
+    --mfd-color-state-danger: #e57373;
+    --mfd-color-state-danger-bg: #3a1a1a;
+    --mfd-color-state-warning-border: #8a6d1f;
     --mfd-color-bg-hover: rgba(230 237 232 / 0.06);
     --mfd-color-text-primary: #e6ede8;
     --mfd-color-text-on-action: #0a1410;

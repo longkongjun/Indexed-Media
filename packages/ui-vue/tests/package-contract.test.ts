@@ -41,7 +41,7 @@ const semanticTokens = new Map<string, SemanticLeaf>();
 flattenSemantic(tokensJson.semantic, [], semanticTokens);
 
 const themeCss = readFileSync(resolve(pkgRoot, "src/styles/theme.css"), "utf8");
-const buttonSfc = readFileSync(resolve(pkgRoot, "src/components/MfButton.vue"), "utf8");
+const componentSfcs = readdirSync(resolve(pkgRoot, "src/components")).filter((name) => name.endsWith(".vue")).map((name) => readFileSync(resolve(pkgRoot, "src/components", name), "utf8")).join("\n");
 
 /** 提取一段 CSS 中全部 --mfd-* 变量声明。 */
 function declaredVars(css: string): Map<string, string> {
@@ -101,7 +101,7 @@ describe("主题 token 与冻结值源对账", () => {
 
   it("组件样式引用的 --mfd-* 变量全部由主题入口定义", () => {
     const used = new Set(
-      [...buttonSfc.matchAll(/var\((--mfd-[a-z0-9-]+)/g)].map((m) => m[1]).filter((name): name is string => name !== undefined),
+      [...componentSfcs.matchAll(/var\((--mfd-[a-z0-9-]+)/g)].map((m) => m[1]).filter((name): name is string => name !== undefined),
     );
     expect(used.size).toBeGreaterThan(0);
     for (const name of used) {
@@ -125,7 +125,7 @@ describe("样式选择器作用域", () => {
         const trimmed = part.trim();
         if (trimmed.length === 0) continue;
         if (
-          trimmed.startsWith(".mf-button") ||
+          /^\.mf-(button|image|content-card|request-state)(?:[ _:.\[#>-]|$)/.test(trimmed) ||
           trimmed.startsWith(":root") ||
           trimmed.startsWith("[data-theme") ||
           trimmed.startsWith("[data-skin") ||
@@ -139,9 +139,7 @@ describe("样式选择器作用域", () => {
   }
 
   it("组件样式不污染宿主 button", () => {
-    const styleMatch = buttonSfc.match(/<style[^>]*>([\s\S]*?)<\/style>/);
-    expect(styleMatch).not.toBeNull();
-    expectScoped(styleMatch?.[1] ?? "");
+    for (const match of componentSfcs.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/g)) expectScoped(match[1] ?? "");
   });
 
   it("主题入口只定义 :root / data-theme / data-skin 层级", () => {

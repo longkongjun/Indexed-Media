@@ -70,7 +70,7 @@ describe("构建产物公开入口消费", () => {
         const trimmed = part.trim();
         if (trimmed.length === 0) continue;
         expect(
-          trimmed.startsWith(".mf-button") ||
+          /^\.mf-(button|image|content-card|request-state)(?:[ _:.\[#>-]|$)/.test(trimmed) ||
             trimmed.startsWith(":root") ||
             trimmed.startsWith("[data-theme") ||
             trimmed.startsWith("[data-skin") ||
@@ -87,4 +87,25 @@ describe("构建产物公开入口消费", () => {
     const dts = readFileSync(typesEntry, "utf8");
     expect(dts).toContain("MfButton");
   });
+});
+
+
+it("公开产物中的 B1 图片/卡片/请求状态支持缺图、原生链接及恢复事件", async () => {
+  const ui = await import(pathToFileURL(jsEntry).href);
+  for (const name of ["MfImage", "MfContentCard", "MfRequestState"]) {
+    expect(ui[name]).toBeDefined();
+    expect(readFileSync(typesEntry, "utf8")).toContain(name);
+    expect(readFileSync(styleEntry, "utf8")).toContain(({ MfImage: ".mf-image", MfContentCard: ".mf-content-card", MfRequestState: ".mf-request-state" } as Record<string, string>)[name]);
+  }
+  const image = mount(ui.MfImage, { props: { src: "/broken.png", alt: "封面", retryLabel: "重试图片" } });
+  await image.get("img").trigger("error");
+  await image.get("button").trigger("click");
+  expect(image.get("img").attributes("src")).toBe("/broken.png");
+  const card = mount(ui.MfContentCard, { props: { title: "完整标题" }, slots: { title: '<a href="/one">完整标题</a>' } });
+  expect(card.get("a").attributes("href")).toBe("/one");
+  const state = mount(ui.MfRequestState, { props: { state: { kind: "error", stale: true }, errorMessage: "失败" }, slots: { default: "旧结果" } });
+  expect(state.get(".mf-request-state__content").attributes("inert")).toBeDefined();
+  await state.get("button").trigger("click");
+  expect(state.emitted("retry")).toEqual([[]]);
+  image.unmount(); card.unmount(); state.unmount();
 });
