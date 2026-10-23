@@ -154,7 +154,7 @@ onMounted(() => {
 
 <style scoped>
 .app-shell { min-height: 100vh; background: var(--mfd-color-bg-canvas); color: var(--mfd-color-text-primary); }
-.sidebar { position: fixed; inset: 0 auto 0 0; width: 15rem; box-sizing: border-box; padding: 1.5rem; background: var(--mfd-color-bg-inverse); color: var(--mfd-color-text-inverse); }
+.sidebar { overflow-y: auto; position: fixed; inset: 0 auto 0 0; width: 15rem; box-sizing: border-box; padding: 1.5rem; background: var(--mfd-color-bg-inverse); color: var(--mfd-color-text-inverse); }
 .brand { display: block; margin-bottom: 2rem; color: var(--mfd-color-text-inverse); font-size: 1.25rem; font-weight: 750; text-decoration: none; }
 nav { display: flex; gap: .5rem; }
 .sidebar nav { flex-direction: column; }
@@ -177,11 +177,11 @@ nav a.router-link-active { box-shadow: inset var(--mfd-stroke-focus-ring) 0 0 va
 .nav-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 1.4rem; margin-left: .4rem; padding: .05rem .4rem; border-radius: var(--mfd-radius-full); background: var(--mfd-color-action-danger); color: var(--mfd-color-text-on-danger); font-size: .72rem; font-weight: 650; }
 .mobile-nav { display: none; }
 @media (max-width: 48rem) {
-  .sidebar { position: static; width: auto; height: 4rem; padding: 1rem; }
+  .sidebar { position: static; width: auto; min-height: 4rem; padding: 1rem; }
   .sidebar nav { display: none; }
   .brand { margin: 0; }
   .content { min-height: calc(100vh - 8.5rem); margin-left: 0; padding: 1.25rem 1rem 5.5rem; }
-  .mobile-nav { position: fixed; z-index: 5; inset: auto 0 0; display: grid; grid-template-columns: repeat(7, 1fr); padding: .5rem max(.5rem, env(safe-area-inset-right)) max(.5rem, env(safe-area-inset-bottom)) max(.5rem, env(safe-area-inset-left)); background: var(--mfd-color-bg-inverse); color: var(--mfd-color-text-inverse); }
-  .mobile-nav a, .mobile-nav button { min-width: 0; padding: .5rem .2rem; font-size: .75rem; line-height: 1.2; text-align: center; white-space: nowrap; }
+  .mobile-nav { position: fixed; z-index: 5; inset: auto 0 0; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); padding: .5rem max(.5rem, env(safe-area-inset-right)) max(.5rem, env(safe-area-inset-bottom)) max(.5rem, env(safe-area-inset-left)); background: var(--mfd-color-bg-inverse); color: var(--mfd-color-text-inverse); }
+  .mobile-nav a, .mobile-nav button { min-width: 0; padding: .5rem .2rem; font-size: .75rem; line-height: 1.2; text-align: center; white-space: normal; overflow-wrap: anywhere; }
 }
 </style>

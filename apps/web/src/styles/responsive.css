@@ -13,7 +13,7 @@
   .review-case-view, .review-decision-form, .candidate-list, .evidence-list { min-width: 0; max-width: 100%; }
   [data-media-list], [data-media-detail], .media-card-list, .media-card-list .resource-card { min-width: 0; max-width: 100%; }
   .media-filter, .media-detail-heading { grid-template-columns: 1fr; }
-  .media-artwork { width: 100%; min-height: 5rem; }
+  .media-card-list { gap: 1rem .75rem; }
   [data-downloader-connections], [data-downloader-connection-detail], [data-download-task-list], [data-download-task-detail] { min-width: 0; max-width: 100%; }
   [data-download-task-list] .form-card, [data-download-task-list] input, [data-download-task-list] select { min-width: 0; max-width: 100%; box-sizing: border-box; }
   [data-organization-targets], [data-organization-target-detail], [data-organization-task], .organization-target-form, .organization-task-grid, .organization-journal { min-width: 0; max-width: 100%; }
