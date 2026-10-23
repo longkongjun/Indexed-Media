@@ -47,10 +47,24 @@ struct RootView: View {
 
     var body: some View {
         NavigationStack(path: $model.path) {
-            if model.loggedIn {
-                TabRootView()
-            } else {
-                LoginView()
+            Group {
+                if model.loggedIn {
+                    TabRootView()
+                } else {
+                    LoginView()
+                }
+            }
+            .navigationDestination(for: Screen.self) { screen in
+                switch screen {
+                case .detail:
+                    DetailView(screen: screen)
+                case .confirm:
+                    ConfirmView(screen: screen)
+                case .login:
+                    LoginView()
+                case let .tab(tab):
+                    TabRootView().onAppear { model.tab = tab }
+                }
             }
         }
     }
@@ -122,6 +136,7 @@ struct WallView: View {
                 ) {
                     Text(item.hasArtwork ? "▣" : "□").font(.title2)
                 }
+                .accessibilityIdentifier("media-row-\(item.id)")
             }
             if model.wallHasMore {
                 MfButton("加载更多") { model.loadMoreWall() }
@@ -176,6 +191,7 @@ struct DetailView: View {
             }
         }
         .navigationTitle(screenTitle(screen))
+        .accessibilityIdentifier("media-detail")
         .overlay { if model.detailLoading { ProgressView("加载中…") } }
         .task(id: screen) { await model.loadDetail(screen) }
     }

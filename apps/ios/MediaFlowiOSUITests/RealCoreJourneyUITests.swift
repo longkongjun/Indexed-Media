@@ -117,6 +117,25 @@ final class RealCoreJourneyUITests: XCTestCase {
         }
     }
 
+    /// 验证正式媒体行的push绑定及系统返回；需要已签发配对码和至少一条正式媒体，不用fixture代签真实Core。
+    func testMediaRowPushesDetailAndReturns() throws {
+        guard !pairingCode.isEmpty else {
+            throw XCTSkip("需要管理面签发M5B2_PAIRING_CODE及预置正式媒体")
+        }
+        loginAndReachWall()
+        let app = XCUIApplication()
+        let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'media-row-' ")).firstMatch
+        guard row.waitForExistence(timeout: 20) else {
+            throw XCTSkip("Core无可用媒体行；需要预置正式媒体后重验导航")
+        }
+        let rowID = row.identifier
+        row.tap()
+        let detail = app.descendants(matching: .any).matching(identifier: "media-detail").firstMatch
+        XCTAssertTrue(detail.waitForExistence(timeout: 20), "媒体行必须push到详情，不能只向未注册的path追加值")
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        XCTAssertTrue(app.buttons[rowID].waitForExistence(timeout: 10), "返回后原媒体行应可达")
+    }
+
     func testCredentialLoginAgainstRealCore() throws {
         guard !adminPassword.isEmpty else {
             throw XCTSkip("M5B2_ADMIN_PASSWORD 未提供")

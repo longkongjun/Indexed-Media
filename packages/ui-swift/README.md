@@ -14,4 +14,4 @@ MfTheme {
 
 独立消费者：`tools/ui-swift-consumer`；生成后用完整Xcode/iOS SDK构建和运行UI测试。MediaFlow应用通过`apps/ios/project.yml`的本地Package路径依赖；不复制源码，不依赖其他worktree。
 
-构建与UI测试需要完整且匹配的Xcode/iOS SDK；语法检查/XcodeGen不等于SwiftUI类型检查、iOS构建或模拟器通过。现有iOS应用的导航destination、真实配对管理依赖与VoiceOver/Dynamic Type需另行验收。尚未发布。
+构建与UI测试需要完整且匹配的Xcode/iOS SDK；语法检查/XcodeGen不等于SwiftUI类型检查、iOS构建或模拟器通过。现有iOS应用已补Screen destination接线与导航回归源码；完整编译、实际push/返回、冷恢复、真实配对管理依赖与VoiceOver/Dynamic Type仍需分别验收。尚未发布。
