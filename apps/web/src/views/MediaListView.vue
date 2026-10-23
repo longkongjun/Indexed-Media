@@ -6,6 +6,7 @@
  * `catalog.media-changed` SSE 事件触发有界刷新，会话状态仅用于认证失败处理。
  */
 import type { MediaItemListOptions, TaskEventEnvelope } from "@mediaflow/api-client-ts";
+import { MfButton } from "@mediaflow/ui-vue";
 import { computed, inject, onBeforeUnmount, onMounted, reactive, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useSessionStore } from "../app/session";
@@ -84,7 +85,7 @@ watch(() => route.fullPath, () => { syncControls(); return refresh(); });
       <label>本地状态<select v-model="filters.status"><option value="">全部</option><option value="complete">完整</option><option value="partial">部分</option></select></label>
       <label>媒体库 ID<input v-model="filters.library" maxlength="36"></label>
       <label>关键字<input v-model="filters.query" maxlength="200"></label>
-      <button type="submit">应用筛选</button>
+      <MfButton type="submit">应用筛选</MfButton>
     </form>
     <AsyncState :state="feature.state.value" :error-message="feature.errorMessage.value" empty-message="尚无已整理媒体" offline-message="当前离线，保留上次正式媒体结果" @retry="refresh">
       <ul class="card-list media-card-list">

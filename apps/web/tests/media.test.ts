@@ -1,4 +1,5 @@
 import type { MediaFlowClient, MediaItemDetail, MediaItemPage } from "@mediaflow/api-client-ts";
+import { MfButton } from "@mediaflow/ui-vue";
 import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { describe, expect, it, vi } from "vitest";
@@ -65,6 +66,20 @@ describe("formal media catalog", () => {
     expect(wrapper.findAll('a[href="/tasks"]')).toHaveLength(1);
     expect(wrapper.findAll("select")[0]!.findAll("option").map((option) => option.attributes("value"))).toEqual(["", "movie", "series", "generic-video"]);
     expect(client.listReviewCases).toBeUndefined();
+    wrapper.unmount();
+  });
+
+  it("uses the public action button while preserving native form filtering", async () => {
+    const client = api();
+    const pinia = createPinia(); setActivePinia(pinia); const appRouter = router(); await appRouter.push("/media");
+    const wrapper = mount(MediaListView, { global: { plugins: [pinia, appRouter], provide: { [identityClientKey as symbol]: client } } });
+    await flushPromises();
+    expect(wrapper.findComponent(MfButton).exists()).toBe(true);
+    await wrapper.find('input[maxlength="200"]').setValue("沙丘");
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+    expect(appRouter.currentRoute.value.query.q).toBe("沙丘");
+    expect(client.listMediaItems).toHaveBeenLastCalledWith(expect.objectContaining({ query: "沙丘" }));
     wrapper.unmount();
   });
 

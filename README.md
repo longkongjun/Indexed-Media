@@ -27,6 +27,10 @@ MediaFlow/
 |   |-- kmp-sdk/                  # Android / iOS 共享业务与数据逻辑
 |   |-- api-client-ts/            # Vue 使用的 TypeScript API 客户端
 |   |-- api-client-dart/          # Flutter 实验使用的 Dart API 客户端
+|   |-- ui-vue/                   # Vue正式基础组件（C01）
+|   |-- ui-android/               # Compose正式基础组件
+|   |-- ui-android-tv/            # Compose for TV正式基础组件
+|   |-- ui-swift/                 # iOS SwiftUI正式基础组件
 |   |-- ui-contract/              # 跨端页面状态与交互约定
 |   `-- test-fixtures/            # 跨端共用测试样例
 |

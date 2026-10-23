@@ -8,7 +8,8 @@
  * 皮肤选择器特异性更高，加载顺序无关。组件样式只从这里取值，不依赖 labs 或 apps/web 运行时。
  */
 
-:root {
+:root,
+[data-theme="light"] {
   --mfd-font-family-ui: Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Segoe UI', Roboto, sans-serif;
   --mfd-font-size-base: 1rem;
   --mfd-font-line-height-normal: 1.5;
