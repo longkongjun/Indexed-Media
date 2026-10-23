@@ -71,7 +71,7 @@ private fun Catalog() {
         Text("Conference sessions", style = MaterialTheme.typography.headlineLarge)
         if (selected != null) {
             MfTvButton("Back to sessions", onClick = { selected = null }, modifier = Modifier.focusRequester(detailFocus))
-            Text("Session $selected: accessibility and resilient interfaces", style = MaterialTheme.typography.headlineMedium)
+            Text(sessionTitle(checkNotNull(selected)), style = MaterialTheme.typography.headlineMedium)
             Text("A long description can be read without a network or a MediaFlow SDK.", fontSize = 20.sp)
         } else {
             MfTvButton("Remove focused session", onClick = {
@@ -93,7 +93,7 @@ private fun Catalog() {
                     row.forEach { id ->
                         key(id) {
                             MfTvContentCard(
-                                title = "Session $id: a longer title about accessible interfaces",
+                                title = sessionTitle(id),
                                 subtitle = "Room A · 45 minutes",
                                 onClick = { selected = id },
                                 modifier =
@@ -112,3 +112,5 @@ private fun Catalog() {
         }
     }
 }
+
+private fun sessionTitle(id: String): String = "Session $id: a longer title about accessible interfaces"
