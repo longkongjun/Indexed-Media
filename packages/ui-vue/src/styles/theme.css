@@ -1,0 +1,71 @@
+/*
+ * @mediaflow/ui-vue 主题入口：MfButton 消费的 --mfd-* 语义 token 子集（evergreen 浅/暗基线）。
+ *
+ * 值源：labs/design-system/tokens/tokens.json v2.0.0（唯一源），与 apps/web/src/styles/tokens.css 同源。
+ * 本文件不是生成产物：调整取值必须先改 tokens.json 再同步此处，tests/package-contract.test.ts
+ * 逐项对账。主题结构与生成表一致（[data-theme=dark] 显式优先，无偏好时跟随系统）；皮肤
+ * （aurora/sepia）由宿主的完整 token 表提供——宿主自带同名变量时，本子集与其同名同值可共存，
+ * 皮肤选择器特异性更高，加载顺序无关。组件样式只从这里取值，不依赖 labs 或 apps/web 运行时。
+ */
+
+:root {
+  --mfd-font-family-ui: Inter, -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Segoe UI', Roboto, sans-serif;
+  --mfd-font-size-base: 1rem;
+  --mfd-font-line-height-normal: 1.5;
+  --mfd-font-weight-semibold: 600;
+  --mfd-space-2: 0.5rem;
+  --mfd-space-4: 1rem;
+  --mfd-radius-md: 0.5rem;
+  --mfd-icon-size-md: 1.25rem;
+  --mfd-icon-size-touch-min: 2.75rem;
+  --mfd-stroke-hair: 1px;
+  --mfd-stroke-strong: 2px;
+  --mfd-stroke-focus-ring: 3px;
+  --mfd-motion-duration-fast: 120ms;
+  --mfd-motion-duration-slow: 400ms;
+  --mfd-motion-easing-standard: cubic-bezier(0.2, 0, 0, 1);
+  --mfd-color-bg-hover: rgba(16 37 29 / 0.06);
+  --mfd-color-text-primary: #12231c;
+  --mfd-color-text-on-action: #ffffff;
+  --mfd-color-text-on-danger: #ffffff;
+  --mfd-color-border-strong: #71837b;
+  --mfd-color-border-focus: #0b7a50;
+  --mfd-color-action-primary: #08744b;
+  --mfd-color-action-primary-hover: #076040;
+  --mfd-color-action-primary-active: #065036;
+  --mfd-color-action-secondary-bg: #ffffff;
+  --mfd-color-action-danger: #8b2a2a;
+  --mfd-color-action-danger-hover: #7b2020;
+}
+
+[data-theme="dark"] {
+  --mfd-color-bg-hover: rgba(230 237 232 / 0.06);
+  --mfd-color-text-primary: #e6ede8;
+  --mfd-color-text-on-action: #0a1410;
+  --mfd-color-text-on-danger: #200a0a;
+  --mfd-color-border-strong: #5c7266;
+  --mfd-color-border-focus: #5cd39a;
+  --mfd-color-action-primary: #4cc38a;
+  --mfd-color-action-primary-hover: #5fd096;
+  --mfd-color-action-primary-active: #43b07c;
+  --mfd-color-action-secondary-bg: #17221c;
+  --mfd-color-action-danger: #e57373;
+  --mfd-color-action-danger-hover: #ea8a8a;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --mfd-color-bg-hover: rgba(230 237 232 / 0.06);
+    --mfd-color-text-primary: #e6ede8;
+    --mfd-color-text-on-action: #0a1410;
+    --mfd-color-text-on-danger: #200a0a;
+    --mfd-color-border-strong: #5c7266;
+    --mfd-color-border-focus: #5cd39a;
+    --mfd-color-action-primary: #4cc38a;
+    --mfd-color-action-primary-hover: #5fd096;
+    --mfd-color-action-primary-active: #43b07c;
+    --mfd-color-action-secondary-bg: #17221c;
+    --mfd-color-action-danger: #e57373;
+    --mfd-color-action-danger-hover: #ea8a8a;
+  }
+}
