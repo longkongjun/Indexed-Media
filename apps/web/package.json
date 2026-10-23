@@ -4,10 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "vue-tsc --noEmit && vite build",
-    "test": "vitest --exclude e2e/**",
-    "typecheck": "vue-tsc --noEmit",
-    "lint": "eslint ."
+    "build": "pnpm --filter @mediaflow/ui-vue build && vue-tsc --noEmit && vite build",
+    "test": "pnpm --filter @mediaflow/ui-vue build && vitest --exclude 'e2e/**'",
+    "typecheck": "pnpm --filter @mediaflow/ui-vue build && vue-tsc --noEmit",
+    "lint": "pnpm --filter @mediaflow/ui-vue build && eslint ."
   },
   "dependencies": {
     "@mediaflow/api-client-ts": "workspace:*",

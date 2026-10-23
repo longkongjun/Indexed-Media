@@ -23,6 +23,19 @@ def copied_paths(dockerfile):
     return copies
 
 
+def is_copied(target, copies):
+    relative = target.relative_to(ROOT)
+    for copied, destination in copies:
+        if copied.is_dir() and target.is_relative_to(copied):
+            if destination / target.relative_to(copied) == relative:
+                return True
+        elif copied == target:
+            final = destination / target.name if str(destination) == '.' else destination
+            if final == relative:
+                return True
+    return False
+
+
 def missing_inputs(dockerfile):
     copies = copied_paths(dockerfile)
     included = json.loads((ROOT / 'apps/web/tsconfig.json').read_text())['include']
@@ -42,16 +55,8 @@ def missing_inputs(dockerfile):
             target = next((p for p in (base, base.with_suffix('.ts'), base / 'index.ts') if p.is_file()), None)
             if target is None:
                 continue  # vue-tsc diagnoses unresolved source imports; this guard covers missing COPY inputs.
-            relative = target.relative_to(ROOT)
-            covered = False
-            for copied, destination in copies:
-                if copied.is_dir() and target.is_relative_to(copied):
-                    covered |= destination / target.relative_to(copied) == relative
-                elif copied == target:
-                    final = destination / target.name if str(destination) == '.' else destination
-                    covered |= final == relative
-            if not covered:
-                missing.append(f'{source.relative_to(ROOT)}: {specifier} -> {relative}')
+            if not is_copied(target, copies):
+                missing.append(f'{source.relative_to(ROOT)}: {specifier} -> {target.relative_to(ROOT)}')
             queue.append(target)
     return missing
 
@@ -61,6 +66,19 @@ class WebBuildInputsTests(unittest.TestCase):
         missing = missing_inputs(DOCKERFILE.read_text())
         if missing:
             self.fail(f'{len(missing)} missing Docker Web inputs:\n' + '\n'.join(missing[:8]))
+
+    def test_ui_library_manifest_is_available_before_dependency_install(self):
+        before_install = DOCKERFILE.read_text().split('RUN pnpm install', 1)[0]
+        self.assertTrue(is_copied(ROOT / 'packages/ui-vue/package.json', copied_paths(before_install)))
+
+    def test_ui_library_build_sources_are_copied(self):
+        package = ROOT / 'packages/ui-vue'
+        inputs = [package / name for name in ('package.json', 'vite.config.ts', 'tsconfig.json', 'tsconfig.build.json')]
+        inputs += [path for path in (package / 'src').rglob('*') if path.is_file()]
+        copies = copied_paths(DOCKERFILE.read_text())
+        for path in inputs:
+            with self.subTest(path=path.relative_to(ROOT)):
+                self.assertTrue(is_copied(path, copies))
 
     def test_missing_direct_and_transitive_inputs_are_detected(self):
         dockerfile = DOCKERFILE.read_text()

@@ -10,10 +10,12 @@ COPY patches patches
 COPY apps/web/package.json apps/web/package.json
 COPY packages/api-client-ts/package.json packages/api-client-ts/package.json
 COPY packages/test-fixtures/package.json packages/test-fixtures/package.json
+COPY packages/ui-vue/package.json packages/ui-vue/package.json
 RUN pnpm install --frozen-lockfile --filter @mediaflow/web...
 COPY apps/web apps/web
 COPY packages/api-client-ts packages/api-client-ts
 COPY packages/test-fixtures packages/test-fixtures
+COPY packages/ui-vue packages/ui-vue
 COPY packages/ui-contract/contract packages/ui-contract/contract
 COPY contracts/examples contracts/examples
 RUN pnpm --filter @mediaflow/web build
