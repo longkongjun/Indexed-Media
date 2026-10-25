@@ -10,7 +10,7 @@ Vue Web/PWA 正式 UI。
 
 ## 允许依赖
 
-`packages/ui-vue`、`packages/api-client-ts`、`packages/ui-contract`、`packages/test-fixtures`、`contracts`。
+`packages/ui-vue`、`packages/api-client-ts`、`packages/ui-contract`、`packages/test-fixtures`、`contracts`、`@indexed-design/ui-vue`（vendored tarball，见 `vendor/indexed-design/README.md`；接入、主题衔接与组件映射见 [docs/development/indexed-design-adoption.md](../../docs/development/indexed-design-adoption.md)）。
 
 ## 非目标
 
@@ -30,4 +30,4 @@ Core 业务逻辑、原生移动端或 TV UI、播放以及 `labs` 下的实验�
 
 Web公开的build/typecheck/test/lint命令会先构建`@mediaflow/ui-vue`，不依赖工作区已有dist；容器Web阶段同时复制该包的manifest与源码。
 
-B1必要消费：媒体筛选提交使用正式`MfButton`，CSS从公开入口在应用token前加载；表单提交仍由页面处理。该消费不代表媒体页高保真或完整Web基础库完成。
+Indexed-Design 首批接入：整树挂 `IndexedThemeProvider`（`app/designTheme.ts` 桥衔接宿主三态，皮肤维度暂不映射），媒体列表/详情迁移至 `@indexed-design/ui-vue` 的 `Button`/`RequestState`，媒体卡为页面级 C14 组合；其余页面继续消费 `@mediaflow/ui-vue`，双真源过渡见接入文档。该迁移不代表媒体页高保真、G1 或全产品验收完成。

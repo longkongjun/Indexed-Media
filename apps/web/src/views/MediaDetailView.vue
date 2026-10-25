@@ -3,10 +3,11 @@
  * 展示单个已核对正式 Catalog 媒体的元数据、本地版本、层级和 NFO 状态。
  *
  * 页面不导入候选或 ReviewCase 数据，也不构造远程图片 URL；媒体 ID 和返回上下文来自路由，详情状态来自媒体 feature，
- * 对应的 `catalog.media-changed` SSE 事件会刷新当前投影。
+ * 对应的 `catalog.media-changed` SSE 事件会刷新当前投影。请求状态容器来源 `@indexed-design/ui-vue`
+ * 的 RequestState（C12），页面结构仍为 mediaDetail 领域布局，见 docs/development/indexed-design-adoption.md。
  */
 import type { TaskEventEnvelope } from "@mediaflow/api-client-ts";
-import { MfRequestState } from "@mediaflow/ui-vue";
+import { RequestState } from "@indexed-design/ui-vue";
 import { nextTick, inject, onBeforeUnmount, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useSessionStore } from "../app/session";
@@ -52,7 +53,7 @@ onBeforeUnmount(events.stop);
 <template>
   <main class="page-stack" data-media-detail>
     <header class="page-header"><div><RouterLink :to="{ name: 'media', query: backQuery }">← 返回媒体</RouterLink><h1>媒体详情</h1></div></header>
-    <MfRequestState data-media-request :state="feature.state.value" :error-message="feature.errorMessage.value" offline-message="当前离线，保留最近正式媒体详情" @retry="refresh(true)">
+    <RequestState data-media-request :state="feature.state.value" :error-message="feature.errorMessage.value" offline-message="当前离线，保留最近正式媒体详情" @retry="refresh(true)">
       <template v-if="feature.detail.value">
         <article class="detail-card media-detail-heading">
           <MediaArtwork :artwork="feature.detail.value.item.artwork_ref" :title="feature.detail.value.item.title" />
@@ -63,7 +64,7 @@ onBeforeUnmount(events.stop);
         <section aria-labelledby="hierarchy-heading"><h2 id="hierarchy-heading">媒体层级</h2><ol class="media-hierarchy"><li v-for="child in feature.detail.value.children" :key="child.id"><strong>{{ child.title }}</strong><span>{{ child.type }} · 顺序 {{ child.ordinal }}</span><small v-if="child.parent_id">父级 {{ child.parent_id }}</small></li></ol><p v-if="feature.detail.value.children.length === 0">没有子级。</p></section>
         <nav v-if="feature.detail.value.related_task_ids.length" class="detail-actions" aria-label="相关任务"><RouterLink v-for="taskId in feature.detail.value.related_task_ids" :key="taskId" :to="{ name: 'task', params: { id: taskId } }">查看相关任务</RouterLink></nav>
       </template>
-    </MfRequestState>
+    </RequestState>
     <p v-if="events.diagnostic.value" class="visually-hidden">{{ events.diagnostic.value }}</p>
   </main>
 </template>

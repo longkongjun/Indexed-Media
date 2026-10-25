@@ -4,9 +4,12 @@
  *
  * 页面不读取候选或 ReviewCase 数据，也不构造远程图片 URL；筛选和游标来自路由查询，列表状态来自媒体 feature，
  * `catalog.media-changed` SSE 事件触发有界刷新，会话状态仅用于认证失败处理。
+ *
+ * 设计组件来源 `@indexed-design/ui-vue`（IndexedThemeProvider 包裹全树）：Button（C01）与 RequestState（C12）；
+ * 媒体网格卡（C14）是页面组合模式，不套用带边框的通用盒卡，见 docs/development/indexed-design-adoption.md。
  */
 import type { MediaItemListOptions, TaskEventEnvelope } from "@mediaflow/api-client-ts";
-import { MfButton, MfContentCard, MfRequestState } from "@mediaflow/ui-vue";
+import { Button, RequestState } from "@indexed-design/ui-vue";
 import { computed, inject, onBeforeUnmount, onMounted, reactive, watch, nextTick } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useSessionStore } from "../app/session";
@@ -98,21 +101,34 @@ watch(() => route.fullPath, () => { syncControls(); return refresh(); });
       <label>本地状态<select v-model="filters.status"><option value="">全部</option><option value="complete">完整</option><option value="partial">部分</option></select></label>
       <label>媒体库 ID<input v-model="filters.library" maxlength="36"></label>
       <label>关键字<input v-model="filters.query" maxlength="200"></label>
-      <MfButton type="submit">应用筛选</MfButton>
+      <Button html-type="submit">应用筛选</Button>
     </form>
-    <MfRequestState data-media-request :state="feature.state.value" :error-message="feature.errorMessage.value" :empty-message="hasFilters ? '无匹配结果，请调整或清除筛选' : '尚无已整理媒体'" offline-message="当前离线，保留上次正式媒体结果" @retry="refresh(true)">
-      <template #empty><MfButton v-if="hasFilters" @activate="clearFilters">清除筛选</MfButton></template>
+    <RequestState data-media-request :state="feature.state.value" :error-message="feature.errorMessage.value" :empty-message="hasFilters ? '无匹配结果，请调整或清除筛选' : '尚无已整理媒体'" offline-message="当前离线，保留上次正式媒体结果" @retry="refresh(true)">
+      <template #empty><Button v-if="hasFilters" @click="clearFilters">清除筛选</Button></template>
       <ul class="card-list media-card-list">
         <li v-for="item in feature.items.value" :key="item.id">
-          <MfContentCard :title="item.title" :subtitle="`${item.type} · ${item.year ?? '年份未知'} · ${item.local_status === 'partial' ? '部分结果' : '完整'}`">
-            <template #artwork><MediaArtwork :artwork="item.artwork_ref" :title="item.title" decorative /></template>
-            <template #title><RouterLink :to="{ name: 'media-item', params: { id: item.id }, query: queryFor(context) }">{{ item.title }}</RouterLink></template>
-          </MfContentCard>
+          <article class="media-card">
+            <MediaArtwork :artwork="item.artwork_ref" :title="item.title" decorative />
+            <div class="media-card__body">
+              <div class="media-card__title" :title="item.title"><RouterLink :to="{ name: 'media-item', params: { id: item.id }, query: queryFor(context) }">{{ item.title }}</RouterLink></div>
+              <p class="media-card__subtitle">{{ item.type }} · {{ item.year ?? '年份未知' }} · {{ item.local_status === 'partial' ? '部分结果' : '完整' }}</p>
+            </div>
+          </article>
         </li>
       </ul>
       <CursorPager :has-previous-context="Boolean(context.cursor)" :next-cursor="feature.nextCursor.value" @previous="router.push({ query: queryFor({ ...context, cursor: undefined }) })" @next="router.push({ query: queryFor({ ...context, cursor: $event }) })" />
-    </MfRequestState>
+    </RequestState>
     <p v-if="feature.state.value.kind === 'empty' && !hasFilters" class="empty-action">处理任务完成并产生已核对本地结果后才会出现在这里。<RouterLink to="/tasks">查看任务</RouterLink></p>
     <p v-if="events.diagnostic.value" class="visually-hidden">{{ events.diagnostic.value }}</p>
   </main>
 </template>
+
+<style scoped>
+/* C14 媒体网格卡的页面级组合：2:3 封面 + 两行标题 + 元信息；布局 token 暂用 --mfd-*（与 Indexed 同一 v2.0.0 基线值），见接入文档过渡策略。 */
+.media-card { display: grid; align-content: start; gap: var(--mfd-space-2); min-width: 0; font-family: var(--mfd-font-family-ui); color: var(--mfd-color-text-primary); }
+.media-card__body { min-width: 0; overflow-wrap: anywhere; }
+.media-card__title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: var(--mfd-font-size-base); line-height: var(--mfd-font-line-height-normal); font-weight: var(--mfd-font-weight-semibold); }
+.media-card__title a { display: block; min-height: var(--mfd-icon-size-touch-min); color: inherit; text-decoration: none; }
+.media-card__title a:focus-visible { outline: var(--mfd-stroke-focus-ring) solid var(--mfd-color-border-focus); outline-offset: -3px; }
+.media-card__subtitle { margin: 0; font-size: var(--mfd-font-size-xs); line-height: var(--mfd-font-line-height-normal); color: var(--mfd-color-text-secondary); }
+</style>

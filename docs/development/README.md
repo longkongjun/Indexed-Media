@@ -9,3 +9,4 @@
 [注释与文档规范](comment-documentation-standard.md)是工程级注释规则和语言级写法的唯一权威正文；其他入口只链接，不复制规则内容。
 
 - [工程检查入口、平台范围与报告](checks.md)
+- [Indexed-Design 接入：基线、主题与组件迁移映射](indexed-design-adoption.md)

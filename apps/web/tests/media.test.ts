@@ -1,5 +1,6 @@
 import type { MediaFlowClient, MediaItemDetail, MediaItemPage } from "@mediaflow/api-client-ts";
-import { MfButton, MfContentCard, MfImage, MfRequestState } from "@mediaflow/ui-vue";
+import { Button, RequestState } from "@indexed-design/ui-vue";
+import { MfImage } from "@mediaflow/ui-vue";
 import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { describe, expect, it, vi } from "vitest";
@@ -74,10 +75,11 @@ describe("formal media catalog", () => {
     const pinia = createPinia(); setActivePinia(pinia); const appRouter = router(); await appRouter.push("/media");
     const wrapper = mount(MediaListView, { global: { plugins: [pinia, appRouter], provide: { [identityClientKey as symbol]: client } } });
     await flushPromises();
-    expect(wrapper.findComponent(MfButton).exists()).toBe(true);
-    expect(wrapper.findComponent(MfContentCard).props("title")).toBe("沙丘");
+    expect(wrapper.findComponent(Button).exists()).toBe(true);
+    expect(wrapper.get(".media-card__title a").text()).toBe("沙丘");
+    expect(wrapper.get(".media-card__title").attributes("title")).toBe("沙丘");
     expect(wrapper.findComponent(MfImage).props("alt")).toBe("");
-    expect(wrapper.findComponent(MfRequestState).exists()).toBe(true);
+    expect(wrapper.findComponent(RequestState).exists()).toBe(true);
     expect(wrapper.get(`a[href^="/media/${itemId}"]`).text()).toBe("沙丘");
     await wrapper.find('input[maxlength="200"]').setValue("沙丘");
     await wrapper.find("form").trigger("submit");
@@ -103,7 +105,7 @@ describe("formal media catalog", () => {
     const wrapper = mount(MediaDetailView, { global: { plugins: [pinia, appRouter], provide: { [identityClientKey as symbol]: client } } });
     await flushPromises();
     expect(wrapper.text()).toContain("元数据缺失");
-    expect(wrapper.findComponent(MfRequestState).exists()).toBe(true);
+    expect(wrapper.findComponent(RequestState).exists()).toBe(true);
     expect(wrapper.findComponent(MfImage).exists()).toBe(true);
     expect(wrapper.text()).toContain("NFO：生成失败");
     expect(wrapper.text()).toContain("movies/Dune (2021)/Dune (2021).mkv");
@@ -120,14 +122,14 @@ describe("formal media catalog", () => {
     await flushPromises();
     await wrapper.get("form").trigger("submit");
     // 路由不变时不发起新请求，通过组件的公开恢复事件模拟局部刷新。
-    wrapper.findComponent(MfRequestState).vm.$emit("retry");
+    wrapper.findComponent(RequestState).vm.$emit("retry");
     await flushPromises();
-    expect(wrapper.get(".mf-request-state__content").attributes("inert")).toBeDefined();
+    expect(wrapper.get(".id-request-state__content").attributes("inert")).toBeDefined();
     expect(wrapper.text()).toContain("沙丘");
     await wrapper.get('[role="alert"] button').trigger("click");
     await flushPromises();
     expect(list).toHaveBeenLastCalledWith(expect.objectContaining({ query: "沙丘" }));
-    expect(wrapper.get(".mf-request-state__content").attributes("inert")).toBeUndefined();
+    expect(wrapper.get(".id-request-state__content").attributes("inert")).toBeUndefined();
     wrapper.unmount();
   });
 
@@ -138,11 +140,11 @@ describe("formal media catalog", () => {
     const wrapper = mount(MediaListView, { global: { plugins: [pinia, appRouter], provide: { [identityClientKey as symbol]: client } } });
     await flushPromises();
     expect(wrapper.text()).toContain("无匹配结果");
-    await wrapper.get(".mf-request-state__notice button").trigger("click");
+    await wrapper.get(".ant-empty button").trigger("click");
     await flushPromises();
     expect(appRouter.currentRoute.value.query).toEqual({});
     expect(list).toHaveBeenCalledTimes(2);
-    expect(wrapper.findComponent(MfContentCard).exists()).toBe(true);
+    expect(wrapper.find(".media-card").exists()).toBe(true);
     wrapper.unmount();
   });
 
