@@ -34,9 +34,16 @@ MediaFlow Web 分批接入 `@indexed-design/ui-vue` 设计库。本文件记录�
 | `MfRequestState` | `RequestState` | props 同名（`state`/`errorMessage`/`offlineMessage`/`retryLabel`…），新增 `loadingDelay`（默认同为 300ms）。差异：空状态由 notice 条改为 `Empty` 呈现（`emptyMessage` 作为 description，`#empty` 槽移入 Empty 内），内容容器类名 `mf-request-state__content` → `id-request-state__content`；stale 旧内容 inert 行为一致。 |
 | `MfContentCard` | 无 1:1；页面级组合（`.media-card`） | C14 媒体网格卡（2:3 封面+两行标题+元信息）是页面模式；antd `Card` 是带边框的内容盒卡（`web-vue.card.primary` 面向 dashboard 卡），套用会改变设计语义。已迁移页面用页面级标记+token 组合承担，样式进视图 scoped 块。 |
 | `MfImage`（经 `MediaArtwork`） | 暂保留 | MediaFlow 封面是不透明本地引用，无可读 URL 时不渲染图片（`web-vue.image.primary` 面向真实 src/preview 场景）；MfImage 的占位/缺省语义当前无可替代，强行换 antd Image 会伪造图片加载态。待 Core 提供封面 URL 能力后重评。 |
-| `MfField` / `MfDialog` / `MfMenu` | 待后续批次 | 登录、审批、收件目录等页面仍在消费；按页面批次逐个映射（`Input`/`Modal`/原生 menu 模式），未迁移页面继续从旧包导入，旧包不删除。 |
+| `MfField` / `MfDialog` / `MfMenu` | 已随第二批迁移/退役（见下） | `MfField`→Input（LoginView，标签→控件→错误由页面组合）；`MfDialog`→Modal（InboxListView 预检确认）；`MfMenu` 无视图消费者，随旧包保留至退役。 |
 
 共享组件 `CursorPager`（原生按钮）与 `AppShell` 未改：前者本就是原生实现且被 9 个视图共享，后者有待其他会话的未提交修改，均留待对应页面批次。
+
+## 3.1 第二批：应用级容器与残余表单/模态
+
+- **`AsyncState`（应用页面状态容器，19 视图共用）**：props/`retry` 事件/`.async-state` 类钩子与 `packages/ui-contract` 状态权威不变；呈现层委托 `RequestState`（空态经 antd Empty、错误/离线通知条与重试按钮、stale 降对比 + inert）。`idle` 实现级起始态不进设计容器。文案默认值沿用应用措辞（"暂无数据"/"请求暂时失败，请重试"/"当前离线，显示上次加载的内容"）。可见差异：错误/离线通知不再带"加载失败/离线"粗体前缀；重试按钮为 antd Button（两字标签显示"重 试"）；加载中 stale 的 inert 从指示出现即刻提前到进入 stale 即生效（≤300ms 窗口差异）。
+- **`MfField` → `Input`（LoginView）**：旧组件的 label→input→hint/error 结构由页面组合（`label` + `Input` + 页面级错误段落）；`name/autocomplete/required/type` 等原生属性透传到内层 input。`aria-invalid` 仅在无效时渲染（旧组件恒渲染 `"false"`），无效时同步 `status="error"` 红边。验证摘要→字段错误的关联仍在视图层。
+- **`MfDialog` → `Modal`（InboxListView 预检确认）**：按 `web-vue.modal` 模式（centered、`min(38rem, calc(100vw - 2rem))`、自定义页脚）。busy 语义映射：`confirmLoading` + busy 时 `maskClosable/keyboard/closable=false` 且取消按钮 disabled（旧组件 busy 保留取消可聚焦但拦截——antd 以 disabled 表达"busy 禁关闭"，焦点保持差异已登记）。`confirmDisabled` → 确认按钮 `disabled`；初始焦点取消由宿主在打开后聚焦页脚取消按钮（antd-vue 声明式 Modal 的 `autoFocusButton` 属性存在类型但未实现，仅命令式 confirm API 消费），并使 vc-dialog 的 ESC/Tab 圈闭立即生效（圈闭依赖焦点在模态内）；关闭归还触发项经默认 `focusTriggerAfterClose`。`request-close(clean|dirty)` 收敛为 `@cancel`（本页无 dirty 分支）；`description` 以正文首段呈现，`aria-describedby` 关联不自动接线（登记为设计库模态边界）；标题用 `#title` 槽内 `h2` 保持 heading 语义（e2e 依角色名驱动）。错误回执以正文 `role="alert"` 段落保留。
+- 视图层的 `@mediaflow/ui-vue` 导入至此归零（`MediaArtwork` 的 `MfImage` 按首批决策保留；`tools/ui-vue-consumer` 工作台与旧包本身不动）。
 
 ## 4. Token 过渡策略
 
@@ -57,5 +64,5 @@ MediaFlow Web 分批接入 `@indexed-design/ui-vue` 设计库。本文件记录�
 
 ## 6. 预算与验证约束
 
-- `check-budget.mjs`（业务入口 gzip ≤ 180 KiB）：接入前 93 KB → provider 基础设施 +68 KB → 迁移两页后 **163.2 KB**。antd 组件按需增量很小（Button/Empty/Spin 合计 ≈1.8 KB），后续页面迁移的主要成本已支付；新增带弹层重组件（Select/Table 等）时仍需复测。
+- `check-budget.mjs`（业务入口 gzip ≤ 180 KiB）：首批后 163.2 KB；第二批 AsyncState 委托后 162.9 KB，Modal+Input（含 Dialog/portal）+13.9 KB → **176.8 KB**。剩余约 7.5 KB 余量：后续引入 Select/Table/Drawer 等重组件大概率超出，需先做路由级分包或预算决策，不能默默调预算。
 - 本文件所述迁移不代表 L0/G1 或全产品验收；真实 Core 服务、读屏、多浏览器与人工外观验收按既有归属分别记录。

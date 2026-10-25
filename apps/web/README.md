@@ -30,4 +30,4 @@ Core 业务逻辑、原生移动端或 TV UI、播放以及 `labs` 下的实验�
 
 Web公开的build/typecheck/test/lint命令会先构建`@mediaflow/ui-vue`，不依赖工作区已有dist；容器Web阶段同时复制该包的manifest与源码。
 
-Indexed-Design 首批接入：整树挂 `IndexedThemeProvider`（`app/designTheme.ts` 桥衔接宿主三态，皮肤维度暂不映射），媒体列表/详情迁移至 `@indexed-design/ui-vue` 的 `Button`/`RequestState`，媒体卡为页面级 C14 组合；其余页面继续消费 `@mediaflow/ui-vue`，双真源过渡见接入文档。该迁移不代表媒体页高保真、G1 或全产品验收完成。
+Indexed-Design 接入（两批）：整树挂 `IndexedThemeProvider`（`app/designTheme.ts` 桥衔接宿主三态，皮肤维度暂不映射）；媒体列表/详情用 `Button`/`RequestState`；`AsyncState` 页面状态容器呈现层委托 `RequestState`（契约与 ui-contract 权威不变）；登录字段用 `Input`、收件预检确认用 `Modal`——视图层不再导入 `@mediaflow/ui-vue`（`MediaArtwork` 的 `MfImage` 按映射文档保留）。双真源过渡与映射见接入文档。该迁移不代表媒体页高保真、G1 或全产品验收完成。
