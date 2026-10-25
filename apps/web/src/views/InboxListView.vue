@@ -32,14 +32,25 @@ async function runPreflight(): Promise<void> { await feature.preflight(); showCo
 // 打开时先记录触发元素再聚焦页脚取消按钮，焦点进入模态也使 ESC/Tab 圈闭立即生效。
 let dialogOpener: HTMLElement | null = null;
 watch(showConfirmation, async (open) => {
-  if (!open || !feature.confirmation.value) return;
-  dialogOpener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  if (!open) {
+    restoreDialogFocus();
+    return;
+  }
+  if (!feature.confirmation.value) return;
+  const active = document.activeElement;
+  // body/无效焦点不作为触发项（如自动化环境未聚焦）；此时关闭回退到节标题。
+  dialogOpener = active instanceof HTMLElement && active !== document.body ? active : null;
   await nextTick();
   document.querySelector<HTMLButtonElement>(".ant-modal-footer button")?.focus();
 });
 function restoreDialogFocus(): void {
-  if (dialogOpener?.isConnected) dialogOpener.focus();
+  // 关闭即归还触发项（不依赖动画完成事件，jsdom/真实浏览器行为一致）；`afterClose` 兜底覆盖离场
+  // 动画期间焦点又落回模态或 body 的情况。触发项已从文档移除时回退到"添加收件目录"节标题。
+  const target = dialogOpener?.isConnected ? dialogOpener : document.querySelector<HTMLElement>("#add-inbox-heading");
   dialogOpener = null;
+  const active = document.activeElement;
+  const activeInsideDialog = active instanceof HTMLElement && active.closest(".ant-modal") !== null;
+  if (target && (activeInsideDialog || active === document.body || active === null)) target.focus();
 }
 async function create(): Promise<void> {
   try { const created = await feature.create(); await router.push({ name: "inbox-directory", params: { id: created.id } }); }
@@ -63,7 +74,7 @@ watch(() => route.query.cursor, loadCurrent);
     </AsyncState>
 
     <section v-if="showAdd" class="form-card" aria-labelledby="add-inbox-heading">
-      <h2 id="add-inbox-heading">添加收件目录</h2>
+      <h2 id="add-inbox-heading" tabindex="-1">添加收件目录</h2>
       <ErrorSummary :message="feature.formError.value?.message" :field="feature.formError.value?.field" :focus-key="feature.formErrorOccurrence.value" />
       <form @submit.prevent="runPreflight">
         <label for="root-id">能力根</label>

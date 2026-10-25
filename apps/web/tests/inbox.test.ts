@@ -145,8 +145,8 @@ describe("inbox directory flow", () => {
   });
 
   it("replays the exact post-commit create result instead of matching an older active inbox task", async () => {
-    const older = { ...task, id: "018f0f10-8bc1-7a5e-8e5a-2dc913d23c90", status: "running" as const };
-    const completed = { ...task, id: "018f0f10-8bc1-7a5e-8e5a-2dc913d23c91", status: "completed" as const };
+    const older = { ...task, id: "018f0f10-8bc1-7a5e-8a2a-2dc913d23c90", status: "running" as const };
+    const completed = { ...task, id: "018f0f10-8bc1-7a5e-8a2a-2dc913d23c91", status: "completed" as const };
     const createScanTask = vi.fn()
       .mockRejectedValueOnce(new MediaFlowApiError(500, { error: { code: "internal.error", message: "audit failed", request_id: inbox.id } }))
       .mockResolvedValueOnce(completed);
@@ -162,5 +162,58 @@ describe("inbox directory flow", () => {
     expect(router.currentRoute.value.fullPath).toBe(`/scan-tasks/${completed.id}`);
     expect(router.currentRoute.value.fullPath).not.toBe(`/scan-tasks/${older.id}`);
     wrapper.unmount();
+  });
+
+  it("precheck modal focuses cancel first, closes on Escape, restores trigger focus, and blocks close while busy", async () => {
+    const routes = [
+      { path: "/inbox-directories", name: "inbox-directories", component: InboxListView },
+      { path: "/inbox-directories/:id", name: "inbox-directory", component: { template: "<p>detail</p>" } },
+    ];
+    const api = client();
+    const appRouter = createRouter({ history: createMemoryHistory(), routes });
+    await appRouter.push("/inbox-directories");
+    const wrapper = mount(InboxListView, { attachTo: document.body, global: { plugins: [appRouter], provide: { [identityClientKey as symbol]: api } } });
+    await flushPromises();
+
+    await wrapper.get(".primary-action").trigger("click");
+    await wrapper.get("#root-id").setValue("incoming");
+    await wrapper.get("#relative-path").setValue("camera/uploads");
+    (wrapper.get('button[type="submit"]').element as HTMLButtonElement).focus();
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+
+    const wrap = document.querySelector<HTMLElement>(".ant-modal-wrap");
+    expect(wrap).not.toBeNull();
+    // 标题可访问关联：wrap 的 aria-labelledby 指向包含 h2 标题的标题容器。
+    const labelledBy = wrap?.getAttribute("aria-labelledby");
+    const labelledTitle = labelledBy ? document.getElementById(labelledBy) : null;
+    expect(labelledTitle?.textContent ?? "").toContain("确认扫描范围");
+    // 初始焦点：页脚取消按钮（宿主落实；antd-vue 声明式 Modal 未实现 autoFocusButton）。
+    expect(document.activeElement?.textContent).toContain("取");
+
+    // ESC 关闭（vc-dialog 圈闭 keydown 在 wrap 上、以 keyCode 判定 ESC，焦点已在模态内）并归还触发项焦点。
+    document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", keyCode: 27, bubbles: true, cancelable: true }));
+    await flushPromises();
+    await flushPromises();
+    expect(document.activeElement).toBe(wrapper.get('button[type="submit"]').element);
+    wrapper.unmount();
+
+    // busy 阻关闭：创建挂起时取消按钮禁用。
+    const pending = client({ createInboxDirectory: vi.fn(() => new Promise<InboxDirectory>(() => undefined)) });
+    const busyRouter = createRouter({ history: createMemoryHistory(), routes });
+    await busyRouter.push("/inbox-directories");
+    const busy = mount(InboxListView, { attachTo: document.body, global: { plugins: [busyRouter], provide: { [identityClientKey as symbol]: pending } } });
+    await flushPromises();
+    await busy.get(".primary-action").trigger("click");
+    await busy.get("#root-id").setValue("incoming");
+    await busy.get("#relative-path").setValue("camera/other");
+    await busy.get("form").trigger("submit");
+    await flushPromises();
+    document.querySelector(".ant-modal-footer .ant-btn-primary")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await flushPromises();
+    // 页脚按钮顺序固定：取消在前、确认在后。
+    const [busyCancel] = document.querySelectorAll<HTMLButtonElement>(".ant-modal-footer button");
+    expect(busyCancel?.disabled).toBe(true);
+    busy.unmount();
   });
 });
