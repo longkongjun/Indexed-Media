@@ -229,4 +229,29 @@ describe("identity router", () => {
     expect(useConnectivityStore(piniaA).state).toBe("online");
     expect(useConnectivityStore(piniaB).state).toBe("loading");
   });
+
+  it("reloads once when a lazy route chunk fails to load and stops before looping", async () => {
+    const assign = vi.fn();
+    const originalLocation = window.location;
+    const locationStub = { href: originalLocation.href, assign };
+    Object.defineProperty(window, "location", { configurable: true, value: locationStub });
+    window.sessionStorage.removeItem("mediaflow-chunk-reload-target");
+    const router = appRouter({ getBootstrapStatus: async () => status(false), getSession: async () => session });
+
+    // 模拟部署更新后的 chunk 拉取失败：替换懒加载器为拒绝的动态 import。
+    const record = router.resolve("/tasks").matched.at(-1)!;
+    const components = record.components as { default: unknown };
+    components.default = () => Promise.reject(new TypeError("Failed to fetch dynamically imported module: /assets/TaskCenterView.js"));
+
+    await router.push("/tasks").catch(() => undefined);
+    expect(assign).toHaveBeenCalledTimes(1);
+    expect(assign).toHaveBeenCalledWith("/tasks");
+
+    // 同一目标二次失败不再自动重载，避免循环。
+    await router.push("/tasks").catch(() => undefined);
+    expect(assign).toHaveBeenCalledTimes(1);
+
+    window.sessionStorage.removeItem("mediaflow-chunk-reload-target");
+    Object.defineProperty(window, "location", { configurable: true, value: originalLocation });
+  });
 });
