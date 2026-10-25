@@ -123,15 +123,15 @@ test("offline transport failure preserves rendered facts, disables writes, and r
   offline = true;
   await failRealtime(page);
   await emit(page, "stream.gap", { ...m2Fixtures.gap, id: 30, payload: { minimum_available_id: 31 } });
-  await expect(page.getByText("离线", { exact: true })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "离线" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "扫描任务详情" })).toBeVisible();
   await expect(page.getByText("已观察文件").locator("..").getByText("2")).toBeVisible();
   await expect(page.getByRole("button", { name: "取消扫描" })).toBeDisabled();
   await expect(page).toHaveURL(new RegExp(`/scan-tasks/${recovery.taskId}$`));
 
   offline = false;
-  await page.getByRole("button", { name: "重试", exact: true }).click();
-  await expect(page.getByText("离线", { exact: true })).toBeHidden();
+  await page.getByRole("button", { name: /重\s*试/ }).click();
+  await expect(page.getByRole("status").filter({ hasText: "离线" })).toBeHidden();
   await expect(page.getByRole("button", { name: "取消扫描" })).toBeEnabled();
   await expect(page.getByText("已观察文件").locator("..").getByText("2")).toBeVisible();
   await page.getByRole("link", { name: "查看原始文件" }).click();

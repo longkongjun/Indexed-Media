@@ -104,7 +104,7 @@ test("adds an inbox, scans live, keeps partial results, pages safely, and disabl
   await page.goBack(); await expect(page.getByText("camera/uploads")).toBeVisible(); await page.goForward(); await expect(page.getByText("inbox-page-two")).toBeVisible(); await page.goBack();
   offline = true;
   await page.reload();
-  await expect(page.getByText("离线", { exact: true })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "离线" })).toBeVisible();
   await expect(page.getByRole("button", { name: "添加收件目录" })).toBeDisabled();
 });
 
