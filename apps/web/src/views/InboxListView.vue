@@ -5,7 +5,7 @@
  * 路由查询状态提供页面游标。组件没有 props、发出事件或暴露的实例方法；它会在挂载或查询变化时加载，创建前执行预检，
  * 并导航到新建的目录。
  */
-import { MfDialog } from "@mediaflow/ui-vue";
+import { Button, Modal } from "@indexed-design/ui-vue";
 import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import AsyncState from "../components/AsyncState.vue";
@@ -27,6 +27,20 @@ const feature = useInboxDirectories(client, failure);
 const selectedRoot = computed(() => feature.roots.value.find((root) => root.id === feature.form.rootId));
 
 async function runPreflight(): Promise<void> { await feature.preflight(); showConfirmation.value = Boolean(feature.confirmation.value); }
+// antd-vue 声明式 Modal 未实现 autoFocusButton（类型存在、仅命令式 API 消费）；C10 的"初始焦点取消、
+// 关闭归触发项"由宿主落实（同 web-vue.modal 方案：focusTriggerAfterClose=false + afterClose 归还）。
+// 打开时先记录触发元素再聚焦页脚取消按钮，焦点进入模态也使 ESC/Tab 圈闭立即生效。
+let dialogOpener: HTMLElement | null = null;
+watch(showConfirmation, async (open) => {
+  if (!open || !feature.confirmation.value) return;
+  dialogOpener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  await nextTick();
+  document.querySelector<HTMLButtonElement>(".ant-modal-footer button")?.focus();
+});
+function restoreDialogFocus(): void {
+  if (dialogOpener?.isConnected) dialogOpener.focus();
+  dialogOpener = null;
+}
 async function create(): Promise<void> {
   try { const created = await feature.create(); await router.push({ name: "inbox-directory", params: { id: created.id } }); }
   catch { await nextTick(); }
@@ -61,9 +75,35 @@ watch(() => route.query.cursor, loadCurrent);
         <p class="field-help">只填写能力根内的 UTF-8 相对路径，不接受宿主机绝对路径。</p>
         <button type="submit">预检目录</button>
       </form>
-      <MfDialog v-if="feature.confirmation.value" :open="showConfirmation" title="确认扫描范围" description="仅登记此能力根内的目录，不会自动扫描或执行文件操作。" confirm-label="确认并创建" :busy="feature.pendingCreate.value" :confirm-disabled="!feature.canCreate.value" :error="feature.formError.value?.message ?? ''" @confirm="create" @request-close="showConfirmation = false">
+      <!-- 预检确认模态：antd Modal（设计库 web-vue.modal 模式）+ 自定义页脚。busy 时禁关闭/禁重复确认（C10），
+           初始焦点取消、关闭归还触发项由 Modal 的 autoFocusButton/focusTriggerAfterClose 承担；MfDialog 的
+           aria-describedby 描述关联在此模式下不自动接线，描述以正文首段呈现（见接入映射文档）。 -->
+      <Modal
+        v-if="feature.confirmation.value"
+        :open="showConfirmation"
+        centered
+        :width="'min(38rem, calc(100vw - 2rem))'"
+        :mask-closable="!feature.pendingCreate.value"
+        :keyboard="!feature.pendingCreate.value"
+        :closable="!feature.pendingCreate.value"
+        :focus-trigger-after-close="false"
+        :after-close="restoreDialogFocus"
+        @cancel="showConfirmation = false"
+      >
+        <template #title><h2 class="inbox-confirmation-title">确认扫描范围</h2></template>
+        <p>仅登记此能力根内的目录，不会自动扫描或执行文件操作。</p>
         <dl><div><dt>能力根</dt><dd>{{ feature.confirmation.value.rootLabel }}</dd></div><div><dt>相对路径</dt><dd><code>{{ feature.confirmation.value.relativePath }}</code></dd></div><div><dt>访问权限</dt><dd>{{ selectedRoot?.access === 'read-only' ? '只读' : '读写' }}</dd></div><div><dt>可读取</dt><dd>{{ feature.confirmation.value.readable ? '是' : '否' }}</dd></div><div><dt>重叠</dt><dd>{{ feature.confirmation.value.overlapsExisting ? '是' : '否' }}</dd></div><div><dt>扫描范围</dt><dd>仅此能力根内的上述相对目录</dd></div></dl>
-      </MfDialog>
+        <p v-if="feature.formError.value?.message" role="alert">{{ feature.formError.value?.message }}</p>
+        <template #footer>
+          <Button :disabled="feature.pendingCreate.value" @click="showConfirmation = false">取消</Button>
+          <Button type="primary" :loading="feature.pendingCreate.value" :disabled="!feature.canCreate.value" @click="create">确认并创建</Button>
+        </template>
+      </Modal>
     </section>
   </main>
 </template>
+
+<style scoped>
+/* 模态标题用 h2 保持 heading 语义（e2e 依角色名驱动）；antd 标题容器不重置标题默认边距，这里归零。 */
+.inbox-confirmation-title { margin: 0; font-size: var(--mfd-font-size-lg); line-height: var(--mfd-font-line-height-tight); }
+</style>

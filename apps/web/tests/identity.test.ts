@@ -236,7 +236,8 @@ describe("identity views", () => {
     expect(wrapper.get("[data-error-summary] a").attributes("href")).toBe("#login-password");
     expect(wrapper.get("#login-password").attributes("aria-invalid")).toBe("true");
     expect(wrapper.get("#login-password").attributes("aria-describedby")).toContain("login-password-error");
-    expect(wrapper.get("#login-administrator-name").attributes("aria-invalid")).toBe("false");
+    // antd Input 仅在无效时渲染 aria-invalid；有效字段缺省该属性即为"非 invalid"。
+    expect(wrapper.get("#login-administrator-name").attributes("aria-invalid")).toBeUndefined();
   });
 
   it("reports that a valid login password was cleared while preserving the original error first", async () => {

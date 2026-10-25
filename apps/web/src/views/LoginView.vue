@@ -3,10 +3,11 @@
  * 管理员登录页，提供可访问的验证摘要并有意清除密码。
  *
  * 组件没有 props、发出事件或暴露的实例方法。提交会验证本地字段，在等待身份请求前清除密码，使失败获得焦点，
- * 成功登录则通过会话状态重定向。
+ * 成功登录则通过会话状态重定向。字段输入来自 `@indexed-design/ui-vue` 的 Input（C02 标签→控件→错误
+ * 由本页组合；错误文案与摘要关联保持在视图层，见 docs/development/indexed-design-adoption.md）。
  */
 import { computed, nextTick, onBeforeUnmount, reactive, ref } from "vue";
-import { MfField } from "@mediaflow/ui-vue";
+import { Input } from "@indexed-design/ui-vue";
 import { useIdentity } from "../features/identity/useIdentity";
 
 type LoginField = "login-administrator-name" | "login-password";
@@ -106,10 +107,16 @@ async function submit(): Promise<void> {
         </ul>
       </div>
       <form novalidate @submit.prevent="submit">
-        <MfField id="login-administrator-name" v-model="administratorName" label="管理员名称" name="administrator_name" autocomplete="username" required :invalid="invalid('login-administrator-name')" :described-by="describedBy('login-administrator-name') ?? ''" />
+        <div class="login-field">
+          <label for="login-administrator-name">管理员名称</label>
+          <Input id="login-administrator-name" v-model:value="administratorName" name="administrator_name" autocomplete="username" required :status="invalid('login-administrator-name') ? 'error' : ''" :aria-invalid="invalid('login-administrator-name') ? 'true' : undefined" :aria-describedby="describedBy('login-administrator-name')" />
+        </div>
         <p v-if="fieldErrors['login-administrator-name']" id="login-administrator-name-error" class="field-error">{{ fieldErrors["login-administrator-name"] }}</p>
 
-        <MfField id="login-password" v-model="password" label="密码" name="password" type="password" autocomplete="current-password" required :invalid="invalid('login-password')" :described-by="describedBy('login-password') ?? ''" @keydown.enter.prevent="submit" />
+        <div class="login-field">
+          <label for="login-password">密码</label>
+          <Input id="login-password" v-model:value="password" name="password" type="password" autocomplete="current-password" required :status="invalid('login-password') ? 'error' : ''" :aria-invalid="invalid('login-password') ? 'true' : undefined" :aria-describedby="describedBy('login-password')" @keydown.enter.prevent="submit" />
+        </div>
         <p v-if="fieldErrors['login-password']" id="login-password-error" class="field-error">{{ fieldErrors["login-password"] }}</p>
 
         <button type="submit" :disabled="identity.submitting.value">{{ identity.submitting.value ? "正在登录…" : "登录" }}</button>
@@ -117,3 +124,8 @@ async function submit(): Promise<void> {
     </section>
   </main>
 </template>
+
+<style scoped>
+.login-field { display: grid; gap: var(--mfd-space-2); min-width: 0; }
+.login-field label { font-weight: var(--mfd-font-weight-semibold); }
+</style>
