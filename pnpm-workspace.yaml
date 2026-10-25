@@ -4,5 +4,8 @@ packages:
   - packages/test-fixtures
   - packages/ui-vue
   - tools/ui-vue-consumer
+allowBuilds:
+  # core-js 经 ant-design-vue→@simonwep/pickr 间接引入，postinstall 仅为资助提示，无构建产物依赖。
+  core-js: false
 patchedDependencies:
   vue-router@5.2.0: patches/vue-router@5.2.0.patch

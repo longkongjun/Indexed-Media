@@ -10,6 +10,7 @@
     "lint": "pnpm --filter @mediaflow/ui-vue build && eslint ."
   },
   "dependencies": {
+    "@indexed-design/ui-vue": "file:../../vendor/indexed-design/indexed-design-ui-vue-0.15.0.tgz",
     "@mediaflow/api-client-ts": "workspace:*",
     "@mediaflow/ui-vue": "workspace:*",
     "pinia": "3.0.4",
