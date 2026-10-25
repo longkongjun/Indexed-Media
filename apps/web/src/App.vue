@@ -3,14 +3,18 @@
  * 应用根边界：根据初始化/会话连通性探测结果决定是否显示路由内容。
  *
  * 组件没有 props、发出事件或暴露的实例方法。它读取连通性 store，并通过 Vue Router 重试待处理路由；
- * 离线、错误和加载状态会替代路由页面内容。
+ * 离线、错误和加载状态会替代路由页面内容。整树包在 IndexedThemeProvider 内，为 `@indexed-design/ui-vue`
+ * 组件提供浅/暗主题容器（`.id-theme`）；mode 经 designTheme 桥跟随宿主 data-theme 三态。
  */
 import { computed } from "vue";
+import { IndexedThemeProvider } from "@indexed-design/ui-vue";
 import { useRouter } from "vue-router";
 import { useConnectivityStore } from "./app/connectivity";
+import { useDesignThemeMode } from "./app/designTheme";
 
 const router = useRouter();
 const connectivity = useConnectivityStore();
+const designMode = useDesignThemeMode();
 const unavailable = computed(() => connectivity.state === "offline" || connectivity.state === "error");
 
 async function retry(): Promise<void> {
@@ -20,19 +24,21 @@ async function retry(): Promise<void> {
 </script>
 
 <template>
-  <div class="app-frame">
-    <main v-if="unavailable" class="connection-state" aria-labelledby="connection-title">
-      <p class="state-label">{{ connectivity.state === "offline" ? "Offline" : "Error" }}</p>
-      <h1 id="connection-title">暂时无法连接 MediaFlow Core</h1>
-      <p>页面尚未判定实例初始化状态。请检查 Core 和网络连接后重试。</p>
-      <button type="button" @click="retry">重试连接</button>
-    </main>
-    <main v-else-if="connectivity.state === 'loading'" class="connection-state" aria-live="polite" aria-busy="true">
-      <p class="state-label">Loading</p>
-      <h1>正在连接 MediaFlow</h1>
-    </main>
-    <RouterView v-else />
-  </div>
+  <IndexedThemeProvider :mode="designMode">
+    <div class="app-frame">
+      <main v-if="unavailable" class="connection-state" aria-labelledby="connection-title">
+        <p class="state-label">{{ connectivity.state === "offline" ? "Offline" : "Error" }}</p>
+        <h1 id="connection-title">暂时无法连接 MediaFlow Core</h1>
+        <p>页面尚未判定实例初始化状态。请检查 Core 和网络连接后重试。</p>
+        <button type="button" @click="retry">重试连接</button>
+      </main>
+      <main v-else-if="connectivity.state === 'loading'" class="connection-state" aria-live="polite" aria-busy="true">
+        <p class="state-label">Loading</p>
+        <h1>正在连接 MediaFlow</h1>
+      </main>
+      <RouterView v-else />
+    </div>
+  </IndexedThemeProvider>
 </template>
 
 <style>

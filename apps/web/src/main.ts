@@ -5,6 +5,7 @@ import { identityClientKey, mediaFlowClient } from "./app/client";
 import { useSessionStore } from "./app/session";
 import { initTheme } from "./app/theme";
 import { createAppRouter } from "./router";
+import "@indexed-design/ui-vue/style.css";
 import "@mediaflow/ui-vue/style.css";
 import "./styles/tokens.css";
 import "./styles/base.css";
