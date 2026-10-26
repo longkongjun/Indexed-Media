@@ -1,5 +1,5 @@
 import type { MediaFlowClient, ProcessingTask } from "@mediaflow/api-client-ts";
-import { computed, ref } from "vue";
+import { computed, getCurrentScope, onScopeDispose, ref } from "vue";
 import {
   isAmbiguousWriteFailure,
   isOffline,
@@ -22,6 +22,11 @@ export function useProcessingTask(
   id: string,
   onFailure?: AuthenticatedFailureHandler,
 ) {
+  // 组件卸载使旧请求失去副作用归属；已发出的服务端操作不等于已撤销。
+  let disposed = false;
+  if (getCurrentScope()) onScopeDispose(() => { disposed = true; });
+  const isActive = (): boolean => !disposed;
+
   const state = ref<TaskCenterState>({ kind: "loading", stale: false });
   const task = ref<ProcessingTask | null>(null);
   const errorMessage = ref("");
@@ -36,31 +41,40 @@ export function useProcessingTask(
   const canCancel = computed(() => Boolean(task.value?.allowed_actions.includes("cancel") && onlineForWrites.value));
 
   async function load(): Promise<void> {
+    if (!isActive()) return;
     const stale = task.value !== null;
     state.value = { kind: "loading", stale };
     try {
-      task.value = await client.getProcessingTask(id);
+      const next = await client.getProcessingTask(id);
+      if (!isActive()) return;
+      task.value = next;
       state.value = { kind: "content" };
       errorMessage.value = "";
       reviewCaseId.value = null;
       reviewLookupError.value = "";
       if (task.value.allowed_actions.includes("review")) {
         try {
-          reviewCaseId.value = (await client.getProcessingTaskIdentification(id)).review_case_id;
+          const identification = await client.getProcessingTaskIdentification(id);
+          if (!isActive()) return;
+          reviewCaseId.value = identification.review_case_id;
         } catch (error) {
+          if (!isActive()) return;
           await onFailure?.(error);
+          if (!isActive()) return;
           reviewLookupError.value = safeApiError(error, "无法定位当前审核案例，请刷新后重试").message;
         }
       }
     } catch (error) {
+      if (!isActive()) return;
       await onFailure?.(error);
+      if (!isActive()) return;
       state.value = isOffline(error) ? { kind: "offline", stale } : { kind: "error", stale };
       errorMessage.value = safeApiError(error, "无法加载处理任务，请重试").message;
     }
   }
 
   async function act(kind: "retry" | "cancel"): Promise<void> {
-    if (pendingAction.value || (kind === "retry" ? !canRetry.value : !canCancel.value)) return;
+    if (!isActive() || pendingAction.value || (kind === "retry" ? !canRetry.value : !canCancel.value)) return;
     pendingAction.value = kind;
     const key = actionKeys[kind] ?? crypto.randomUUID();
     actionKeys[kind] = key;
@@ -68,6 +82,7 @@ export function useProcessingTask(
       ? client.retryProcessingTask(id, key)
       : client.cancelProcessingTask(id, key);
     const accept = (next: ProcessingTask) => {
+      if (!isActive()) return;
       task.value = next;
       state.value = { kind: "content" };
       actionKeys[kind] = null;
@@ -76,12 +91,16 @@ export function useProcessingTask(
     try {
       accept(await request());
     } catch (error) {
+      if (!isActive()) return;
       await onFailure?.(error);
+      if (!isActive()) return;
       if (isAmbiguousWriteFailure(error)) {
         try {
           accept(await request());
         } catch (replayError) {
+          if (!isActive()) return;
           await onFailure?.(replayError);
+          if (!isActive()) return;
           if (isAmbiguousWriteFailure(replayError)) {
             actionError.value = "操作结果尚未确认；恢复连接后可使用同一请求安全重试";
           } else {
@@ -94,7 +113,7 @@ export function useProcessingTask(
         actionError.value = safeApiError(error, "任务操作失败，请重试").message;
       }
     } finally {
-      pendingAction.value = null;
+      if (isActive()) pendingAction.value = null;
     }
   }
 

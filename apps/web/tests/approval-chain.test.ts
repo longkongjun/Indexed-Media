@@ -97,6 +97,28 @@ describe("PlanPreview", () => {
     wrapper.unmount();
   });
 
+  it("确认携带打开确认时冻结的计划版本", async () => {
+    const wrapper = mount(PlanPreview, { props: { projection, canApprove: true, canReject: true, pending: null } });
+    await wrapper.get('[class="plan-preview__approve"]').trigger("click");
+    await wrapper.get('[class="plan-preview__confirm-go"]').trigger("click");
+    expect(wrapper.emitted("approve")?.[0]).toEqual([2]);
+    wrapper.unmount();
+  });
+
+  it("确认期间计划版本变化必须重新审阅：确认失效且不发 approve", async () => {
+    const wrapper = mount(PlanPreview, { props: { projection, canApprove: true, canReject: true, pending: null } });
+    await wrapper.get('[class="plan-preview__approve"]').trigger("click");
+    expect(wrapper.find('[role="alertdialog"]').exists()).toBe(true);
+    await wrapper.setProps({ projection: { ...projection, plan: { ...plan, version: 3 } } });
+    expect(wrapper.find('[role="alertdialog"]').exists()).toBe(false);
+    expect(wrapper.emitted("approve")).toBeUndefined();
+    // 重新审阅：在新版本上重新打开确认才允许批准。
+    await wrapper.get('[class="plan-preview__approve"]').trigger("click");
+    await wrapper.get('[class="plan-preview__confirm-go"]').trigger("click");
+    expect(wrapper.emitted("approve")?.[0]).toEqual([3]);
+    wrapper.unmount();
+  });
+
   it("写不可用或动作进行中时批准禁用", () => {
     const disabled = mount(PlanPreview, { props: { projection, canApprove: false, canReject: true, pending: null } });
     expect(disabled.get('[class="plan-preview__approve"]').attributes("disabled")).toBeDefined();

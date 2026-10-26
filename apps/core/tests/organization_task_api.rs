@@ -12,6 +12,7 @@ use axum::http::{Method, Request, StatusCode, header};
 use common::organization::{
     OrganizationFixture, organization_fixture, organization_fixture_with_nfo,
 };
+use mediaflow_core::discovery::model::{RelativePath, RootId};
 use mediaflow_core::organization::executor::{ExecutionOutcome, OrganizationExecutor};
 use mediaflow_core::organization::fs::ProcessingStopToken;
 use mediaflow_core::organization::journal_store::JournalStore;
@@ -23,7 +24,9 @@ use mediaflow_core::organization::plan_service::{
 };
 use mediaflow_core::organization::plan_store::AuthorizationGranter;
 use mediaflow_core::organization::plan_store::{OrganizationPlanRecord, OrganizationPlanStore};
-use mediaflow_core::organization::planner::{PlanningIdentity, PlanningInput};
+use mediaflow_core::organization::planner::{
+    OrganizationLocation, PlanningIdentity, PlanningInput,
+};
 use mediaflow_core::organization::task_routes::{self, OrganizationTaskService};
 use mediaflow_core::platform::http::build_router;
 use mediaflow_core::platform::outbox::OutboxNotifier;
@@ -301,6 +304,173 @@ async fn execution_receipt_repairs_response_loss_without_an_extra_attempt() {
     let granter_id: Vec<u8> = granter.get("granted_by_id");
     assert_eq!(granter_kind, "web");
     assert_eq!(granter_id, fixture.account_id.as_bytes().to_vec());
+}
+
+// 对象切换边界（Web A→B 修复的服务端对应面）：执行只作用于 URL 指向的任务，
+// 版本号按任务独立作用域校验，对旧对象提交其他对象的版本必须稳定拒绝且不落授权回执。
+#[tokio::test]
+async fn execute_binds_to_the_addressed_task_and_rejects_misplaced_versions() {
+    let (fixture, _plans, paused_plan) = paused_fixture().await;
+    seed_session(fixture.db.pool(), fixture.account_id).await;
+
+    // 同一账户、同一收件目录内的第二条处理任务 B：独立文件修订，走相同的识别→规划暂停流程。
+    let b_lease = common::seed_processing_lease(
+        fixture.db.pool(),
+        fixture.lease.task.inbox_directory_id,
+        b"ready/Second.2016.mkv",
+        vec![0; 16],
+        "organization-executor-b",
+    )
+    .await;
+    let mut input_b = movie_planning_input(&fixture);
+    input_b.task_id = b_lease.task.id;
+    input_b.file_revision_id = b_lease.task.file_revision_id;
+    input_b.source = OrganizationLocation {
+        root_id: RootId::parse("incoming").unwrap(),
+        relative_path: RelativePath::parse("ready/Second.2016.mkv").unwrap(),
+    };
+    let plans_b = OrganizationPlanService::new(
+        Arc::new(FixedPlanningInput(input_b)),
+        fixture.db.pool().clone(),
+    );
+    let b_plan = plans_b
+        .ensure_current(fixture.account_id, b_lease.task.id)
+        .await
+        .unwrap();
+    let tasks = ProcessingStore::new(fixture.db.pool().clone());
+    tasks
+        .finish_identification_complete(
+            &b_lease,
+            ProcessingReason::IdentificationConfirmedTitleYear,
+            93_000_000,
+        )
+        .await
+        .unwrap();
+    let b_planning_lease = tasks
+        .claim_next(
+            "organization-api-planning-b",
+            &[ProcessingStage::Planning],
+            94_000_000,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(b_planning_lease.task.id, b_lease.task.id);
+    tasks
+        .finish_organization_plan(&b_planning_lease, b_plan.id, false, 95_000_000)
+        .await
+        .unwrap();
+
+    // B 显式重算两次推进到 v3（paused_fixture 已把 A 留在 v2），以 v3 执行成功。
+    plans_b
+        .recalculate(fixture.account_id, b_lease.task.id, "recalc-b")
+        .await
+        .unwrap();
+    plans_b
+        .recalculate(fixture.account_id, b_lease.task.id, "recalc-b-2")
+        .await
+        .unwrap();
+    let app = organization_router(&fixture, plans_b, 110_000_000);
+    let b_execute_path = format!(
+        "/api/v1/processing-tasks/{}/organization/executions",
+        b_lease.task.id
+    );
+    let b_executed = app
+        .clone()
+        .oneshot(post(
+            &b_execute_path,
+            cookie(),
+            CSRF,
+            ORIGIN,
+            "execute-b-current",
+            &json!({"plan_version": 3}),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(b_executed.status(), StatusCode::ACCEPTED);
+    let b_executed = json_body(b_executed).await;
+    assert_eq!(b_executed["plan"]["version"], 3);
+    assert_eq!(b_executed["plan"]["authorization"], "one-time");
+
+    // A 不受 B 的执行影响：仍暂停等待审批，计划保持当前版本且没有任何 Web 授权回执。
+    let a_detail = app
+        .clone()
+        .oneshot(get(
+            &format!(
+                "/api/v1/processing-tasks/{}/organization",
+                fixture.lease.task.id
+            ),
+            cookie(),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(a_detail.status(), StatusCode::OK);
+    let a_detail = json_body(a_detail).await;
+    assert_eq!(a_detail["state"], "paused");
+    assert_eq!(a_detail["plan"]["version"], paused_plan.version);
+    assert_eq!(a_detail["plan"]["authorization"], "paused");
+    assert!(
+        a_detail["allowed_actions"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("execute"))
+    );
+    let plan_store = OrganizationPlanStore::new(fixture.db.pool().clone());
+    assert!(
+        !plan_store
+            .has_web_authorization_receipt(
+                fixture.account_id,
+                fixture.lease.task.id,
+                paused_plan.version
+            )
+            .await
+            .unwrap()
+    );
+
+    // 旧对象收到错位版本（B 的 v3，A 从未持有）：稳定 409，不产生授权、不推进 A。
+    let a_execute_path = format!(
+        "/api/v1/processing-tasks/{}/organization/executions",
+        fixture.lease.task.id
+    );
+
+    let misplaced = app
+        .clone()
+        .oneshot(post(
+            &a_execute_path,
+            cookie(),
+            CSRF,
+            ORIGIN,
+            "execute-a-misplaced-version",
+            &json!({"plan_version": 3}),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(misplaced.status(), StatusCode::CONFLICT);
+    assert_eq!(
+        json_body(misplaced).await["error"]["code"],
+        "request.conflict"
+    );
+    assert!(
+        !plan_store
+            .has_web_authorization_receipt(
+                fixture.account_id,
+                fixture.lease.task.id,
+                paused_plan.version
+            )
+            .await
+            .unwrap()
+    );
+    let a_after = app
+        .oneshot(get(
+            &format!(
+                "/api/v1/processing-tasks/{}/organization",
+                fixture.lease.task.id
+            ),
+            cookie(),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(json_body(a_after).await, a_detail);
 }
 
 #[tokio::test]
