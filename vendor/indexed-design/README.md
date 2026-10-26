@@ -27,5 +27,4 @@ shasum -a 256 /tmp/indexed-design-ui-vue-0.15.0.tgz
 ## 分发缺口（如实登记，不冒称可远端安装）
 
 - npm 未发布 `@indexed-design/ui-vue`；`npm install @indexed-design/ui-vue` 不可用。
-- git 依赖（`git+...#5de0ae8`）要求该 commit 已推送；当前远端只有 0.14.0（`afd8d4d`），拉取会得到旧版，禁止当作等价基线。
-- 后续若推送 0.15.0+ 或发布 npm，可评估切换为 git/npm 依赖并退役本目录；切换前本目录是唯一真源。
+- 2026-10-26 起 Indexed-Design 远端 `origin/main` 已含该基线（本地推送 `afd8d4d..60da115`），git 依赖技术上可达；但 npm 仍未发布，且 git 依赖不提供锁文件级字节校验，本仓库继续以 vendored tgz + integrity 为唯一分发真源。后续若发布 npm 或统一改用 git 依赖，可评估退役本目录；切换前本目录是唯一真源。
