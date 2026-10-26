@@ -139,9 +139,22 @@ async fn independent_core_kill_and_restart_recovers_same_task_and_batch_once() {
         .unwrap();
 
     let mut second = spawn_core(&fixture);
-    wait_for_status(&observer, task.id, "completed", Duration::from_secs(30)).await;
+    let completed = wait_for_status(&observer, task.id, "completed", Duration::from_secs(30)).await;
     second.reap().unwrap();
     let second_stderr = second.diagnostic_stderr();
+    let restart_state: (String, i64, i64) = sqlx::query_as(
+        "SELECT status,observed_files,
+          (SELECT COUNT(*) FROM discovery_scan_file_observations o WHERE o.scan_batch_id=t.scan_batch_id)
+         FROM tasks_scan_tasks t WHERE id=?",
+    )
+    .bind(task.id.as_bytes().as_slice())
+    .fetch_one(&observer)
+    .await
+    .unwrap();
+    assert!(
+        completed,
+        "Core restart must reach the expected terminal status; state={restart_state:?}; stderr: {second_stderr}"
+    );
 
     let recovered: (Vec<u8>, i64, i64, i64) = sqlx::query_as(
         "SELECT scan_batch_id,
@@ -298,7 +311,7 @@ async fn wait_for_status(
     task_id: Uuid,
     expected: &str,
     timeout: Duration,
-) {
+) -> bool {
     tokio::time::timeout(timeout, async {
         loop {
             let status: String =
@@ -314,7 +327,7 @@ async fn wait_for_status(
         }
     })
     .await
-    .expect("Core restart must reach the expected terminal status");
+    .is_ok()
 }
 
 #[test]

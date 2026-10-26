@@ -680,7 +680,14 @@ async fn bounded_scanner_streams_batches_preserves_raw_names_and_skips_symlinks(
         ),
     )
     .await
-    .expect("bounded high-fanout traversal must not deadlock")
+    .unwrap_or_else(|error| {
+        let batches = sink.batches.lock().unwrap();
+        let files: usize = batches.iter().map(|(files, _)| files.len()).sum();
+        panic!(
+            "bounded high-fanout traversal must not deadlock: {error}; recorded_batches={}, observed_files={files}",
+            batches.len()
+        );
+    })
     .unwrap();
     let batches = sink.batches.lock().unwrap();
     assert!(
