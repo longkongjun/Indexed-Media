@@ -753,13 +753,17 @@ impl ProcessingStore {
         }))
     }
 
-    /// 在精确匹配所有者与版本时续期未过期的处理租约。
+    /// 在精确匹配所有者与版本时续期处理租约。
     ///
     /// 续租只延长 `lease_expires_at_us`，不递增任务 `version`：`version` 是任务状态的乐观
     /// 并发锁（管理员修改、阶段转换时递增），而阶段处理器在整个执行期间持有启动时的租约
     /// 快照；若续租也递增版本，处理器的终态提交会因快照版本过期而被误判为
     /// `task-lease-lost`，尽管租约从未丢失。`WHERE version=?` 保留：任务被外部修改时，
     /// 续租失败并停止处理器，阻止过期提交。
+    ///
+    /// 持有方侧不再附加 `lease_expires_at_us>now` 条件：任何接管都会递增 `version` 并改写
+    /// `lease_owner`，排他性已由这两列保证；到期只决定其他 worker 何时可以接管。若心跳因
+    /// 瞬时故障迟到但尚无接管，续租必须重新确立租约，而不是把仍然独占的执行判成丢失。
     ///
     /// # Errors
     ///
@@ -772,15 +776,13 @@ impl ProcessingStore {
         let expires_at_us = now_us.saturating_add(PROCESSING_LEASE_DURATION_US);
         let result = sqlx::query(
             "UPDATE tasks_processing_tasks SET lease_expires_at_us=?,updated_at_us=?
-             WHERE id=? AND version=? AND status='running' AND lease_owner=?
-               AND lease_expires_at_us>?",
+             WHERE id=? AND version=? AND status='running' AND lease_owner=?",
         )
         .bind(expires_at_us)
         .bind(now_us)
         .bind(lease.task.id.as_bytes().as_slice())
         .bind(lease.version)
         .bind(&lease.owner)
-        .bind(now_us)
         .execute(&self.pool)
         .await
         .map_err(internal)?;
@@ -817,7 +819,7 @@ impl ProcessingStore {
     ///
     /// # Errors
     ///
-    /// 授权过期时返回 `task-lease-lost`；终态事务或 outbox 写入失败时返回内部错误。
+    /// 租约不再属于当前 worker 时返回 `task-lease-lost`；终态事务或 outbox 写入失败时返回内部错误。
     pub async fn finish_paused(
         &self,
         lease: &ProcessingLease,
@@ -841,11 +843,43 @@ impl ProcessingStore {
         .await
     }
 
+    /// 阶段处理器失败但本 worker 仍持有任务时，把任务转入带退避的暂停态并记录真实失败码。
+    ///
+    /// 任务保留当前 stage 与 checkpoint 以便按检查点恢复，`reason` 为空（公开原因码枚举暂无
+    /// 对应值），`next_retry_at_us` 到达后由 `claim_next` 以 `dependency-recovery` 重试；
+    /// attempt 的 `failure_code` 记录处理器错误码，而不是把处理器失败伪装成租约丢失。
+    ///
+    /// # Errors
+    ///
+    /// 任务已被接管或离开 running 时返回 `task-lease-lost`；事务或 outbox 写入失败时返回内部错误。
+    pub async fn finish_stage_failed(
+        &self,
+        lease: &ProcessingLease,
+        failure_code: ErrorCode,
+        next_retry_at_us: i64,
+        now_us: i64,
+    ) -> Result<ProcessingTaskView, AppError> {
+        self.finish_terminal_attempt(
+            lease,
+            FinishTransition {
+                status: ProcessingStatus::Paused,
+                stage: lease.task.stage,
+                checkpoint: lease.task.checkpoint,
+                reason: None,
+                next_retry_at_us: Some(next_retry_at_us),
+                attempt_status: "failed",
+                failure_code: Some(failure_code.as_str()),
+            },
+            now_us,
+        )
+        .await
+    }
+
     /// 提交识别检查点并将尚未注册的规划阶段排队。
     ///
     /// # Errors
     ///
-    /// 授权过期时返回 `task-lease-lost`；检查点事务或 outbox 写入失败时返回内部错误。
+    /// 租约不再属于当前 worker 时返回 `task-lease-lost`；检查点事务或 outbox 写入失败时返回内部错误。
     pub async fn finish_identification_complete(
         &self,
         lease: &ProcessingLease,
@@ -864,10 +898,8 @@ impl ProcessingStore {
              SET status='queued',stage='planning',checkpoint='identification-complete',reason=?,
                  recovering=0,cancel_requested=0,lease_owner=NULL,lease_expires_at_us=NULL,
                  next_retry_at_us=NULL,version=version+1,updated_at_us=?
-             WHERE id=? AND version=? AND status='running' AND lease_owner=?
-               AND lease_expires_at_us>?",
+             WHERE id=? AND version=? AND status='running' AND lease_owner=?",
             &[SqlValue::Text(reason.as_str()), SqlValue::I64(now_us)],
-            now_us,
         )
         .await?;
         sqlx::query(
@@ -1164,7 +1196,7 @@ impl ProcessingStore {
     ///
     /// # Errors
     ///
-    /// 授权过期时返回 `task-lease-lost`；终态事务或 outbox 写入失败时返回内部错误。
+    /// 租约不再属于当前 worker 时返回 `task-lease-lost`；终态事务或 outbox 写入失败时返回内部错误。
     pub async fn finish_waiting_confirmation(
         &self,
         lease: &ProcessingLease,
@@ -1191,7 +1223,7 @@ impl ProcessingStore {
     ///
     /// # Errors
     ///
-    /// 授权过期时返回 `task-lease-lost`；终态事务或 outbox 写入失败时返回内部错误。
+    /// 租约不再属于当前 worker 时返回 `task-lease-lost`；终态事务或 outbox 写入失败时返回内部错误。
     pub async fn finish_cancelled(
         &self,
         lease: &ProcessingLease,
@@ -1683,7 +1715,7 @@ impl ProcessingStore {
     async fn finish_terminal_attempt(
         &self,
         lease: &ProcessingLease,
-        transition: FinishTransition,
+        mut transition: FinishTransition,
         now_us: i64,
     ) -> Result<ProcessingTaskView, AppError> {
         let mut tx = self
@@ -1691,13 +1723,33 @@ impl ProcessingStore {
             .begin_with("BEGIN IMMEDIATE")
             .await
             .map_err(internal)?;
+        // 失败暂停与已接受的取消在同一写事务内裁决；取消不能被清除后自动重试。
+        if transition.status == ProcessingStatus::Paused
+            && sqlx::query_scalar::<_, i64>(
+                "SELECT cancel_requested FROM tasks_processing_tasks
+                 WHERE id=? AND version=? AND status='running' AND lease_owner=?",
+            )
+            .bind(lease.task.id.as_bytes().as_slice())
+            .bind(lease.version)
+            .bind(&lease.owner)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(internal)?
+                == Some(1)
+        {
+            transition.status = ProcessingStatus::Cancelled;
+            transition.checkpoint = ProcessingCheckpoint::Cancelled;
+            transition.reason = None;
+            transition.next_retry_at_us = None;
+            transition.attempt_status = "cancelled";
+            transition.failure_code = None;
+        }
         let updated = sqlx::query(
             "UPDATE tasks_processing_tasks
              SET status=?,stage=?,checkpoint=?,reason=?,recovering=0,cancel_requested=0,
                  lease_owner=NULL,lease_expires_at_us=NULL,next_retry_at_us=?,
                  version=version+1,updated_at_us=?
-             WHERE id=? AND version=? AND status='running' AND lease_owner=?
-               AND lease_expires_at_us>?",
+             WHERE id=? AND version=? AND status='running' AND lease_owner=?",
         )
         .bind(transition.status.as_str())
         .bind(transition.stage.as_str())
@@ -1708,7 +1760,6 @@ impl ProcessingStore {
         .bind(lease.task.id.as_bytes().as_slice())
         .bind(lease.version)
         .bind(&lease.owner)
-        .bind(now_us)
         .execute(&mut *tx)
         .await
         .map_err(internal)?;
@@ -1772,13 +1823,11 @@ impl ProcessingStore {
             .map_err(internal)?;
         let cancellation_requested = sqlx::query_scalar::<_, i64>(
             "SELECT cancel_requested FROM tasks_processing_tasks
-             WHERE id=? AND version=? AND status='running' AND lease_owner=?
-               AND lease_expires_at_us>?",
+             WHERE id=? AND version=? AND status='running' AND lease_owner=?",
         )
         .bind(lease.task.id.as_bytes().as_slice())
         .bind(lease.version)
         .bind(&lease.owner)
-        .bind(now_us)
         .fetch_optional(&mut *tx)
         .await
         .map_err(internal)?
@@ -1808,8 +1857,7 @@ impl ProcessingStore {
                  organization_result_id=COALESCE(?,organization_result_id),
                  catalog_media_item_id=COALESCE(?,catalog_media_item_id),
                  version=version+1,updated_at_us=?
-             WHERE id=? AND version=? AND status='running' AND lease_owner=?
-               AND lease_expires_at_us>?",
+             WHERE id=? AND version=? AND status='running' AND lease_owner=?",
         )
         .bind(transition.status.as_str())
         .bind(transition.stage.as_str())
@@ -1827,7 +1875,6 @@ impl ProcessingStore {
         .bind(lease.task.id.as_bytes().as_slice())
         .bind(lease.version)
         .bind(&lease.owner)
-        .bind(now_us)
         .execute(&mut *tx)
         .await
         .map_err(internal)?;
@@ -1953,7 +2000,6 @@ async fn assert_live_lease_update(
     lease: &ProcessingLease,
     sql: &str,
     prefix_values: &[SqlValue<'_>],
-    now_us: i64,
 ) -> Result<(), AppError> {
     let mut query = sqlx::query(sql);
     for value in prefix_values {
@@ -1966,7 +2012,6 @@ async fn assert_live_lease_update(
         .bind(lease.task.id.as_bytes().as_slice())
         .bind(lease.version)
         .bind(&lease.owner)
-        .bind(now_us)
         .execute(&mut **tx)
         .await
         .map_err(internal)?;

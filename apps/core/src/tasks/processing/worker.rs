@@ -9,7 +9,9 @@ use uuid::Uuid;
 use crate::platform::task_runtime::TaskClock;
 use crate::shared::error::{AppError, ErrorCode};
 use crate::tasks::processing::model::{ProcessingLease, ProcessingReason, ProcessingStage};
-use crate::tasks::processing::store::{PROCESSING_LEASE_RENEW_INTERVAL_US, ProcessingStore};
+use crate::tasks::processing::store::{
+    PROCESSING_LEASE_DURATION_US, PROCESSING_LEASE_RENEW_INTERVAL_US, ProcessingStore,
+};
 
 #[derive(Clone, Default)]
 /// 供长时间运行阶段处理器使用的协作式停止信号。
@@ -127,11 +129,14 @@ impl ProcessingWorker {
     /// 处理下一个由已注册阶段负责的任务；没有符合条件的任务时返回 `None`。
     ///
     /// `Committed` 结果保留处理器已经完成的提交；其他结果由 worker 提交相应状态转换。
+    /// 处理器自身失败而本 worker 仍持有任务时，任务转入带退避的暂停态并在 attempt 上记录
+    /// 真实失败码，不会停留在 `running` 等待租约到期后被当作租约丢失回收重跑。
     ///
     /// # Errors
     ///
-    /// 处理器、租约、取消检查点、数据库或 outbox 失败时返回错误。租约丢失时会在返回前停止
-    /// 处理器，且绝不提交其过期结果。
+    /// 租约丢失、取消检查点、数据库或 outbox 失败时返回错误。处理器失败时返回处理器的原始错误
+    /// 供运行时发布，但任务已先转入暂停态（仍持有时）或保持原状（已被接管或数据库不可用时）。
+    /// 租约丢失时会在返回前停止处理器，且绝不提交其过期结果。
     pub async fn run_once(&self) -> Result<Option<Uuid>, AppError> {
         let stages = self.handlers.keys().copied().collect::<Vec<_>>();
         let Some(lease) = self
@@ -206,11 +211,37 @@ impl ProcessingWorker {
                 }
             }
         };
-        let outcome = outcome?;
+        let outcome = match outcome {
+            Ok(outcome) => outcome,
+            Err(error) => {
+                let lease = shared_lease.lock().await.clone();
+                return Err(self.pause_after_handler_failure(&lease, error).await);
+            }
+        };
         let lease = shared_lease.lock().await.clone();
         self.commit_handler_outcome(task_id, &lease, outcome)
             .await?;
         Ok(Some(task_id))
+    }
+
+    /// 处理器失败后，只要本 worker 仍持有任务行，就先把任务转入带退避的暂停态，再返回处理器
+    /// 的原始错误交给运行时发布。
+    ///
+    /// 暂停事务的 `version`/`lease_owner` 守卫保证已被接管的任务不会被改写；守卫失败或数据库
+    /// 不可用时任务保持原状，由租约到期回收兜底。两种情况都返回同一个处理器错误。
+    async fn pause_after_handler_failure(
+        &self,
+        lease: &ProcessingLease,
+        error: AppError,
+    ) -> AppError {
+        let now_us = self.clock.now_us();
+        let next_retry_at_us =
+            now_us.saturating_add(stage_failure_retry_delay_us(lease.task.attempt_count));
+        let _ = self
+            .store
+            .finish_stage_failed(lease, error.code(), next_retry_at_us, now_us)
+            .await;
+        error
     }
 
     /// 把未自行提交的 handler 结果转换为原子任务状态变更。
@@ -275,6 +306,15 @@ enum HeartbeatExit {
     Cancelled,
 }
 
+/// 处理器失败后的重试退避：以租约时长起步按 attempt 次数翻倍，上限一小时。
+fn stage_failure_retry_delay_us(attempt_count: u64) -> i64 {
+    const MAX_DELAY_US: i64 = 3_600_000_000;
+    let exponent = attempt_count.saturating_sub(1).min(16);
+    PROCESSING_LEASE_DURATION_US
+        .saturating_mul(1_i64 << exponent)
+        .min(MAX_DELAY_US)
+}
+
 async fn renewal_loop(
     store: ProcessingStore,
     lease: Arc<Mutex<ProcessingLease>>,
@@ -295,12 +335,30 @@ async fn renewal_loop(
             }
             _ = interval.tick() => {
                 let mut lease = lease.lock().await;
-                if store.cancel_requested(lease.task.id).await? {
-                    stop.stop();
-                    return Ok(HeartbeatExit::Cancelled);
+                // 只有租约确实不再属于本 worker（0 行匹配）才算丢失；连接池超时、SQLITE_BUSY
+                // 等瞬时数据库错误保留当前租约并在下一周期重试，避免把活着的处理器判死。
+                match store.cancel_requested(lease.task.id).await {
+                    Ok(true) => {
+                        stop.stop();
+                        return Ok(HeartbeatExit::Cancelled);
+                    }
+                    Ok(false) => {}
+                    Err(error) if is_transient(&error) => continue,
+                    Err(error) => return Err(error),
                 }
-                *lease = store.renew(&lease, clock.now_us()).await?;
+                match store.renew(&lease, clock.now_us()).await {
+                    Ok(renewed) => *lease = renewed,
+                    Err(error) if is_transient(&error) => {}
+                    Err(error) => return Err(error),
+                }
             }
         }
     }
+}
+
+fn is_transient(error: &AppError) -> bool {
+    !matches!(
+        error.code(),
+        ErrorCode::TaskLeaseLost | ErrorCode::TaskNotFound
+    )
 }

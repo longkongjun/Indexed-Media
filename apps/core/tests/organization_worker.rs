@@ -121,10 +121,10 @@ async fn one_task_handler_failure_does_not_prevent_the_next_task_from_converging
     let converged = tasks.get(account, second.id).await.unwrap();
     assert_eq!(converged.status, ProcessingStatus::Queued);
     assert_eq!(converged.stage, ProcessingStage::Planning);
-    assert_eq!(
-        tasks.get(account, first.id).await.unwrap().status,
-        ProcessingStatus::Running
-    );
+    // 处理器失败的任务转入带退避的暂停态，而不是停留在 running 等待租约到期回收重跑。
+    let failed = tasks.get(account, first.id).await.unwrap();
+    assert_eq!(failed.status, ProcessingStatus::Paused);
+    assert!(failed.next_retry_at.is_some());
 }
 
 #[derive(Clone)]
