@@ -146,6 +146,7 @@ onBeforeUnmount(events.stop);
           </article>
 
           <div ref="planPreviewSection" class="plan-preview-section">
+            <!-- approve 载荷为确认打开时冻结的计划版本；feature 对陈旧确认本地阻断并要求重审。 -->
             <PlanPreview
               v-if="organization.projection.value.plan"
               :projection="organization.projection.value"

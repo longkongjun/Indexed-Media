@@ -1,6 +1,7 @@
 import type { MediaFlowClient, ProcessingTask, ProcessingTaskOrganization } from "@mediaflow/api-client-ts";
 import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
+import { effectScope } from "vue";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryHistory, createRouter } from "vue-router";
 import { identityClientKey } from "../src/app/client";
@@ -103,6 +104,29 @@ describe("organization task recovery", () => {
     expect(feature.projection.value?.plan?.authorization).toBe("one-time");
   });
 
+  it("binds execute to the confirmed plan version and blocks a stale confirmation without a request", async () => {
+    const execute = vi.fn().mockResolvedValue(organization({
+      plan: { ...organization().plan!, authorization: "one-time" },
+      allowed_actions: ["recalculate", "cancel"],
+    }));
+    const advanced = organization({ plan: { ...organization().plan!, version: 4 } });
+    const get = vi.fn().mockResolvedValueOnce(organization()).mockResolvedValueOnce(advanced);
+    const feature = useOrganizationTask(client({
+      getProcessingTaskOrganization: get,
+      executeProcessingTaskOrganization: execute,
+    }), taskId);
+    await feature.load();
+    // 确认打开后投影被推进到 v4（他端重算/SSE 刷新），用户仍确认打开时的 v3。
+    await feature.load();
+    await feature.execute(3);
+    expect(execute).not.toHaveBeenCalled();
+    expect(feature.actionError.value).toContain("重新");
+    // 重新审阅 v4 后批准才发请求，且版本绑定 4。
+    await feature.execute(4);
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(execute.mock.calls[0]?.[1]).toBe(4);
+  });
+
   it("keeps partial and manual-review facts offline while disabling every write", async () => {
     const partial = organization({
       state: "partial-success",
@@ -198,4 +222,78 @@ describe("organization task recovery", () => {
     expect(wrapper.text()).not.toMatch(/container_path|\/private\/|NFO_MUST_NOT_RENDER/);
     wrapper.unmount();
   });
+
+  it("detail view approves with the frozen plan version carried by the confirm event", async () => {
+    const execute = vi.fn().mockResolvedValue(organization({
+      plan: { ...organization().plan!, authorization: "one-time" },
+      allowed_actions: ["recalculate", "cancel"],
+    }));
+    const api = client({ executeProcessingTaskOrganization: execute });
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: "/tasks", name: "tasks", component: { template: "<main>tasks</main>" } },
+        { path: "/tasks/:id", name: "task", component: ProcessingTaskDetailView },
+        { path: "/review-cases/:id", name: "review-case", component: { template: "<main>review</main>" } },
+        { path: "/media/:id", name: "media-item", component: { template: "<main>media</main>" } },
+        { path: "/login", name: "login", component: { template: "<main>login</main>" } },
+      ],
+    });
+    await router.push(`/tasks/${taskId}`);
+    const wrapper = mount(ProcessingTaskDetailView, {
+      global: { plugins: [pinia, router], provide: { [identityClientKey as symbol]: api } },
+    });
+    await flushPromises();
+    await wrapper.get('[class="plan-preview__approve"]').trigger("click");
+    await wrapper.get('[class="plan-preview__confirm-go"]').trigger("click");
+    await flushPromises();
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(execute.mock.calls[0]?.[0]).toBe(taskId);
+    expect(execute.mock.calls[0]?.[1]).toBe(3);
+  });
+});
+
+it("does not refresh or report an obsolete organization write after scope disposal", async () => {
+  const pending: { reject?: (error: unknown) => void } = {};
+  const execute = vi.fn(() => new Promise<ProcessingTaskOrganization>((_, reject) => { pending.reject = reject; }));
+  const get = vi.fn(async () => organization());
+  const onFailure = vi.fn();
+  const scope = effectScope();
+  const feature = scope.run(() => useOrganizationTask(client({
+    executeProcessingTaskOrganization: execute, getProcessingTaskOrganization: get,
+  }), taskId, onFailure))!;
+  await feature.load();
+  const action = feature.execute(3);
+  scope.stop();
+  pending.reject?.(new TypeError("response lost"));
+  await action;
+  expect(onFailure).not.toHaveBeenCalled();
+  expect(get).toHaveBeenCalledTimes(1);
+  await feature.execute(3);
+  expect(execute).toHaveBeenCalledTimes(1);
+});
+
+it("ignores a late authorization failure from an uncertain write refresh after disposal", async () => {
+  const pending: { reject?: (error: unknown) => void } = {};
+  const get = vi.fn().mockResolvedValueOnce(organization()).mockImplementationOnce(() =>
+    new Promise<ProcessingTaskOrganization>((_, reject) => { pending.reject = reject; }));
+  const lostResponse = new TypeError("response lost");
+  const execute = vi.fn().mockRejectedValueOnce(lostResponse);
+  const onFailure = vi.fn();
+  const scope = effectScope();
+  const feature = scope.run(() => useOrganizationTask(client({
+    getProcessingTaskOrganization: get, executeProcessingTaskOrganization: execute,
+  }), taskId, onFailure))!;
+  await feature.load();
+  const action = feature.execute(3);
+  await flushPromises();
+  expect(get).toHaveBeenCalledTimes(2);
+  scope.stop();
+  pending.reject?.(Object.assign(new Error("old refresh expired"), { status: 401 }));
+  await action;
+  expect(onFailure).toHaveBeenCalledTimes(1);
+  expect(onFailure).toHaveBeenCalledWith(lostResponse);
+  expect(execute).toHaveBeenCalledTimes(1);
 });

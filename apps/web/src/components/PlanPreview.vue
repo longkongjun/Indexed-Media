@@ -4,10 +4,11 @@
  *
  * 这是 Web 作为"事实界面"的核心组件：批准前逐行可见"来源 → 目标 + 操作类型"；冲突行（risk_codes）
  * 阻止批准并引导修正规则。批准 = Web 人工授权（唯一授权产生方，p0-fix 后语义：capability 通道
- * 只交付不授权）；拒绝 = 不执行此计划（现有语义为取消任务，见组件 emits）。批准/拒绝均为二次确认。
+ * 只交付不授权）；拒绝 = 不执行此计划（现有语义为取消任务，见组件 emits）。批准/拒绝均为二次确认，
+ * 且批准只授权打开确认时冻结的计划版本：确认期间版本变化则确认失效，必须重新审阅。
  */
 import type { ProcessingTaskOrganization } from "@mediaflow/api-client-ts";
-import { computed, nextTick, ref } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import {
   ORGANIZATION_JOURNAL_KIND_LABELS,
   ORGANIZATION_JOURNAL_STATUS_LABELS,
@@ -16,12 +17,14 @@ import {
 
 /** 服务端权威的组织投影（含计划与已执行 journal）；canApprove/canReject 由父级传入（写可用性）。 */
 const props = defineProps<{ projection: ProcessingTaskOrganization; canApprove: boolean; canReject: boolean; pending: string | null }>();
-/** 批准（执行当前计划版本，产生 Web 人工授权回执）/ 拒绝（取消任务，计划作废）。 */
-const emit = defineEmits<{ approve: []; reject: [] }>();
+/** 批准（执行打开确认时冻结的计划版本，产生 Web 人工授权回执）/ 拒绝（取消任务，计划作废）。 */
+const emit = defineEmits<{ approve: [planVersion: number]; reject: [] }>();
 
 const approving = ref(false);
 const rejecting = ref(false);
 const confirmCancel = ref<HTMLButtonElement | null>(null);
+/** 批准确认打开时冻结的计划版本；确认动作只授权该版本。 */
+const confirmedVersion = ref<number | null>(null);
 const plan = computed(() => props.projection.plan);
 const operationLabel = computed(() => (plan.value ? ORGANIZATION_OPERATION_LABELS[plan.value.operation] : ""));
 const hasRisks = computed(() => (plan.value?.risk_codes.length ?? 0) > 0);
@@ -30,6 +33,7 @@ const pendingThis = computed(() => props.pending !== null);
 async function openApprove(): Promise<void> {
   approving.value = true;
   rejecting.value = false;
+  confirmedVersion.value = plan.value?.version ?? null;
   await nextTick();
   confirmCancel.value?.focus();
 }
@@ -42,11 +46,17 @@ async function openReject(): Promise<void> {
 function closeConfirm(): void {
   approving.value = false;
   rejecting.value = false;
+  confirmedVersion.value = null;
 }
+// 确认打开期间计划版本变化：确认失效，新版本必须重新审阅后才能批准。
+watch(() => plan.value?.version, (version) => {
+  if (approving.value && version !== confirmedVersion.value) closeConfirm();
+});
 function confirmAction(): void {
-  if (approving.value) {
+  if (approving.value && confirmedVersion.value !== null) {
+    const version = confirmedVersion.value;
     closeConfirm();
-    emit("approve");
+    emit("approve", version);
   } else if (rejecting.value) {
     closeConfirm();
     emit("reject");
@@ -107,7 +117,7 @@ function confirmAction(): void {
       <p v-else>拒绝后本计划不执行，任务将被取消（现有作废语义）；如需调整结果，可先修改规则后重新计算计划。</p>
       <div class="detail-actions">
         <button ref="confirmCancel" type="button" @click="closeConfirm">取消</button>
-        <button type="button" class="plan-preview__confirm-go" @click="confirmAction">{{ approving ? `确认执行计划 v${plan.version}` : "确认拒绝并取消任务" }}</button>
+        <button type="button" class="plan-preview__confirm-go" @click="confirmAction">{{ approving && confirmedVersion !== null ? `确认执行计划 v${confirmedVersion}` : "确认拒绝并取消任务" }}</button>
       </div>
     </section>
   </article>

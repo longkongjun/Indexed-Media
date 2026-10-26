@@ -1,9 +1,12 @@
 import type { IdentificationDetail, MediaFlowClient, ProcessingTask, ProcessingTaskOrganization, ProcessingTaskPage } from "@mediaflow/api-client-ts";
 import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
+import { effectScope } from "vue";
 import { describe, expect, it, vi } from "vitest";
 import { createMemoryHistory, createRouter } from "vue-router";
 import { identityClientKey } from "../src/app/client";
+import App from "../src/App.vue";
+import { createAppRouter } from "../src/router";
 import { useProcessingTask, useProcessingTasks } from "../src/features/processing-tasks/useProcessingTasks";
 import ProcessingTaskDetailView from "../src/views/ProcessingTaskDetailView.vue";
 import TaskCenterView from "../src/views/TaskCenterView.vue";
@@ -42,6 +45,8 @@ const noOrganization = (): ProcessingTaskOrganization => ({
   local_result: null,
   allowed_actions: ["cancel"],
 });
+
+const noOrganizationWithTask = (id: string): ProcessingTaskOrganization => ({ ...noOrganization(), task_id: id });
 
 function client(overrides: Partial<MediaFlowClient> = {}): MediaFlowClient {
   return {
@@ -184,4 +189,150 @@ describe("ProcessingTask center", () => {
     expect(wrapper.get('a[href="/tasks?view=pending"]').attributes("href")).toBe("/tasks?view=pending");
     wrapper.unmount();
   });
+
+  it("rebinds display, writes, back context and late responses when the same route switches task A→B", async () => {
+    const taskAId = "018f0f10-8bc1-7a5e-8e5a-2dc913d23ca1";
+    const taskBId = "018f0f10-8bc1-7a5e-8e5a-2dc913d23cb2";
+    const taskA: ProcessingTask = { ...task(), id: taskAId, relative_path: "incoming/task-a-title.mkv" };
+    const taskB: ProcessingTask = { ...task(), id: taskBId, relative_path: "incoming/task-b-title.mkv" };
+    const cancel = vi.fn().mockResolvedValue({ ...taskB, status: "cancelled" as const });
+    // A 的首个整理投影挂起，模拟切换后仍会返回的旧请求；A 的计划名用于识别迟到数据。
+    const aLateOrganization: ProcessingTaskOrganization = {
+      ...noOrganizationWithTask(taskAId),
+      state: "paused",
+      plan: {
+        id: "018f0f10-8bc1-7a5e-8e5a-2dc913d23c99",
+        version: 1,
+        target_id: "018f0f10-8bc1-7a5e-8e5a-2dc913d23c98",
+        source: { root_id: "incoming", relative_path: "incoming/task-a-title.mkv" },
+        destination: { root_id: "library", relative_path: "Movies/A Late Plan.mkv" },
+        operation: "copy",
+        naming: "A Late Plan",
+        authorization: "paused",
+        risk_codes: [],
+        created_at: "2026-10-26T08:00:00Z",
+      },
+    };
+    const lateA: { resolve: null | ((value: ProcessingTaskOrganization) => void) } = { resolve: null };
+    let aLateDelivered = false;
+    const api = client({
+      getProcessingTask: vi.fn(async (id: string) => (id === taskAId ? taskA : taskB)),
+      getProcessingTaskOrganization: (id: string) => {
+        if (id === taskAId && !aLateDelivered) {
+          return new Promise<ProcessingTaskOrganization>((resolve) => {
+            lateA.resolve = resolve;
+          });
+        }
+        return Promise.resolve(id === taskAId ? aLateOrganization : noOrganizationWithTask(id));
+      },
+      cancelProcessingTask: cancel,
+      listNotifications: vi.fn(async () => ({ items: [], next_cursor: null, unread_count: 0 })),
+      listCapabilityEvents: vi.fn(async () => ({ items: [], next_cursor: null })),
+    });
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const router = createAppRouter({
+      pinia,
+      getBootstrapStatus: async () => ({ requires_initialization: false, version: "v1" }),
+      getSession: async () => ({
+        account: { id: "018f0f10-8bc1-7a5e-8e5a-2dc913d23c86", administrator_name: "admin" },
+        csrf_token: "a".repeat(43),
+        version: "v1",
+      }),
+    });
+    await router.push(`/tasks/${taskAId}?view=pending`);
+    await router.isReady();
+    const wrapper = mount(App, { global: { plugins: [pinia, router], provide: { [identityClientKey as symbol]: api } } });
+    await flushPromises();
+    expect(wrapper.text()).toContain("incoming/task-a-title.mkv");
+
+    await router.push(`/tasks/${taskBId}?view=running`);
+    await flushPromises();
+
+    // B 绑定：显示、写操作与返回上下文。
+    expect(wrapper.text()).toContain("incoming/task-b-title.mkv");
+    expect(wrapper.text()).not.toContain("incoming/task-a-title.mkv");
+    const cancelButtons = wrapper.findAll('nav[aria-label="处理任务操作"] button').filter((button) => button.text() === "取消处理");
+    expect(cancelButtons).toHaveLength(1);
+    await cancelButtons[0]!.trigger("click");
+    await flushPromises();
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(cancel.mock.calls[0]?.[0]).toBe(taskBId);
+    expect(wrapper.get('a[href="/tasks?view=running"]').attributes("href")).toBe("/tasks?view=running");
+
+    // A 的迟到投影在 B 视图期间返回：必须被丢弃，不得污染 B 的整理区。
+    lateA.resolve?.(aLateOrganization);
+    aLateDelivered = true;
+    await flushPromises();
+    expect(wrapper.text()).not.toContain("A Late Plan");
+    expect(wrapper.get("[data-organization-task]").text()).toContain("任务尚未完成身份确认");
+
+    // 浏览器返回 A：重新以当前对象加载，写操作与返回查询重新绑定 A。
+    const backToA = new Promise<void>((resolve) => {
+      const remove = router.afterEach(() => { remove(); resolve(); });
+    });
+    router.back();
+    await backToA;
+    await flushPromises();
+    expect(wrapper.text()).toContain("incoming/task-a-title.mkv");
+    expect(wrapper.text()).not.toContain("incoming/task-b-title.mkv");
+    expect(wrapper.get('a[href="/tasks?view=pending"]').attributes("href")).toBe("/tasks?view=pending");
+    const cancelOnA = wrapper.findAll('nav[aria-label="处理任务操作"] button').filter((button) => button.text() === "取消处理");
+    await cancelOnA[0]!.trigger("click");
+    await flushPromises();
+    expect(cancel).toHaveBeenCalledTimes(2);
+    expect(cancel.mock.calls[1]?.[0]).toBe(taskAId);
+    wrapper.unmount();
+  });
+});
+
+it.each(["organization", "task", "identification"] as const)("review: unloaded %s failure must not redirect the active task", async (pending) => {
+  const a = "018f0f10-8bc1-7a5e-8e5a-2dc913d23ca1";
+  const b = "018f0f10-8bc1-7a5e-8e5a-2dc913d23cb2";
+  const late: { reject?: (reason: unknown) => void } = {};
+  const defer = <T>(): Promise<T> => new Promise<T>((_, reject) => { late.reject = reject; });
+  const api = client({
+    getProcessingTask: (id: string) => id === a && pending === "task"
+      ? defer<ProcessingTask>() : Promise.resolve({ ...task(), id }),
+    getProcessingTaskIdentification: (id: string) => id === a && pending === "identification"
+      ? defer<IdentificationDetail>() : Promise.resolve({ review_case_id: reviewCaseId } as IdentificationDetail),
+    getProcessingTaskOrganization: (id: string) => id === a && pending === "organization"
+      ? defer<ProcessingTaskOrganization>() : Promise.resolve(noOrganizationWithTask(id)),
+    listNotifications: vi.fn(async () => ({ items: [], next_cursor: null, unread_count: 0 })),
+    listCapabilityEvents: vi.fn(async () => ({ items: [], next_cursor: null })),
+  });
+  const pinia = createPinia(); setActivePinia(pinia);
+  const router = createAppRouter({ pinia,
+    getBootstrapStatus: async () => ({ requires_initialization: false, version: "v1" }),
+    getSession: async () => ({ account: { id: a, administrator_name: "admin" }, csrf_token: "a".repeat(43), version: "v1" }),
+  });
+  await router.push(`/tasks/${a}`); await router.isReady();
+  const wrapper = mount(App, { global: { plugins: [pinia, router], provide: { [identityClientKey as symbol]: api } } });
+  try {
+    await flushPromises();
+    await router.push(`/tasks/${b}`); await flushPromises();
+    const replace = vi.spyOn(router, "replace");
+    late.reject?.(Object.assign(new Error("old request expired"), { status: 401 }));
+    await flushPromises();
+    expect(replace).not.toHaveBeenCalledWith({ name: "login" });
+    expect(router.currentRoute.value.params.id).toBe(b);
+  } finally { wrapper.unmount(); }
+});
+
+it("does not replay an uncertain task write or report its error after scope disposal", async () => {
+  const pending: { reject?: (error: unknown) => void } = {};
+  const cancel = vi.fn(() => new Promise<ProcessingTask>((_, reject) => { pending.reject = reject; }));
+  const onFailure = vi.fn();
+  const api = client({ cancelProcessingTask: cancel });
+  const scope = effectScope();
+  const feature = scope.run(() => useProcessingTask(api, taskId, onFailure))!;
+  await feature.load();
+  const action = feature.cancel();
+  expect(cancel).toHaveBeenCalledTimes(1);
+  scope.stop();
+  pending.reject?.(new TypeError("response lost"));
+  await action;
+  expect(onFailure).not.toHaveBeenCalled();
+  await feature.cancel();
+  expect(cancel).toHaveBeenCalledTimes(1);
 });
