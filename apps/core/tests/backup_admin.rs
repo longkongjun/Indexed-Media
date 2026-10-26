@@ -153,3 +153,155 @@ async fn backup_preserves_business_facts_for_offline_restore() {
     assert!(manifest["created_at"].as_str().is_some());
     pool.close().await;
 }
+
+fn backup_post(
+    cookie: &str,
+    csrf: Option<&str>,
+    origin: Option<&str>,
+    fetch_site: Option<&str>,
+) -> Request<Body> {
+    let mut builder = Request::post("/api/v1/system/backups").header(header::COOKIE, cookie);
+    if let Some(token) = csrf {
+        builder = builder.header("x-csrf-token", token);
+    }
+    if let Some(value) = origin {
+        builder = builder.header(header::ORIGIN, value);
+    }
+    if let Some(value) = fetch_site {
+        builder = builder.header("sec-fetch-site", value);
+    }
+    builder.body(Body::empty()).unwrap()
+}
+
+/// 反例形状：标签、CSRF 头、Origin 头、`Sec-Fetch-Site` 头与预期错误码。
+type GuardCase<'a> = (
+    &'a str,
+    Option<&'a str>,
+    Option<&'a str>,
+    Option<&'a str>,
+    &'a str,
+);
+
+/// cookie 会话写请求缺/错 CSRF、跨源/`null`/缺失同源证明时必须被拒，且不落任何备份产物。
+#[tokio::test]
+async fn backup_post_rejects_cookie_writes_with_missing_or_cross_site_proof() {
+    let (fixture, app) = harness().await;
+    let cookie = format!("__Host-mediaflow_session={COOKIE_TOKEN}");
+    let cases: &[GuardCase] = &[
+        (
+            "csrf header missing",
+            None,
+            Some("http://127.0.0.1:3000"),
+            Some("same-origin"),
+            "csrf.invalid",
+        ),
+        (
+            "csrf token mismatch",
+            Some("backups-csrf-token-wrong"),
+            Some("http://127.0.0.1:3000"),
+            Some("same-origin"),
+            "csrf.invalid",
+        ),
+        (
+            "cross-site origin",
+            Some(CSRF),
+            Some("https://evil.example"),
+            Some("cross-site"),
+            "origin.untrusted",
+        ),
+        (
+            "null origin",
+            Some(CSRF),
+            Some("null"),
+            None,
+            "origin.untrusted",
+        ),
+        (
+            "no same-origin proof",
+            Some(CSRF),
+            None,
+            None,
+            "origin.untrusted",
+        ),
+    ];
+    for (label, csrf, origin, fetch_site, expected_code) in cases {
+        let response = app
+            .clone()
+            .oneshot(backup_post(&cookie, *csrf, *origin, *fetch_site))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::FORBIDDEN, "{label}");
+        let body = json_body(response).await;
+        assert_eq!(body["error"]["code"], *expected_code, "{label}: {body}");
+        assert!(
+            fixture.manifest_files().is_empty(),
+            "{label}: backup manifest must not be written"
+        );
+        assert!(
+            fixture.backup_files().is_empty(),
+            "{label}: database snapshot must not be written"
+        );
+    }
+
+    // 拒绝均留下与其他写路由同构的审计记录。
+    let pool =
+        sqlx::SqlitePool::connect(&format!("sqlite://{}", fixture.database_path().display()))
+            .await
+            .unwrap();
+    let denials: Vec<String> = sqlx::query_scalar(
+        "SELECT action FROM platform_audit_events WHERE outcome='denied' ORDER BY action",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(denials, vec!["csrf", "csrf", "origin", "origin", "origin"]);
+    pool.close().await;
+}
+
+/// 设备令牌通道按“令牌即写证明”豁免浏览器同源/CSRF，POST 语义保持成功。
+#[tokio::test]
+async fn backup_post_allows_device_token_channel_without_browser_proof() {
+    let (fixture, app) = harness().await;
+    let device_token = "backups-device-token-sentinel";
+    let pool =
+        sqlx::SqlitePool::connect(&format!("sqlite://{}", fixture.database_path().display()))
+            .await
+            .unwrap();
+    let account_id: Vec<u8> = sqlx::query_scalar("SELECT id FROM identity_accounts LIMIT 1")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO identity_devices
+         (id,account_id,display_name,token_sha256,credential_version,absolute_expires_at_us,
+          created_at_us,last_used_at_us,revoked_at_us,revoked_reason)
+         VALUES (?,?,?,?,1,?,?,NULL,NULL,NULL)",
+    )
+    .bind(Uuid::now_v7().as_bytes().as_slice())
+    .bind(account_id.as_slice())
+    .bind("backup test device")
+    .bind(mediaflow_core::platform::random::sha256(device_token.as_bytes()).as_slice())
+    .bind(i64::MAX)
+    .bind(0_i64)
+    .execute(&pool)
+    .await
+    .unwrap();
+    pool.close().await;
+
+    // 移动端形状：仅 Authorization 头，无 cookie、无 Origin/Sec-Fetch-Site、无 CSRF。
+    let created = json_body(
+        app.clone()
+            .oneshot(
+                Request::post("/api/v1/system/backups")
+                    .header(header::AUTHORIZATION, format!("Bearer {device_token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(created["created"], true, "body: {created}");
+    assert_eq!(fixture.manifest_files().len(), 1);
+    assert_eq!(fixture.backup_files().len(), 1);
+}
