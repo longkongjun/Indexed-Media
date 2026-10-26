@@ -48,3 +48,19 @@ MediaFlow B1–B5沿既定范围交付：设计为可运行/可修改HTML/CSS及
 停止自动截图采集、模型逐图审查和截图差异比较，不为该流程启动模拟器或操作设备。仍含截图/像素采集的历史UI入口在改造前停用；本次不继续运行这些入口。保留必要构建、类型检查、行为测试及非截图日志，工程结果与人工验收分别登记。构建成功、测试通过、工具页存在均不代表人工通过。
 
 待完善范围：四平台工具页API/主题/变体/状态与操作说明；旧截图/归档内截图和活动引用、专用采集/比对脚本清理；原生像素截图测试改为非截图行为检查或人工外观项。清理时保留产品图片/图标/海报、设计源和非截图记录。跨会话执行状态由Personal Forge唯一任务台账维护，不在此建立第二套进度。
+
+## Web同源CSP回归
+
+Core静态HTML、安全头与Web样式nonce桥必须配套发布。锁定的`ant-design-vue@4.2.6`、`@ant-design/icons-vue@7.0.1`兼容补丁由pnpm-workspace及lockfile校验；升级前须重评补丁，不直接删除。补丁只允许正式注入器消费文档nonce，不扫描并授权任意DOM样式。
+
+构建后，在显式授权的隔离测试Core（具有一次性管理员和只读`incoming/camera`测试目录）上运行：
+
+```bash
+pnpm --filter @mediaflow/web build
+# 通过安全环境注入MEDIAFLOW_CSP_TEST_ADMIN / MEDIAFLOW_CSP_TEST_PASSWORD，不写真实凭据到命令历史。
+MEDIAFLOW_DEPLOYED_URL=http://127.0.0.1:4221 node apps/web/scripts/check-deployed-csp.mjs
+```
+
+检查脚本登录真实服务，只预检目录，不确认创建、不扫描或执行文件操作；覆盖1440/390宽度、正式主题控件浅暗切换、模态样式/几何/初始取消焦点、Tab/Shift+Tab圈闭、ESC/关闭返回、刷新nonce与主题记忆。授权样式零CSP违例单列；之后主动插入无nonce/错误nonce样式、style属性和内联脚本（含样式nonce）验证阻断，预期安全控制台告警不是业务失败。脚本不采截图、视频或trace。
+
+Core回归：`cargo test --manifest-path apps/core/Cargo.toml --test web_csp --test bootstrap`；静态服务单测单独运行`cargo test --manifest-path apps/core/Cargo.toml --lib platform::static_web`。Web类型/lint/行为/预算按原门禁执行。实际生产TLS代理、其他浏览器、读屏和人工G1须单独验收，不以此Chromium隔离HTTP结果代签。
