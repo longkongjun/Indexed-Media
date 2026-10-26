@@ -14,6 +14,7 @@ import mediaflow.client.core.SdkResult
 import mediaflow.client.core.events.ProjectionRefresher
 import mediaflow.client.core.events.TaskEventEnvelope
 import mediaflow.client.core.getOrNull
+import mediaflow.client.core.paging.CachedPager
 import mediaflow.client.core.paging.CursorPager
 import mediaflow.client.core.paging.PageState
 import java.util.UUID
@@ -86,7 +87,7 @@ class LoginViewModel(
 class WallViewModel(
     private val container: SdkContainer,
 ) : ViewModel() {
-    private var pager: CursorPager<MediaItemSummary>? = null
+    private var wall: CachedPager<MediaItemSummary>? = null
     private var refresher: Job? = null
 
     val state: MutableStateFlow<PageState> = MutableStateFlow(PageState.Loading(false))
@@ -94,26 +95,23 @@ class WallViewModel(
     val connection = MutableStateFlow("idle")
 
     fun start() {
-        if (pager != null) return
-        val p = container.mediaRepository.mediaWall()
-        pager = p
+        if (wall != null) return
+        // 缓存快照、权威结果与状态的一致性由 CachedPager 保证；这里只做镜像与接线。
+        val w =
+            CachedPager(
+                pager = container.mediaRepository.mediaWall(),
+                readCache = container.mediaCache::cachedWall,
+                writeCache = container.mediaCache::replaceWall,
+            )
+        wall = w
         viewModelScope.launch {
-            // 先给离线快照（可能为空），再权威刷新；刷新成功后写缓存。
-            items.value = container.mediaCache.cachedWall()
-            p.reload()
-        }
-        viewModelScope.launch {
-            p.state.collect { collected ->
+            w.state.collect { collected ->
                 state.value = collected
                 container.propagateAuthFailure(collected)
             }
         }
-        viewModelScope.launch {
-            p.items.collect { list ->
-                items.value = list
-                if (list.isNotEmpty()) container.mediaCache.replaceWall(list)
-            }
-        }
+        viewModelScope.launch { w.items.collect { items.value = it } }
+        viewModelScope.launch { w.reload() }
         container.eventClientOrNull()?.let { client ->
             viewModelScope.launch { client.connection.collect { connection.value = it.name.lowercase() } }
             refresher =
@@ -121,18 +119,18 @@ class WallViewModel(
                     .start(
                         viewModelScope,
                         ProjectionRefresher.Route("wall", setOf(TaskEventEnvelope.TYPE_CATALOG_MEDIA_CHANGED)) {
-                            p.reload()
+                            w.reload()
                         },
                     )
         }
     }
 
     fun loadNext() {
-        viewModelScope.launch { pager?.loadNext() }
+        viewModelScope.launch { wall?.loadNext() }
     }
 
     fun reload() {
-        viewModelScope.launch { pager?.reload() }
+        viewModelScope.launch { wall?.reload() }
     }
 }
 
