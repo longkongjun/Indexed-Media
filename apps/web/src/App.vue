@@ -10,11 +10,13 @@ import { computed } from "vue";
 import { IndexedThemeProvider } from "@indexed-design/ui-vue";
 import { useRouter } from "vue-router";
 import { useConnectivityStore } from "./app/connectivity";
-import { useDesignThemeMode } from "./app/designTheme";
+import { readStyleNonce, useDesignThemeMode } from "./app/designTheme";
 
 const router = useRouter();
 const connectivity = useConnectivityStore();
 const designMode = useDesignThemeMode();
+const styleNonce = readStyleNonce();
+const designCsp = styleNonce ? { nonce: styleNonce } : undefined;
 const unavailable = computed(() => connectivity.state === "offline" || connectivity.state === "error");
 
 async function retry(): Promise<void> {
@@ -24,7 +26,7 @@ async function retry(): Promise<void> {
 </script>
 
 <template>
-  <IndexedThemeProvider :mode="designMode">
+  <IndexedThemeProvider :mode="designMode" :csp="designCsp">
     <div class="app-frame">
       <main v-if="unavailable" class="connection-state" aria-labelledby="connection-title">
         <p class="state-label">{{ connectivity.state === "offline" ? "Offline" : "Error" }}</p>

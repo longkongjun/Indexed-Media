@@ -5,6 +5,8 @@ settings:
   excludeLinksFromLockfile: false
 
 patchedDependencies:
+  '@ant-design/icons-vue@7.0.1': 3a4624f3d59cf5aea412fe68f61941d7254763f54086319a080c78af15b8962d
+  ant-design-vue@4.2.6: bb7273f4068e145214b68a4e32c4c7188d7a9f68b245f4522e93344197249a19
   vue-router@5.2.0: dd89615229269e08b428e73496c2e0f1d9d96710e36834e4aa900b42a1021dda
 
 importers:
@@ -1989,7 +1991,7 @@ snapshots:
 
   '@ant-design/icons-svg@4.6.0': {}
 
-  '@ant-design/icons-vue@7.0.1(vue@3.5.39(typescript@5.9.3))':
+  '@ant-design/icons-vue@7.0.1(patch_hash=3a4624f3d59cf5aea412fe68f61941d7254763f54086319a080c78af15b8962d)(vue@3.5.39(typescript@5.9.3))':
     dependencies:
       '@ant-design/colors': 6.0.0
       '@ant-design/icons-svg': 4.6.0
@@ -2170,8 +2172,8 @@ snapshots:
 
   '@indexed-design/ui-vue@file:vendor/indexed-design/indexed-design-ui-vue-0.15.0.tgz(vue@3.5.39(typescript@5.9.3))':
     dependencies:
-      '@ant-design/icons-vue': 7.0.1(vue@3.5.39(typescript@5.9.3))
-      ant-design-vue: 4.2.6(vue@3.5.39(typescript@5.9.3))
+      '@ant-design/icons-vue': 7.0.1(patch_hash=3a4624f3d59cf5aea412fe68f61941d7254763f54086319a080c78af15b8962d)(vue@3.5.39(typescript@5.9.3))
+      ant-design-vue: 4.2.6(patch_hash=bb7273f4068e145214b68a4e32c4c7188d7a9f68b245f4522e93344197249a19)(vue@3.5.39(typescript@5.9.3))
       vue: 3.5.39(typescript@5.9.3)
 
   '@isaacs/cliui@8.0.2':
@@ -2681,10 +2683,10 @@ snapshots:
 
   ansi-styles@6.2.3: {}
 
-  ant-design-vue@4.2.6(vue@3.5.39(typescript@5.9.3)):
+  ant-design-vue@4.2.6(patch_hash=bb7273f4068e145214b68a4e32c4c7188d7a9f68b245f4522e93344197249a19)(vue@3.5.39(typescript@5.9.3)):
     dependencies:
       '@ant-design/colors': 6.0.0
-      '@ant-design/icons-vue': 7.0.1(vue@3.5.39(typescript@5.9.3))
+      '@ant-design/icons-vue': 7.0.1(patch_hash=3a4624f3d59cf5aea412fe68f61941d7254763f54086319a080c78af15b8962d)(vue@3.5.39(typescript@5.9.3))
       '@babel/runtime': 7.29.10
       '@ctrl/tinycolor': 3.6.1
       '@emotion/hash': 0.9.2

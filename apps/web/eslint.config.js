@@ -33,8 +33,8 @@ export default tseslint.config(
     },
   },
   {
-    // 工具脚本（.js/.mjs）无 tsconfig project，走基础解析，不做 type-checked 检查。
-    files: ['eslint.config.js', 'scripts/**/*.mjs'],
+    // 工具及首屏原生脚本无 tsconfig project；首屏脚本另有隔离行为测试。
+    files: ['eslint.config.js', 'scripts/**/*.mjs', 'public/theme-init.js'],
     extends: [tseslint.configs.disableTypeChecked],
   },
   {

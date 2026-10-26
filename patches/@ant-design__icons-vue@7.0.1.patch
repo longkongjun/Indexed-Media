@@ -1,0 +1,34 @@
+diff --git a/es/dynamicCSS.js b/es/dynamicCSS.js
+index aa0d18c3368579f72b85f1a8b4699344849558eb..217d060069e741e93438c130ef5691af21802899 100644
+--- a/es/dynamicCSS.js
++++ b/es/dynamicCSS.js
+@@ -73,6 +73,12 @@ export function injectCSS(css) {
+     styleNode.nonce = csp.nonce;
+   }
+ 
++  // 补齐4.x未传csp的主题/动画/图标路径；在插入DOM前使用文档nonce，显式csp仍优先。
++  if (!styleNode.nonce) {
++    const meta = document.querySelector('meta[name="csp-nonce"]');
++    const nonce = meta && meta.content;
++    if (nonce && /^[A-Za-z0-9_-]{43}$/.test(nonce)) styleNode.nonce = nonce;
++  }
+   styleNode.innerHTML = css;
+   var container = getContainer(option);
+   var firstChild = container.firstChild;
+diff --git a/lib/dynamicCSS.js b/lib/dynamicCSS.js
+index 51314335b1eeaf45db9800cb466b8ab943d657b4..fc7ecb3d1ef35119dc50a8784d0fc642a8f7f4b7 100644
+--- a/lib/dynamicCSS.js
++++ b/lib/dynamicCSS.js
+@@ -84,6 +84,12 @@ function injectCSS(css) {
+     styleNode.nonce = csp.nonce;
+   }
+ 
++  // 补齐4.x未传csp的主题/动画/图标路径；在插入DOM前使用文档nonce，显式csp仍优先。
++  if (!styleNode.nonce) {
++    const meta = document.querySelector('meta[name="csp-nonce"]');
++    const nonce = meta && meta.content;
++    if (nonce && /^[A-Za-z0-9_-]{43}$/.test(nonce)) styleNode.nonce = nonce;
++  }
+   styleNode.innerHTML = css;
+   var container = getContainer(option);
+   var firstChild = container.firstChild;

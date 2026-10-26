@@ -8,4 +8,6 @@ allowBuilds:
   # core-js 经 ant-design-vue→@simonwep/pickr 间接引入，postinstall 仅为资助提示，无构建产物依赖。
   core-js: false
 patchedDependencies:
+  '@ant-design/icons-vue@7.0.1': patches/@ant-design__icons-vue@7.0.1.patch
+  ant-design-vue@4.2.6: patches/ant-design-vue@4.2.6.patch
   vue-router@5.2.0: patches/vue-router@5.2.0.patch

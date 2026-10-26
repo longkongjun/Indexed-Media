@@ -39,3 +39,9 @@ export function useDesignThemeMode(): Readonly<Ref<IndexedThemeMode>> {
 
   return computed(() => explicit.value ?? (systemDark.value ? "dark" : "light"));
 }
+
+/** 读取Core注入的文档级样式nonce；开发占位符或缺省不授予内联样式权限。 */
+export function readStyleNonce(): string | undefined {
+  const value = document.querySelector<HTMLMetaElement>('meta[name="csp-nonce"]')?.content;
+  return value && /^[A-Za-z0-9_-]{43}$/.test(value) ? value : undefined;
+}

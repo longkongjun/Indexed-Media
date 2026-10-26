@@ -2,7 +2,7 @@
  * 主题三态与皮肤选择控制器（设计系统 theme-switching 模式 §1-4 + skins 二维主题）。
  *
  * 三态模型：跟随系统（无 data-theme，交给 prefers-color-scheme）/ 手动浅色 / 手动暗色；
- * 记忆键 `mfd-theme`；皮肤键 `mfd-skin`（缺省 evergreen = 无属性）。index.html 的内联脚本
+ * 记忆键 `mfd-theme`；皮肤键 `mfd-skin`（缺省 evergreen = 无属性）。public/theme-init.js 的同源阻塞脚本
  * 已在首帧前恢复属性防闪，本模块只负责控件态对齐、切换与持久化。
  *
  * 切换过渡：窗口期内给 root 加 `theme-transition` 类（base.css 中仅对颜色类属性交叉淡入，
