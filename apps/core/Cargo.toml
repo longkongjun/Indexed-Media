@@ -43,6 +43,7 @@ uuid = { version = "=1.24.0", features = ["serde", "v7"] }
 unicode-normalization = "=0.1.25"
 
 [dev-dependencies]
+jsonschema = { version = "0.60.1", default-features = false, features = ["resolve-file"] }
 tempfile = "=3.27.0"
 tower = { version = "=0.5.3", features = ["util"] }
 

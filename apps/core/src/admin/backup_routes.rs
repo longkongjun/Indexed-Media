@@ -16,7 +16,7 @@ use crate::bootstrap::config::AppConfig;
 use crate::identity::service::IdentityService;
 use crate::platform::backup::{BackupManifest, create_backup};
 use crate::platform::db::Db;
-use crate::platform::request_security::SessionGuard;
+use crate::platform::request_security::{CsrfGuard, SessionGuard, validate_same_origin};
 use crate::shared::error::{AppError, ErrorCode};
 
 #[derive(Clone)]
@@ -46,7 +46,7 @@ pub fn router(config: AppConfig, db: &Db) -> Router {
 }
 
 impl BackupState {
-    async fn guard(&self, headers: &HeaderMap) -> Result<(), AppError> {
+    async fn ensure_ready(&self) -> Result<(), AppError> {
         if !self.config.readiness_issues().is_empty()
             || !matches!(
                 tokio::time::timeout(
@@ -62,7 +62,28 @@ impl BackupState {
                 "business routes are closed",
             ));
         }
+        Ok(())
+    }
+
+    async fn guard_get(&self, headers: &HeaderMap) -> Result<(), AppError> {
+        self.ensure_ready().await?;
         SessionGuard::authenticate(headers, &self.identity).await?;
+        Ok(())
+    }
+
+    /// 写通道守卫：认证不滑动会话，再要求同源证明与会话 CSRF 令牌；设备令牌通道按
+    /// “令牌即写证明”豁免。拒绝与其他管理写路由一样留下审计记录。
+    async fn guard_write(&self, headers: &HeaderMap) -> Result<(), AppError> {
+        self.ensure_ready().await?;
+        let session = SessionGuard::authenticate_without_sliding(headers, &self.identity).await?;
+        if let Err(error) = validate_same_origin(headers, &self.config.public_origin) {
+            self.identity.audit_denial("origin").await?;
+            return Err(error);
+        }
+        if let Err(error) = CsrfGuard::validate(headers, &session) {
+            self.identity.audit_denial("csrf").await?;
+            return Err(error);
+        }
         Ok(())
     }
 
@@ -75,7 +96,7 @@ async fn create_manual_backup(
     State(state): State<Arc<BackupState>>,
     headers: HeaderMap,
 ) -> Result<Json<Value>, AppError> {
-    state.guard(&headers).await?;
+    state.guard_write(&headers).await?;
     let artifact = create_backup(
         state.db.pool(),
         &state.config.config_dir.join("mediaflow.db"),
@@ -99,7 +120,7 @@ async fn list_backups(
     headers: HeaderMap,
     Query(query): Query<ListQuery>,
 ) -> Result<Json<Value>, AppError> {
-    state.guard(&headers).await?;
+    state.guard_get(&headers).await?;
     let limit = query.limit.unwrap_or(20).clamp(1, 100);
     let dir = state.backups_dir();
     let mut entries: Vec<std::path::PathBuf> = std::fs::read_dir(&dir)
