@@ -240,6 +240,13 @@ fn merge_connector_routes(
 
 async fn security_headers(request: Request<Body>, next: Next) -> Response {
     let mut response = next.run(request).await;
+    let style_nonce = response
+        .extensions_mut()
+        .remove::<super::static_web::StyleNonce>();
+    let policy = style_nonce.map_or_else(
+        || "default-src 'self'; connect-src 'self'; frame-ancestors 'none'".to_owned(),
+        |nonce| format!("default-src 'self'; connect-src 'self'; frame-ancestors 'none'; style-src 'self' 'nonce-{}'", nonce.0),
+    );
     let headers = response.headers_mut();
     if !headers.contains_key(header::CACHE_CONTROL) {
         headers.insert(
@@ -249,9 +256,8 @@ async fn security_headers(request: Request<Body>, next: Next) -> Response {
     }
     headers.insert(
         header::CONTENT_SECURITY_POLICY,
-        axum::http::HeaderValue::from_static(
-            "default-src 'self'; connect-src 'self'; frame-ancestors 'none'",
-        ),
+        axum::http::HeaderValue::from_str(&policy)
+            .expect("CSP contains only static text and base64url"),
     );
     headers.insert(
         header::X_CONTENT_TYPE_OPTIONS,

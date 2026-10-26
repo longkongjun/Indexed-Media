@@ -3,7 +3,14 @@ use std::path::{Component, Path, PathBuf};
 use axum::body::Body;
 use axum::http::{Response, StatusCode, header};
 
+use super::random::random_token;
 use crate::shared::error::{AppError, ErrorCode};
+
+// 仅由本地发行HTML生成，经内部扩展传给安全头中间件，不接受请求提供的nonce。
+#[derive(Clone)]
+pub(super) struct StyleNonce(pub String);
+
+const STYLE_NONCE_PLACEHOLDER: &str = "__MEDIAFLOW_STYLE_NONCE__";
 
 #[must_use]
 /// 从请求路径去除前导斜杠，并将其拼接到绝对或相对 `root`。
@@ -130,13 +137,26 @@ fn is_fingerprinted_asset_request(request_path: &str) -> bool {
 }
 
 async fn read_response(path: &Path, cache_policy: CachePolicy) -> Result<Response<Body>, AppError> {
-    let bytes = tokio::fs::read(path).await.map_err(static_error)?;
-    Response::builder()
+    let mut bytes = tokio::fs::read(path).await.map_err(static_error)?;
+    let mut style_nonce = None;
+    if path.file_name().is_some_and(|name| name == "index.html") {
+        let html = std::str::from_utf8(&bytes).map_err(static_error)?;
+        if html.contains(STYLE_NONCE_PLACEHOLDER) {
+            let nonce = random_token()?;
+            bytes = html.replace(STYLE_NONCE_PLACEHOLDER, &nonce).into_bytes();
+            style_nonce = Some(StyleNonce(nonce));
+        }
+    }
+    let mut response = Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, content_type(path))
         .header(header::CACHE_CONTROL, cache_policy.header())
         .body(Body::from(bytes))
-        .map_err(static_error)
+        .map_err(static_error)?;
+    if let Some(nonce) = style_nonce {
+        response.extensions_mut().insert(nonce);
+    }
+    Ok(response)
 }
 
 fn content_type(path: &Path) -> &'static str {
