@@ -96,11 +96,14 @@ async fn invoke_capability(
     body: axum::body::Bytes,
 ) -> Response {
     if let Err(error) = authenticate(&state, &headers) {
-        return error_response(CapabilityResultStatus::Rejected, None, error);
+        // 认证失败发生在信封解析之前：无可用调用身份，沿用既有 nil 占位契约。
+        return error_response(CapabilityResultStatus::Rejected, Uuid::nil(), None, error);
     }
     let Ok(call) = serde_json::from_slice::<CapabilityCall>(&body) else {
+        // 信封解析失败：无已解析调用身份可回显，不伪造（不从残缺信封提取）。
         return error_response(
             CapabilityResultStatus::Rejected,
+            Uuid::nil(),
             None,
             capability_error(
                 ErrorCode::ValidationFailed,
@@ -115,27 +118,29 @@ async fn invoke_capability(
     }
 }
 
+/// 已解析调用在分发前的稳定 `not_found` 拒绝（未登记或本构建无 handler）。
+fn not_found_rejection(call: &CapabilityCall, message: &'static str) -> Response {
+    error_response(
+        CapabilityResultStatus::Rejected,
+        call.request_id,
+        call.task_id,
+        capability_error(ErrorCode::NotFound, CapabilityErrorPhase::Scan, message),
+    )
+}
+
 /// 网关内层执行链；错误统一转为结果信封响应（HTTP 层仍 200，结构化 status 表达语义）。
 async fn invoke_inner(
     state: &Arc<CapabilityHttpState>,
     call: CapabilityCall,
 ) -> Result<CapabilityResult, Response> {
     let Some(spec) = registry::lookup(call.capability) else {
-        return Err(error_response(
-            CapabilityResultStatus::Rejected,
-            call.task_id,
-            capability_error(
-                ErrorCode::NotFound,
-                CapabilityErrorPhase::Scan,
-                "capability is not registered",
-            ),
-        ));
+        return Err(not_found_rejection(&call, "capability is not registered"));
     };
     if let Some(record) = state
         .store
         .find_call(call.request_id)
         .await
-        .map_err(|error| storage_failure(&error))?
+        .map_err(|error| storage_failure(&error, call.request_id))?
     {
         return Ok(record.result);
     }
@@ -147,10 +152,11 @@ async fn invoke_inner(
             call.request_id,
         )
         .await
-        .map_err(|error| storage_failure(&error))?
+        .map_err(|error| storage_failure(&error, call.request_id))?
     {
         return Err(error_response(
             CapabilityResultStatus::Rejected,
+            call.request_id,
             call.task_id,
             capability_error(
                 ErrorCode::RequestConflict,
@@ -182,14 +188,9 @@ async fn invoke_inner(
         | CapabilityName::MediaRetry
         | CapabilityName::MediaCancel
         | CapabilityName::MediaSyncExternal => {
-            return Err(error_response(
-                CapabilityResultStatus::Rejected,
-                call.task_id,
-                capability_error(
-                    ErrorCode::NotFound,
-                    CapabilityErrorPhase::Scan,
-                    "capability has no handler in this build",
-                ),
+            return Err(not_found_rejection(
+                &call,
+                "capability has no handler in this build",
             ));
         }
     };
@@ -235,7 +236,7 @@ async fn persist(
         .store
         .persist_call(&record, "ai", "dsh", now_us)
         .await
-        .map_err(|error| storage_failure(&error))?;
+        .map_err(|error| storage_failure(&error, call.request_id))?;
     let event_type = if matches!(
         result.status,
         CapabilityResultStatus::Succeeded | CapabilityResultStatus::NeedsInput
@@ -272,7 +273,7 @@ async fn persist(
         .store
         .append_event(&event)
         .await
-        .map_err(|error| storage_failure(&error))?;
+        .map_err(|error| storage_failure(&error, call.request_id))?;
     Ok(())
 }
 
@@ -505,6 +506,7 @@ async fn preflight(
     if let Err(error) = registry::validate_input(spec, &call.input) {
         return Err(error_response(
             CapabilityResultStatus::Rejected,
+            call.request_id,
             call.task_id,
             app_error_to_capability(&error),
         ));
@@ -512,6 +514,7 @@ async fn preflight(
     if !spec.allowed_modes.contains(&call.execution.mode) {
         return Err(error_response(
             CapabilityResultStatus::Rejected,
+            call.request_id,
             call.task_id,
             capability_error(
                 ErrorCode::TaskInvalidState,
@@ -530,6 +533,7 @@ async fn preflight(
     {
         return Err(error_response(
             CapabilityResultStatus::Rejected,
+            call.request_id,
             Some(task_id),
             app_error_to_capability(&error),
         ));
@@ -564,7 +568,8 @@ async fn list_events(
     Query(query): Query<EventQuery>,
 ) -> Response {
     if let Err(error) = authenticate(&state, &headers) {
-        return error_response(CapabilityResultStatus::Rejected, None, error);
+        // events 端点不承载能力调用，无调用身份可关联。
+        return error_response(CapabilityResultStatus::Rejected, Uuid::nil(), None, error);
     }
     let cursor = query
         .cursor
@@ -579,6 +584,7 @@ async fn list_events(
         Ok(page) => (StatusCode::OK, Json(page)).into_response(),
         Err(_) => error_response(
             CapabilityResultStatus::Failed,
+            Uuid::nil(),
             None,
             capability_error(
                 ErrorCode::Internal,
@@ -589,22 +595,26 @@ async fn list_events(
     }
 }
 
-fn storage_failure(error: &AppError) -> Response {
+fn storage_failure(error: &AppError, request_id: Uuid) -> Response {
     error_response(
         CapabilityResultStatus::Retryable,
+        request_id,
         None,
         app_error_to_capability(error),
     )
 }
 
+/// 构造结构化错误响应；`request_id` 为 nil 仅限"无已解析调用身份"的场景（认证、
+/// 信封解析失败与 events 端点），已解析调用的拒绝/失败必须回显原值。
 fn error_response(
     status: CapabilityResultStatus,
+    request_id: Uuid,
     task_id: Option<Uuid>,
     error: CapabilityError,
 ) -> Response {
     let result = CapabilityResult {
         protocol_version: PROTOCOL_VERSION.to_owned(),
-        request_id: Uuid::nil(),
+        request_id,
         task_id: error.task_id.or(task_id),
         status,
         result: None,
@@ -631,7 +641,9 @@ fn capability_error(
 ) -> CapabilityError {
     let (category, retryable, required_action) = classify(code);
     CapabilityError {
-        error_code: format!("capability.{}", code.as_str()),
+        // 共享 ErrorCode 的线上码沿用管理端词表（含下划线段）；能力契约的 error_code
+        // pattern（capability-error.schema.json）只允许 kebab 段，因此在此单点归一。
+        error_code: format!("capability.{}", code.as_str().replace('_', "-")),
         category,
         retryable,
         phase,

@@ -412,9 +412,10 @@ async fn unconfigured_gateway_stably_reports_missing_configuration() {
     )
     .await;
     assert_eq!(body["error"]["category"], "provider");
+    // error_code 归一为 kebab 段以满足 capability-error.schema.json 的 pattern。
     assert_eq!(
         body["error"]["error_code"],
-        "capability.integration.not_configured"
+        "capability.integration.not-configured"
     );
 }
 
@@ -732,6 +733,274 @@ async fn malformed_envelopes_are_rejected_with_structured_errors() {
             "payload {payload}"
         );
     }
+}
+
+// ---- request_id 关联与正式 Schema 校验（实际 handler 响应 × contracts Schema）----
+
+/// 把契约 `$id` 域（https://mediaflow.local/contracts/...）映射到仓库本地 `contracts/`
+/// 文件，使 result→error 的相对 `$ref` 离线可解析；不发起网络请求。
+struct ContractRetriever;
+
+impl jsonschema::Retrieve for ContractRetriever {
+    fn retrieve(
+        &self,
+        uri: &jsonschema::Uri<String>,
+    ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+        let path = uri.path().as_str().trim_start_matches('/');
+        let path = path
+            .strip_prefix("contracts/")
+            .ok_or_else(|| format!("unexpected schema uri: {uri}"))?;
+        let raw = std::fs::read_to_string(format!("../../contracts/{path}"))?;
+        Ok(serde_json::from_str(&raw)?)
+    }
+}
+
+fn result_schema_validator() -> jsonschema::Validator {
+    let raw =
+        std::fs::read_to_string("../../contracts/capability/v1/capability-result.schema.json")
+            .expect("capability-result schema");
+    let schema: Value = serde_json::from_str(&raw).expect("schema json");
+    jsonschema::options()
+        .with_retriever(ContractRetriever)
+        .build(&schema)
+        .expect("compile capability-result schema")
+}
+
+/// 逐条列出 Schema 校验失败（`实例路径: 错误`），用于钉住失败位置。
+fn schema_failures(validator: &jsonschema::Validator, body: &Value) -> Vec<String> {
+    validator
+        .iter_errors(body)
+        .map(|error| format!("{}: {error}", error.instance_path()))
+        .collect()
+}
+
+async fn post_call(app: &Router, token: &str, envelope: &Value) -> Value {
+    let response = app
+        .clone()
+        .oneshot(
+            Request::post("/api/capability/v1/calls")
+                .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(envelope.to_string()))
+                .expect("request"),
+        )
+        .await
+        .expect("gateway response");
+    json_body(response).await
+}
+
+#[tokio::test]
+async fn parsed_rejections_correlate_request_id_and_match_the_result_schema() {
+    let harness = harness(b"req-id-rejections.mkv").await;
+    let validator = result_schema_validator();
+    let valid_input = json!({ "task_id": harness.task_id.to_string() });
+
+    // 幂等键冲突需要先有一个成功调用绑定该键。
+    let conflict_key_request = Uuid::now_v7();
+    let bound = call_envelope(
+        conflict_key_request,
+        "media.task-status",
+        Some(harness.task_id),
+        valid_input.clone(),
+        None,
+    );
+    let bound_body = post_call(&harness.app, TOKEN, &bound).await;
+    assert_eq!(bound_body["status"], "succeeded");
+    let conflict_envelope = {
+        let mut second = call_envelope(
+            Uuid::now_v7(),
+            "media.task-status",
+            Some(harness.task_id),
+            valid_input.clone(),
+            None,
+        );
+        second["execution"]["idempotency_key"] = bound["execution"]["idempotency_key"].clone();
+        second
+    };
+
+    let mut write_mode = call_envelope(
+        Uuid::now_v7(),
+        "media.task-status",
+        Some(harness.task_id),
+        valid_input.clone(),
+        None,
+    );
+    write_mode["execution"]["mode"] = json!("approval-required");
+    let mut rollback = call_envelope(
+        Uuid::now_v7(),
+        "media.rollback",
+        Some(harness.task_id),
+        valid_input,
+        Some("result.version:1"),
+    );
+    rollback["execution"]["mode"] = json!("reversible-write");
+
+    let cases: Vec<(&str, Value, &str)> = vec![
+        (
+            "unregistered capability",
+            call_envelope(Uuid::now_v7(), "media.retry", None, json!({}), None),
+            "rejected",
+        ),
+        (
+            "unsafe input",
+            call_envelope(
+                Uuid::now_v7(),
+                "media.task-status",
+                Some(harness.task_id),
+                json!({ "task_id": "../../etc/passwd" }),
+                None,
+            ),
+            "rejected",
+        ),
+        ("disallowed execution mode", write_mode, "rejected"),
+        (
+            "stale revision",
+            call_envelope(
+                Uuid::now_v7(),
+                "media.task-status",
+                Some(harness.task_id),
+                json!({ "task_id": harness.task_id.to_string() }),
+                Some("task.version:999999"),
+            ),
+            "rejected",
+        ),
+        ("idempotency key conflict", conflict_envelope, "rejected"),
+        ("handler failure", rollback, "failed"),
+    ];
+
+    for (label, envelope, expected_status) in cases {
+        let request_id = envelope["request_id"]
+            .as_str()
+            .expect("request_id")
+            .to_owned();
+        let body = post_call(&harness.app, TOKEN, &envelope).await;
+        assert_eq!(
+            body["status"], expected_status,
+            "{label}: unexpected status"
+        );
+        assert_eq!(
+            body["request_id"], request_id,
+            "{label}: rejection must correlate the original request_id"
+        );
+        let failures = schema_failures(&validator, &body);
+        assert!(
+            failures.is_empty(),
+            "{label}: actual gateway response must match capability-result.schema.json: {failures:?}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn successful_call_response_matches_the_result_schema() {
+    let harness = harness(b"req-id-success.mkv").await;
+    let validator = result_schema_validator();
+    let request_id = Uuid::now_v7();
+    let envelope = call_envelope(
+        request_id,
+        "media.task-status",
+        Some(harness.task_id),
+        json!({ "task_id": harness.task_id.to_string() }),
+        None,
+    );
+    let body = post_call(&harness.app, TOKEN, &envelope).await;
+    assert_eq!(body["status"], "succeeded");
+    assert_eq!(body["request_id"], request_id.to_string());
+    let failures = schema_failures(&validator, &body);
+    assert!(
+        failures.is_empty(),
+        "actual gateway response must match capability-result.schema.json: {failures:?}"
+    );
+}
+
+#[tokio::test]
+async fn pre_parse_failures_keep_the_nil_request_id_contract() {
+    // 认证失败与信封解析失败发生在解析之前/之时：沿用既有错误契约——全零 request_id
+    // 占位、不伪造调用身份。全零 UUID 不满足结果 Schema 的 uuid pattern（版本位 1-8），
+    // 这是已知的契约张力；本测试钉住"除该占位外无其他 Schema 失败"，契约是否放宽另行协调。
+    let harness = harness(b"req-id-pre-parse.mkv").await;
+    let validator = result_schema_validator();
+
+    let valid_envelope = call_envelope(
+        Uuid::now_v7(),
+        "media.task-status",
+        Some(harness.task_id),
+        json!({ "task_id": harness.task_id.to_string() }),
+        None,
+    );
+    let cases: Vec<(&str, String, &str)> = vec![
+        (
+            "wrong bearer token",
+            valid_envelope.to_string(),
+            "Bearer wrong-token-value-000000000",
+        ),
+        (
+            "envelope with unparsable shape",
+            json!({
+                "protocol_version": "media-capability.v1",
+                "request_id": Uuid::now_v7().to_string(),
+                "capability": "media.task-status"
+            })
+            .to_string(),
+            "",
+        ),
+        ("non-object json body", "\"not-json\"".to_owned(), ""),
+    ];
+
+    for (label, payload, auth_override) in cases {
+        let auth = if auth_override.is_empty() {
+            format!("Bearer {TOKEN}")
+        } else {
+            auth_override.to_owned()
+        };
+        let response = harness
+            .app
+            .clone()
+            .oneshot(
+                Request::post("/api/capability/v1/calls")
+                    .header(header::AUTHORIZATION, auth)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(payload))
+                    .expect("request"),
+            )
+            .await
+            .expect("gateway response");
+        let body = json_body(response).await;
+        assert_eq!(body["status"], "rejected", "{label}");
+        assert_eq!(
+            body["request_id"],
+            Uuid::nil().to_string(),
+            "{label}: pre-parse failures keep the nil placeholder"
+        );
+        let failures = schema_failures(&validator, &body);
+        assert!(
+            !failures.is_empty(),
+            "{label}: nil uuid must fail the schema"
+        );
+        assert!(
+            failures
+                .iter()
+                .all(|failure| failure.starts_with("/request_id")),
+            "{label}: only the nil request_id placeholder may fail the schema: {failures:?}"
+        );
+    }
+
+    // 网关未配置令牌（provider 拒绝）同样发生在解析之前。
+    let fixture = common::TestConfigDir::new(RunMode::Development);
+    let db = migrate_with_backup(fixture.config())
+        .await
+        .expect("database");
+    let app = build_router(fixture.config().clone(), Some(db));
+    let body = post_call(&app, "whatever-token-value-0000", &valid_envelope).await;
+    assert_eq!(body["status"], "rejected");
+    assert_eq!(body["error"]["category"], "provider");
+    assert_eq!(body["request_id"], Uuid::nil().to_string());
+    let failures = schema_failures(&validator, &body);
+    assert!(
+        failures
+            .iter()
+            .all(|failure| failure.starts_with("/request_id")),
+        "unconfigured gateway: only the nil placeholder may fail: {failures:?}"
+    );
 }
 
 // ---- SA-1-001 修复：media.apply-plan 只交付不授权（网关全路径）----
