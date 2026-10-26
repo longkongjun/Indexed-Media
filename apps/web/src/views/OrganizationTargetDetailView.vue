@@ -18,6 +18,7 @@ const eventSourceFactory = inject(taskEventSourceFactoryKey, undefined);
 const failure = (error: unknown) => handleAuthenticatedFailure(error, session, router, route.fullPath);
 const feature = useOrganizationTargets(client, failure);
 const events = useProjectionEvents({
+  isFresh: () => feature.state.value.kind === "content" || feature.state.value.kind === "empty",
   refresh: () => feature.loadDetail(id),
   eventTypes: ["organization-target.changed"],
   matches: (event: TaskEventEnvelope) => event.type === "organization-target.changed" && event.payload.organization_target_id === id,

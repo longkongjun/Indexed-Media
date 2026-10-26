@@ -43,6 +43,7 @@ function syncControls(): void { filters.connectionId = context.value.connectionI
 async function applyFilters(): Promise<void> { await router.replace({ query: queryFor({ connectionId: filters.connectionId || undefined, status: filters.status as DownloadTaskListOptions["status"], query: filters.query.trim() || undefined }) }); }
 async function refresh(): Promise<void> { await feature.load(context.value); }
 const events = useProjectionEvents({
+  isFresh: () => feature.state.value.kind === "content" || feature.state.value.kind === "empty",
   refresh, eventTypes: ["download-task.changed"],
   matches: (event: TaskEventEnvelope) => event.type === "download-task.changed",
   versionOf: (event) => event.type === "download-task.changed" ? { key: `download:${event.task_id}`, version: event.payload.projection_version } : null,

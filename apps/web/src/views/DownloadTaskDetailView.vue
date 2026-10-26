@@ -24,6 +24,7 @@ const eventSourceFactory = inject(taskEventSourceFactoryKey, undefined);
 const failure = (error: unknown) => handleAuthenticatedFailure(error, session, router, route.fullPath);
 const feature = useDownloadTasks(client, {}, failure);
 const events = useProjectionEvents({
+  isFresh: () => feature.state.value.kind === "content" || feature.state.value.kind === "empty",
   refresh: () => feature.loadDetail(id), eventTypes: ["download-task.changed"],
   matches: (event: TaskEventEnvelope) => event.type === "download-task.changed" && event.task_id === id,
   versionOf: (event) => event.type === "download-task.changed" ? { key: `download:${event.task_id}`, version: event.payload.projection_version } : null,

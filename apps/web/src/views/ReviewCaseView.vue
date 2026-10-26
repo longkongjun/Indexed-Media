@@ -55,6 +55,7 @@ async function search(): Promise<void> {
 }
 
 const events = useProjectionEvents({
+  isFresh: () => feature.state.value.kind === "content" && feature.evidenceState.value.kind === "content",
   refresh: load,
   eventTypes: ["review-case.updated", "task-decision.accepted"],
   matches: (event: TaskEventEnvelope) => (event.type === "review-case.updated" || event.type === "task-decision.accepted") && event.payload.case_id === id,

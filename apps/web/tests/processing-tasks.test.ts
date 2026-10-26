@@ -9,6 +9,7 @@ import App from "../src/App.vue";
 import { createAppRouter } from "../src/router";
 import { useProcessingTask, useProcessingTasks } from "../src/features/processing-tasks/useProcessingTasks";
 import ProcessingTaskDetailView from "../src/views/ProcessingTaskDetailView.vue";
+import { taskEventSourceFactoryKey, type EventSourceLike } from "../src/features/scan-tasks/useTaskEvents";
 import TaskCenterView from "../src/views/TaskCenterView.vue";
 
 const taskId = "018f0f10-8bc1-7a5e-8e5a-2dc913d23c87";
@@ -335,4 +336,47 @@ it("does not replay an uncertain task write or report its error after scope disp
   expect(onFailure).not.toHaveBeenCalled();
   await feature.cancel();
   expect(cancel).toHaveBeenCalledTimes(1);
+});
+
+
+it.each(["task", "organization", "identification"] as const)("recovers a final SSE event after the real detail page catches a %s failure", async (failedProjection) => {
+  const getTask = vi.fn().mockResolvedValue(task());
+  const getOrganization = vi.fn().mockResolvedValue(noOrganization());
+  const getIdentification = vi.fn().mockResolvedValue({ review_case_id: reviewCaseId });
+  const api = client({ getProcessingTask: getTask, getProcessingTaskOrganization: getOrganization, getProcessingTaskIdentification: getIdentification });
+  const listeners = new Map<string, (event: Event | MessageEvent<string>) => void>();
+  const source: EventSourceLike = {
+    addEventListener: (type, listener) => { listeners.set(type, listener); },
+    removeEventListener: (type) => { listeners.delete(type); },
+    close: vi.fn(),
+  };
+  const pinia = createPinia(); setActivePinia(pinia);
+  const router = createRouter({ history: createMemoryHistory(), routes: [
+    { path: "/tasks/:id", name: "task", component: ProcessingTaskDetailView },
+    { path: "/tasks", name: "tasks", component: { template: "<main>tasks</main>" } },
+    { path: "/review-cases/:id", name: "review-case", component: { template: "<main>review</main>" } },
+  ] });
+  await router.push(`/tasks/${taskId}`);
+  const wrapper = mount(ProcessingTaskDetailView, { global: { plugins: [pinia, router], provide: {
+    [identityClientKey as symbol]: api,
+    [taskEventSourceFactoryKey as symbol]: () => source,
+  } } });
+  try {
+    await flushPromises();
+    const failed = failedProjection === "task" ? getTask : failedProjection === "organization" ? getOrganization : getIdentification;
+    failed.mockRejectedValueOnce(new TypeError("offline"));
+    const event = JSON.stringify({ id: 10, type: "processing-task.state-changed", schema_version: "1", occurred_at: "2026-07-23T10:00:00Z", task_id: taskId, payload: { status: "paused", stage: "identification", recovering: false, reason: "integration.unconfigured" } });
+    listeners.get("processing-task.state-changed")?.({ data: event } as MessageEvent<string>);
+    await flushPromises();
+    expect(wrapper.text()).toContain("事件状态刷新失败");
+    expect(getTask).toHaveBeenCalledTimes(2);
+    listeners.get("open")?.(new Event("open")); await flushPromises();
+    expect(getTask).toHaveBeenCalledTimes(3);
+    expect(getOrganization).toHaveBeenCalledTimes(3);
+    expect(wrapper.text()).not.toContain("事件状态刷新失败");
+    expect(wrapper.text()).toContain(task().relative_path);
+    listeners.get("processing-task.state-changed")?.({ data: event } as MessageEvent<string>);
+    await flushPromises();
+    expect(getTask).toHaveBeenCalledTimes(3);
+  } finally { wrapper.unmount(); }
 });

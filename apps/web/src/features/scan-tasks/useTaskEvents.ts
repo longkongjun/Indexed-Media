@@ -74,27 +74,33 @@ export function useTaskEvents(detail: ScanTaskFeature, options: Options = {}) {
     while (!lifecycle.disposed && pendingTruthId > lastAcceptedId.value) {
       const coveredId = pendingTruthId;
       try { await Promise.all([detail.load(), options.refreshRelated?.()]); }
-      catch { diagnostic.value = "事件状态刷新失败，将在后续事件到达时重试"; return; }
+      catch {
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- await 期间 stop() 可使当前实例失效
+        if (!lifecycle.disposed) diagnostic.value = "事件状态刷新失败，将在重连或后续事件到达时重试";
+        return;
+      }
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- await 期间 stop() 可翻转 disposed，类型层不可见
       if (lifecycle.disposed) { pendingTruthId = 0; return; }
-      if (detail.state.value.kind !== "content") { diagnostic.value = "事件状态尚未确认，将在后续事件到达时重试"; return; }
+      if (detail.state.value.kind !== "content") { diagnostic.value = "事件状态尚未确认，将在重连或后续事件到达时重试"; return; }
+      diagnostic.value = "";
       acceptId(coveredId);
       if (pendingTruthId === coveredId) pendingTruthId = 0;
     }
   }
 
   function ensureTruthRefresh(): void {
-    if (lifecycle.disposed || refreshing.value) return;
+    if (lifecycle.disposed || refreshing.value || pendingTruthId <= lastAcceptedId.value) return;
     const run = refreshAfterGap();
     const tracked = run.finally(() => { if (refreshing.value === tracked) refreshing.value = null; });
     refreshing.value = tracked;
   }
 
   function onMessage(message: MessageEvent<string>): void {
+    if (lifecycle.disposed) return;
     let event;
     try { event = parseTaskEvent(JSON.parse(message.data)); }
     catch { diagnostic.value = "事件格式无效，已忽略"; return; }
-    if (lifecycle.disposed || (event.type !== "stream.gap" && event.task_id !== detail.task.value?.id)) return;
+    if (event.type !== "stream.gap" && event.task_id !== detail.task.value?.id) return;
     if (event.type === "stream.gap") {
       bufferTruthId(event.id);
       ensureTruthRefresh();
@@ -124,13 +130,20 @@ export function useTaskEvents(detail: ScanTaskFeature, options: Options = {}) {
       });
   }
 
-  function onOpen(): void { if (!lifecycle.disposed) connection.value = "connected"; }
+  function onOpen(): void {
+    if (lifecycle.disposed) return;
+    connection.value = "connected";
+    if (refreshing.value) void refreshing.value.then(ensureTruthRefresh);
+    else ensureTruthRefresh();
+  }
   const namedMessage = (event: Event | MessageEvent<string>) => { onMessage(event as MessageEvent<string>); };
   const openListener = () => { onOpen(); };
   const errorListener = () => { onError(); };
 
   async function start(): Promise<void> {
+    if (lifecycle.disposed) return;
     await detail.load();
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- await 期间 stop() 可使当前实例失效
     if (lifecycle.disposed || !detail.task.value) return;
     source = (options.eventSourceFactory ?? defaultFactory)("/api/v1/events");
     for (const type of namedTypes) source.addEventListener(type, namedMessage);

@@ -78,6 +78,7 @@ async function refresh(restoreFocus = false): Promise<void> {
   }
 }
 const events = useProjectionEvents({
+  isFresh: () => feature.state.value.kind === "content" || feature.state.value.kind === "empty",
   refresh,
   eventTypes: ["catalog.media-changed"],
   matches: (event: TaskEventEnvelope) => event.type === "catalog.media-changed",

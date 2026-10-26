@@ -42,6 +42,7 @@ const rollbackConfirming = ref(false);
 const rollbackHeading = ref<HTMLElement | null>(null);
 const backQuery = { ...route.query };
 const events = useProjectionEvents({
+  isFresh: () => detail.state.value.kind === "content" && organization.state.value.kind === "content" && !detail.reviewLookupError.value,
   refresh: () => Promise.all([detail.load(), organization.load()]),
   eventTypes: ["processing-task.state-changed", "processing-task.identification-decided", "task-decision.accepted", "organization-result.changed"],
   matches: (event: TaskEventEnvelope) => event.task_id === id && (

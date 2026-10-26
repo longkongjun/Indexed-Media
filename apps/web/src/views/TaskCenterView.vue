@@ -79,6 +79,7 @@ async function applyFilters(): Promise<void> {
 
 async function load(): Promise<void> { await feature.load(context.value); }
 const events = useProjectionEvents({
+  isFresh: () => feature.state.value.kind === "content" || feature.state.value.kind === "empty",
   refresh: load,
   eventTypes: ["processing-task.state-changed", "processing-task.identification-decided", "task-decision.accepted"],
   matches: (event: TaskEventEnvelope) => event.type === "processing-task.state-changed" || event.type === "processing-task.identification-decided" || event.type === "task-decision.accepted",

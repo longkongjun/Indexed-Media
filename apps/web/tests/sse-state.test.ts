@@ -1,5 +1,6 @@
 import type { MediaFlowClient, ScanTask } from "@mediaflow/api-client-ts";
 import { describe, expect, it, vi } from "vitest";
+import { useMediaItems } from "../src/features/media/useMediaItems";
 import { useScanTask } from "../src/features/scan-tasks/useScanTasks";
 import { useTaskEvents, type EventSourceLike } from "../src/features/scan-tasks/useTaskEvents";
 import { useProjectionEvents } from "../src/features/events/useProjectionEvents";
@@ -232,6 +233,7 @@ describe("projection-aware SSE refresh", () => {
     const source = new FakeEventSource();
     const events = useProjectionEvents({
       refresh,
+      isFresh: () => true,
       eventTypes: ["catalog.media-changed"],
       matches: (event) => event.type === "catalog.media-changed" && event.payload.media_item_id === taskId,
       versionOf: (event) => event.type === "catalog.media-changed" ? { key: `media:${event.payload.media_item_id}`, version: event.payload.projection_version } : null,
@@ -252,11 +254,130 @@ describe("projection-aware SSE refresh", () => {
   it("uses a stream gap for one bounded truth refresh without any command surface", async () => {
     const refresh = vi.fn(async () => undefined);
     const source = new FakeEventSource();
-    const events = useProjectionEvents({ refresh, eventTypes: ["catalog.media-changed"], matches: () => false, eventSourceFactory: () => source });
+    const events = useProjectionEvents({ refresh, isFresh: () => true, eventTypes: ["catalog.media-changed"], matches: () => false, eventSourceFactory: () => source });
     await events.start();
     source.message("stream.gap", JSON.stringify({ id: 20, type: "stream.gap", schema_version: "1", occurred_at: "2026-07-23T10:00:00Z", task_id: null, payload: { minimum_available_id: 20 } }));
     await events.refreshing.value;
     expect(refresh).toHaveBeenCalledTimes(2);
     expect(events.lastAcceptedId.value).toBe(20);
   });
+});
+
+
+describe("failed SSE truth recovery", () => {
+  const media = (id: number, version: number) => JSON.stringify({ id, type: "catalog.media-changed", schema_version: "1", occurred_at: "2026-07-23T10:00:00Z", task_id: null, payload: { media_item_id: taskId, projection_version: version, change: "updated" } });
+  const gap = JSON.stringify({ id: 20, type: "stream.gap", schema_version: "1", occurred_at: "2026-07-23T10:00:00Z", task_id: null, payload: { minimum_available_id: 20 } });
+
+  it("does not confirm a caught real feature failure and retries the last event on open", async () => {
+    const listMediaItems = vi.fn().mockResolvedValueOnce({ items: [], next_cursor: null })
+      .mockRejectedValueOnce(new TypeError("offline")).mockResolvedValue({ items: [], next_cursor: null });
+    const feature = useMediaItems({ listMediaItems } as unknown as MediaFlowClient);
+    const source = new FakeEventSource();
+    const events = useProjectionEvents({ refresh: () => feature.load(), isFresh: () => feature.state.value.kind === "content" || feature.state.value.kind === "empty", eventTypes: ["catalog.media-changed"], matches: () => true, eventSourceFactory: () => source });
+    await events.start();
+    source.message("catalog.media-changed", media(10, 7)); await events.refreshing.value;
+    expect(feature.state.value.kind).toBe("offline");
+    expect(events.lastAcceptedId.value).toBe(0);
+    source.open(); await Promise.resolve(); await events.refreshing.value;
+    expect(listMediaItems).toHaveBeenCalledTimes(3);
+    expect(feature.state.value.kind).toBe("empty");
+    expect(events.lastAcceptedId.value).toBe(10);
+    expect(events.diagnostic.value).toBe("");
+  });
+
+  it("keeps a dirty version when a later event carries an already accepted version", async () => {
+    const source = new FakeEventSource();
+    const refresh = vi.fn().mockResolvedValueOnce(undefined).mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error("unavailable")).mockResolvedValue(undefined);
+    const events = useProjectionEvents({ refresh, isFresh: () => true, eventTypes: ["catalog.media-changed"], matches: () => true, versionOf: (event) => event.type === "catalog.media-changed" ? { key: "media", version: event.payload.projection_version } : null, eventSourceFactory: () => source });
+    await events.start();
+    source.message("catalog.media-changed", media(10, 7)); await events.refreshing.value;
+    source.message("catalog.media-changed", media(11, 8)); await events.refreshing.value;
+    source.message("catalog.media-changed", media(12, 7));
+    expect(events.lastAcceptedId.value).toBe(10);
+    await events.refreshing.value;
+    expect(events.lastAcceptedId.value).toBe(12);
+    expect(events.projectionVersions.value.media).toBe(8);
+  });
+
+  it("retries on open even when that open arrives before a failed refresh settles", async () => {
+    let reject!: (error: unknown) => void;
+    const refresh = vi.fn().mockResolvedValueOnce(undefined).mockImplementationOnce(() => new Promise<void>((_resolve, fail) => { reject = fail; })).mockResolvedValue(undefined);
+    const source = new FakeEventSource();
+    const events = useProjectionEvents({ refresh, isFresh: () => true, eventTypes: ["catalog.media-changed"], matches: () => true, eventSourceFactory: () => source });
+    await events.start(); source.message("catalog.media-changed", media(10, 7));
+    source.open(); reject(new Error("unavailable"));
+    await events.refreshing.value; await Promise.resolve(); await events.refreshing.value;
+    expect(refresh).toHaveBeenCalledTimes(3);
+    expect(events.lastAcceptedId.value).toBe(10);
+  });
+
+  it("does not publish a late failure diagnostic after stop", async () => {
+    let reject!: (error: unknown) => void;
+    const refresh = vi.fn().mockResolvedValueOnce(undefined).mockImplementationOnce(() => new Promise<void>((_resolve, fail) => { reject = fail; }));
+    const source = new FakeEventSource();
+    const events = useProjectionEvents({ refresh, isFresh: () => true, eventTypes: ["catalog.media-changed"], matches: () => true, eventSourceFactory: () => source });
+    await events.start(); source.message("catalog.media-changed", media(10, 7));
+    events.stop(); reject(new Error("late failure")); await events.refreshing.value; source.open();
+    expect(events.diagnostic.value).toBe("");
+    expect(events.lastAcceptedId.value).toBe(0);
+    expect(refresh).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries a failed final scan gap after reconnect without a new business event", async () => {
+    const getScanTask = vi.fn().mockResolvedValueOnce(snapshot()).mockRejectedValueOnce(new TypeError("offline")).mockResolvedValue(snapshot());
+    const detail = useScanTask({ getScanTask } as unknown as MediaFlowClient, taskId);
+    const source = new FakeEventSource();
+    const events = useTaskEvents(detail, { eventSourceFactory: () => source });
+    await events.start(); source.message("stream.gap", gap); await events.refreshing.value;
+    expect(events.lastAcceptedId.value).toBe(0);
+    source.open(); await Promise.resolve(); await events.refreshing.value;
+    expect(getScanTask).toHaveBeenCalledTimes(3);
+    expect(events.lastAcceptedId.value).toBe(20);
+    expect(events.diagnostic.value).toBe("");
+  });
+});
+
+
+it("does not strand the first message delivered immediately after a fresh open", async () => {
+  const refresh = vi.fn(async () => undefined);
+  const source = new FakeEventSource();
+  const events = useProjectionEvents({ refresh, isFresh: () => true, eventTypes: ["catalog.media-changed"], matches: () => true, eventSourceFactory: () => source });
+  await events.start(); source.open();
+  source.message("stream.gap", JSON.stringify({ id: 20, type: "stream.gap", schema_version: "1", occurred_at: "2026-07-23T10:00:00Z", task_id: null, payload: { minimum_available_id: 20 } }));
+  await events.refreshing.value;
+  expect(refresh).toHaveBeenCalledTimes(2);
+  expect(events.lastAcceptedId.value).toBe(20);
+});
+
+
+it.each(["projection", "scan"] as const)("ignores queued malformed messages and start calls after stopping %s events", async (kind) => {
+  const source = new FakeEventSource();
+  const refresh = vi.fn(async () => undefined);
+  const getScanTask = vi.fn(async () => snapshot());
+  const events = kind === "projection"
+    ? useProjectionEvents({ refresh, isFresh: () => true, eventTypes: ["catalog.media-changed"], matches: () => true, eventSourceFactory: () => source })
+    : useTaskEvents(useScanTask({ getScanTask } as unknown as MediaFlowClient, taskId), { eventSourceFactory: () => source });
+  await events.start();
+  const queued = [...(source.listeners.get("stream.gap") ?? [])][0];
+  events.stop(); queued?.({ data: "invalid JSON" } as MessageEvent<string>); await events.start();
+  expect(events.diagnostic.value).toBe("");
+  expect(events.connection.value).toBe("closed");
+  expect(refresh.mock.calls.length + getScanTask.mock.calls.length).toBe(1);
+});
+
+
+it("refreshes an errored real projection even when an event repeats an accepted version", async () => {
+  const listMediaItems = vi.fn().mockResolvedValue({ items: [], next_cursor: null });
+  const feature = useMediaItems({ listMediaItems } as unknown as MediaFlowClient);
+  const source = new FakeEventSource();
+  const events = useProjectionEvents({ refresh: () => feature.load(), isFresh: () => feature.state.value.kind === "content" || feature.state.value.kind === "empty", eventTypes: ["catalog.media-changed"], matches: () => true, versionOf: (event) => event.type === "catalog.media-changed" ? { key: "media", version: event.payload.projection_version } : null, eventSourceFactory: () => source });
+  const event = (id: number) => JSON.stringify({ id, type: "catalog.media-changed", schema_version: "1", occurred_at: "2026-07-23T10:00:00Z", task_id: null, payload: { media_item_id: taskId, projection_version: 7, change: "updated" } });
+  await events.start(); source.message("catalog.media-changed", event(10)); await events.refreshing.value;
+  listMediaItems.mockRejectedValueOnce(new TypeError("offline")); await feature.load();
+  expect(feature.state.value.kind).toBe("offline");
+  source.message("catalog.media-changed", event(11)); await events.refreshing.value;
+  expect(listMediaItems).toHaveBeenCalledTimes(4);
+  expect(feature.state.value.kind).toBe("empty");
+  expect(events.lastAcceptedId.value).toBe(11);
 });
