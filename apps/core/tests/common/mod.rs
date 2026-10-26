@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 pub mod organization;
+pub mod progress;
 
 use std::path::{Path, PathBuf};
 

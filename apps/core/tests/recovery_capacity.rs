@@ -138,8 +138,10 @@ async fn independent_core_kill_and_restart_recovers_same_task_and_batch_once() {
         .await
         .unwrap();
 
+    let restart_started = std::time::Instant::now();
     let mut second = spawn_core(&fixture);
     let completed = wait_for_status(&observer, task.id, "completed", Duration::from_secs(30)).await;
+    let restart_elapsed = restart_started.elapsed();
     second.reap().unwrap();
     let second_stderr = second.diagnostic_stderr();
     let restart_state: (String, i64, i64) = sqlx::query_as(
@@ -176,6 +178,10 @@ async fn independent_core_kill_and_restart_recovers_same_task_and_batch_once() {
     assert_eq!(recovered.1, 1, "restart creates one recovery attempt");
     assert_eq!(recovered.2, i64::try_from(FILES).unwrap());
     assert_eq!(recovered.3, recovered.2, "observations remain unique");
+    eprintln!(
+        "MEDIAFLOW_TIMING {}",
+        serde_json::json!({"scenario":"restart-scan","elapsed_ns":restart_elapsed.as_nanos(),"files":FILES,"observed":recovered.2,"unique":recovered.3,"recoveries":recovered.1,"same_batch":recovered.0==original_batch})
+    );
 }
 
 fn spawn_core(fixture: &common::TestConfigDir) -> CoreChild {
@@ -312,20 +318,29 @@ async fn wait_for_status(
     expected: &str,
     timeout: Duration,
 ) -> bool {
-    tokio::time::timeout(timeout, async {
-        loop {
-            let status: String =
-                sqlx::query_scalar("SELECT status FROM tasks_scan_tasks WHERE id=?")
-                    .bind(task_id.as_bytes().as_slice())
-                    .fetch_one(pool)
-                    .await
-                    .unwrap();
-            if status == expected {
-                break;
+    let progress = std::sync::atomic::AtomicU64::new(0);
+    common::progress::with_progress_timeout(
+        async {
+            loop {
+                let (status, observed): (String, i64) =
+                    sqlx::query_as("SELECT status,observed_files FROM tasks_scan_tasks WHERE id=?")
+                        .bind(task_id.as_bytes().as_slice())
+                        .fetch_one(pool)
+                        .await
+                        .unwrap();
+                progress.store(
+                    u64::try_from(observed).unwrap(),
+                    std::sync::atomic::Ordering::Release,
+                );
+                if status == expected {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
             }
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-    })
+        },
+        &progress,
+        timeout,
+    )
     .await
     .is_ok()
 }

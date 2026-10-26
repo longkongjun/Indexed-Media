@@ -3,7 +3,7 @@
 mod common;
 
 use std::collections::BTreeMap;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
@@ -30,6 +30,7 @@ use uuid::Uuid;
 #[derive(Clone, Default)]
 struct RecordingSink {
     batches: Arc<Mutex<Vec<ObservationBatch>>>,
+    progress: Arc<AtomicU64>,
 }
 
 #[derive(Clone)]
@@ -397,9 +398,16 @@ impl ObservationSink for RecordingSink {
         &self,
         files: Vec<FileObservation>,
         errors: Vec<ScanEntryError>,
-        _progress: ScanCounts,
+        progress: ScanCounts,
     ) -> Result<(), mediaflow_core::shared::error::AppError> {
         self.batches.lock().unwrap().push((files, errors));
+        self.progress.store(
+            progress.observed_files
+                + progress.visited_directories
+                + progress.skipped_entries
+                + progress.errors,
+            Ordering::Release,
+        );
         Ok(())
     }
 }
@@ -667,8 +675,8 @@ async fn bounded_scanner_streams_batches_preserves_raw_names_and_skips_symlinks(
         .unwrap()
         .into_capability();
     let sink = RecordingSink::default();
-    let summary = tokio::time::timeout(
-        std::time::Duration::from_secs(5),
+    let started = std::time::Instant::now();
+    let summary = common::progress::with_progress_timeout(
         BoundedScanner::default().scan(
             ScanSource {
                 inbox_directory_id: Uuid::now_v7(),
@@ -678,6 +686,8 @@ async fn bounded_scanner_streams_batches_preserves_raw_names_and_skips_symlinks(
             Arc::new(sink.clone()),
             ScanStopToken::default(),
         ),
+        &sink.progress,
+        std::time::Duration::from_secs(5),
     )
     .await
     .unwrap_or_else(|error| {
@@ -689,6 +699,7 @@ async fn bounded_scanner_streams_batches_preserves_raw_names_and_skips_symlinks(
         );
     })
     .unwrap();
+    let elapsed = started.elapsed();
     let batches = sink.batches.lock().unwrap();
     assert!(
         batches
@@ -698,12 +709,18 @@ async fn bounded_scanner_streams_batches_preserves_raw_names_and_skips_symlinks(
     assert_eq!(summary.observed_files, 1_201 + u64::from(raw_created));
     assert_eq!(summary.visited_directories, 131);
     assert_eq!(summary.skipped_entries, 1);
+    assert_eq!(summary.errors, 0);
     if raw_created {
         assert!(batches.iter().flat_map(|batch| &batch.0).any(|file| {
             file.relative_path_bytes == b"raw-\xff.mkv"
                 && file.relative_path_display.as_bytes() != file.relative_path_bytes
         }));
     }
+    eprintln!(
+        "MEDIAFLOW_TIMING {}",
+        serde_json::json!({"scenario":"native-scan", "elapsed_ns":elapsed.as_nanos(),
+        "base_files":1201,"raw_created":raw_created,"observed":summary.observed_files,"directories":summary.visited_directories,"skipped":summary.skipped_entries,"errors":summary.errors})
+    );
 }
 
 #[tokio::test]

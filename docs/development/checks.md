@@ -64,3 +64,21 @@ MEDIAFLOW_DEPLOYED_URL=http://127.0.0.1:4221 node apps/web/scripts/check-deploye
 检查脚本登录真实服务，只预检目录，不确认创建、不扫描或执行文件操作；覆盖1440/390宽度、正式主题控件浅暗切换、模态样式/几何/初始取消焦点、Tab/Shift+Tab圈闭、ESC/关闭返回、刷新nonce与主题记忆。授权样式零CSP违例单列；之后主动插入无nonce/错误nonce样式、style属性和内联脚本（含样式nonce）验证阻断，预期安全控制台告警不是业务失败。脚本不采截图、视频或trace。
 
 Core回归：`cargo test --manifest-path apps/core/Cargo.toml --test web_csp --test bootstrap`；静态服务单测单独运行`cargo test --manifest-path apps/core/Cargo.toml --lib platform::static_web`。Web类型/lint/行为/预算按原门禁执行。实际生产TLS代理、其他浏览器、读屏和人工G1须单独验收，不以此Chromium隔离HTTP结果代签。
+
+## Core扫描与重启：正确性和总耗时分开验收
+
+默认Rust回归保留真实OS扫描的1201文件/130子目录、原始路径/链接与每批上限，以及独立Core kill/restart的15000文件、同task/batch、恰好一次recovery和无重复观测。原生用例的5秒/30秒检查无计数进展；租约心跳、重复读数或倒退不能重置期限。首次批次放行仍保留原15秒总限，以及至少500条且尚未全部扫描的断言。另有受控算法用例在5秒内验证观测channel与目录队列背压，不能代替原生或性能验收。
+
+原5秒原生扫描、30秒重启扫描的**总耗时预算**仍独立保留。参考环境性能入口：
+
+```sh
+python3 apps/core/scripts/record-recovery-timing.py --describe-environment > /absolute/reference.json
+# 复核采集的hardware/os/filesystem/cpu_count/memory_bytes/temp_path_depth，补充实际参考名name和max_load_per_cpu（大于0且不超过1）。
+MEDIAFLOW_TIMING_REFERENCE=/absolute/reference.json \
+MEDIAFLOW_TIMING_OUTPUT=/absolute/new-result.json \
+just bench-m2-recovery-timing
+```
+
+结果应放在源码树以外；输出父目录必须已存在，结果及同名前缀日志不能覆盖。入口先核对参考硬件/OS/文件系统/CPU数/内存/临时路径深度和1分钟负载，再以test-opt0（debug=0、incremental=0）运行两个完整原生用例；不能与既有release版100k/1000容量数字混用。每个场景测量1次完整流程，只记录单次总耗时，不声称p95或长期稳定性。每项在全部正确性断言通过后输出阶段计时，记录命令、SHA、Core源码摘要、profile、参考/实测环境和原始日志。原生扫描计时包括Scanner执行，重启计时从第二个Core启动至completed，均不包括数据集准备；不是整份测试总耗时。
+
+退出0且status=passed才是本参考环境的两项性能通过；超预算或正确性失败退出1/status=failed；环境不匹配或负载超出参考条件退出2/status=environment-unavailable，保持待验。计时样本缺失、错误数据量、重复样本、源码中途变化不能通过；自定义Rust flags不属于该参考profile。普通正确性全绿、受控fixture完成或缺环境均不能代签本性能出口，也不证明NAS/实机/CI或人工G1/L0验收。

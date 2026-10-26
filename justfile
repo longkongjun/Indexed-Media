@@ -286,11 +286,20 @@ check-m4-source-automation:
 test-m2-recovery:
     @cargo fmt --manifest-path apps/core/Cargo.toml -- --check
     @cargo clippy --manifest-path apps/core/Cargo.toml --all-targets -- -D warnings
-    @cargo test --manifest-path apps/core/Cargo.toml --test security_regression --test recovery_capacity --test scan_capacity
+    @cargo test --manifest-path apps/core/Cargo.toml --lib --test scan_worker --test security_regression --test recovery_capacity --test scan_capacity --test progress_watchdog
+    @PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s apps/core/scripts -p test_recovery_timing.py
 
 # 在调用方指定的唯一 JSON 路径记录真实 100k/1000 host benchmark 并执行硬预算门禁。
 bench-m2:
     @./apps/core/scripts/record-benchmark.sh
+
+# 正确性与5秒/30秒总耗时预算分别记录；参考环境未满足返回2，超预算返回1。
+bench-m2-recovery-timing:
+    #!/bin/sh
+    set -eu
+    : "${MEDIAFLOW_TIMING_REFERENCE:?set an absolute reference JSON path}"
+    : "${MEDIAFLOW_TIMING_OUTPUT:?set a new absolute output JSON path}"
+    PYTHONDONTWRITEBYTECODE=1 python3 apps/core/scripts/record-recovery-timing.py --reference "$MEDIAFLOW_TIMING_REFERENCE" --output "$MEDIAFLOW_TIMING_OUTPUT"
 
 # 在唯一临时目录运行 M2 Web 主流程与恢复场景；退出时清理所有 Playwright artifact。
 test-m2-e2e:

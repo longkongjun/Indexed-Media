@@ -583,3 +583,6 @@ fn boundary_error(error: FsBoundaryError) -> AppError {
     };
     AppError::new(code, "scan capability boundary failed")
 }
+
+#[cfg(test)]
+mod tests;
