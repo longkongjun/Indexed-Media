@@ -115,7 +115,7 @@ impl NotificationStore {
         Ok(id)
     }
 
-    /// 最新在前的通知分页；`unread_only` 过滤未读。
+    /// 最新在前的通知分页；`unread_only` 过滤未读，时间/ID边界与排序一致。
     ///
     /// # Errors
     ///
@@ -124,6 +124,7 @@ impl NotificationStore {
         &self,
         unread_only: bool,
         before_us: Option<i64>,
+        before_id: Option<Uuid>,
         limit: i64,
     ) -> Result<(Vec<NotificationView>, Option<String>), AppError> {
         let limit = limit.clamp(1, 100);
@@ -131,11 +132,12 @@ impl NotificationStore {
             "SELECT id,kind,title,body,task_id,created_at_us,read_at_us
              FROM notifications
              WHERE (?1 = 0 OR read_at_us IS NULL)
-               AND (?2 IS NULL OR created_at_us < ?2)
-             ORDER BY created_at_us DESC, id DESC LIMIT ?3",
+               AND (?2 IS NULL OR created_at_us < ?2 OR (created_at_us = ?2 AND id < ?3))
+             ORDER BY created_at_us DESC, id DESC LIMIT ?4",
         )
         .bind(i64::from(unread_only))
         .bind(before_us)
+        .bind(before_id.map(|id| id.as_bytes().to_vec()))
         .bind(limit)
         .fetch_all(&self.pool)
         .await
@@ -149,7 +151,7 @@ impl NotificationStore {
         } else {
             items
                 .last()
-                .map(|item| format!("notifications:{}", item.created_at_sort_key()))
+                .map(|item| format!("notifications:{}:{}", item.created_at, item.id))
         };
         Ok((items, next_cursor))
     }
@@ -199,12 +201,6 @@ impl NotificationStore {
             .fetch_one(&self.pool)
             .await
             .map_err(database)
-    }
-}
-
-impl NotificationView {
-    fn created_at_sort_key(&self) -> String {
-        self.created_at.clone()
     }
 }
 

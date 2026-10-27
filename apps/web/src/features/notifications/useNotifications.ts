@@ -20,12 +20,15 @@ export function useNotifications(client: MediaFlowClient, onFailure?: Authentica
   const unreadCount = ref(0);
   const errorMessage = ref("");
   let loadEpoch = 0;
+  let unreadOnly: boolean | undefined;
 
   async function load(options: { unreadOnly?: boolean } = {}): Promise<void> {
     const epoch = ++loadEpoch;
+    unreadOnly = options.unreadOnly;
+    nextCursor.value = null;
     state.value = { kind: "loading", stale: items.value.length > 0 };
     try {
-      const page = await client.listNotifications({ unreadOnly: options.unreadOnly });
+      const page = await client.listNotifications({ unreadOnly });
       if (epoch !== loadEpoch) return;
       items.value = page.items;
       nextCursor.value = page.next_cursor;
@@ -35,6 +38,7 @@ export function useNotifications(client: MediaFlowClient, onFailure?: Authentica
     } catch (error) {
       if (epoch !== loadEpoch) return;
       await onFailure?.(error);
+      if (epoch !== loadEpoch) return;
       state.value = { kind: isOffline(error) ? "offline" : "error", stale: items.value.length > 0 };
       errorMessage.value = safeApiError(error, "无法加载通知，请重试").message;
     }
@@ -44,7 +48,7 @@ export function useNotifications(client: MediaFlowClient, onFailure?: Authentica
     if (!nextCursor.value) return;
     const epoch = ++loadEpoch;
     try {
-      const page = await client.listNotifications({ cursor: nextCursor.value });
+      const page = await client.listNotifications({ cursor: nextCursor.value, unreadOnly });
       if (epoch !== loadEpoch) return;
       items.value = [...items.value, ...page.items];
       nextCursor.value = page.next_cursor;
@@ -52,6 +56,7 @@ export function useNotifications(client: MediaFlowClient, onFailure?: Authentica
     } catch (error) {
       if (epoch !== loadEpoch) return;
       await onFailure?.(error);
+      if (epoch !== loadEpoch) return;
       errorMessage.value = safeApiError(error, "无法加载更早的通知，请重试").message;
     }
   }

@@ -146,6 +146,180 @@ async fn list_is_newest_first_with_unread_count_and_cursor_pages() {
     assert_eq!(second["items"].as_array().unwrap().len(), 2);
 }
 
+async fn assert_tied_notifications_are_complete(unread_only: bool) {
+    let (fixture, app, cookie, _csrf) = harness().await;
+    seed_notifications(&fixture, 7, 1_000).await;
+    let pool =
+        sqlx::SqlitePool::connect(&format!("sqlite://{}", fixture.database_path().display()))
+            .await
+            .unwrap();
+    sqlx::query(
+        "UPDATE notifications SET created_at_us = CASE title
+         WHEN '任务等待人工审核 0' THEN 999 WHEN '任务等待人工审核 6' THEN 1001 ELSE 1000 END,
+         read_at_us = CASE title WHEN '任务等待人工审核 2' THEN 2000
+         WHEN '任务等待人工审核 4' THEN 2000 ELSE NULL END",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let expected: Vec<String> = sqlx::query_scalar::<_, Vec<u8>>(
+        "SELECT id FROM notifications WHERE (? = 0 OR read_at_us IS NULL)
+         ORDER BY created_at_us DESC, id DESC",
+    )
+    .bind(i64::from(unread_only))
+    .fetch_all(&pool)
+    .await
+    .unwrap()
+    .into_iter()
+    .map(|id| Uuid::from_slice(&id).unwrap().to_string())
+    .collect();
+    assert_eq!(expected.len(), if unread_only { 5 } else { 7 });
+    let mut seen = Vec::new();
+    let mut cursor = None::<String>;
+    for _ in 0..expected.len() {
+        let mut path = format!("/api/v1/notifications?limit=2&unread_only={unread_only}");
+        if let Some(cursor) = &cursor {
+            path.push_str("&cursor=");
+            path.push_str(cursor);
+        }
+        let response = app.clone().oneshot(get(&cookie, &path)).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let page = json_body(response).await;
+        assert_eq!(page["unread_count"], 5);
+        seen.extend(
+            page["items"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|item| item["id"].as_str().unwrap().to_owned()),
+        );
+        cursor = page["next_cursor"].as_str().map(str::to_owned);
+        if cursor.is_none() {
+            break;
+        }
+    }
+    assert_eq!(
+        seen, expected,
+        "every matching notification appears exactly once in full SQL order"
+    );
+    assert!(cursor.is_none(), "pagination must reach the end");
+}
+
+#[tokio::test]
+async fn tied_timestamp_pages_keep_all_notifications_in_blob_id_order() {
+    assert_tied_notifications_are_complete(false).await;
+}
+
+#[tokio::test]
+async fn tied_timestamp_pages_keep_all_unread_notifications() {
+    assert_tied_notifications_are_complete(true).await;
+}
+
+#[tokio::test]
+async fn legacy_timestamp_cursors_keep_strict_before_semantics_and_microsecond_precision() {
+    let (fixture, app, cookie, _csrf) = harness().await;
+    seed_notifications(&fixture, 5, 1_000).await;
+    for cursor in [
+        "notifications:1970-01-01T00:00:00.001003Z",
+        "notifications:1970-01-01T01:00:00.001003%2B01:00",
+    ] {
+        let page = json_body(
+            app.clone()
+                .oneshot(get(
+                    &cookie,
+                    &format!("/api/v1/notifications?limit=2&cursor={cursor}"),
+                ))
+                .await
+                .unwrap(),
+        )
+        .await;
+        let items = page["items"].as_array().unwrap();
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0]["created_at"], "1970-01-01T00:00:00.001002Z");
+        assert_eq!(items[1]["created_at"], "1970-01-01T00:00:00.001001Z");
+        let next = page["next_cursor"].as_str().unwrap();
+        assert!(next.ends_with(items[1]["id"].as_str().unwrap()));
+        for boundary in [
+            next.to_owned(),
+            next.replace(
+                "1970-01-01T00:00:00.001001Z",
+                "1970-01-01T01:00:00.001001%2B01:00",
+            ),
+        ] {
+            let last = json_body(
+                app.clone()
+                    .oneshot(get(
+                        &cookie,
+                        &format!("/api/v1/notifications?limit=2&cursor={boundary}"),
+                    ))
+                    .await
+                    .unwrap(),
+            )
+            .await;
+            assert_eq!(last["items"].as_array().unwrap().len(), 1);
+            assert_eq!(
+                last["items"][0]["created_at"],
+                "1970-01-01T00:00:00.001000Z"
+            );
+            assert!(last["next_cursor"].is_null());
+        }
+    }
+}
+
+#[tokio::test]
+async fn malformed_notification_cursors_are_rejected_instead_of_returning_page_one() {
+    let (_fixture, app, cookie, _csrf) = harness().await;
+    for cursor in [
+        String::new(),
+        "other:1970-01-01T00:00:00.001000Z".to_owned(),
+        "notifications:".to_owned(),
+        "notifications:not-a-time".to_owned(),
+        "notifications:1970-01-01T00:00:00.001000Z:".to_owned(),
+        "notifications:1970-01-01T00:00:00.001000Z:not-a-uuid".to_owned(),
+        "notifications:1970-01-01T00:00:00.001000Z:00000000-0000-0000-0000-000000000001:extra"
+            .to_owned(),
+        format!("notifications:1970-01-01T00:00:00.{}Z", "0".repeat(490)),
+    ] {
+        let response = app
+            .clone()
+            .oneshot(get(
+                &cookie,
+                &format!("/api/v1/notifications?cursor={cursor}"),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(
+            response.status(),
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "cursor={cursor}"
+        );
+        assert_eq!(
+            json_body(response).await["error"]["code"],
+            "validation.failed"
+        );
+    }
+}
+
+#[tokio::test]
+async fn notification_page_size_keeps_its_existing_one_to_one_hundred_bounds() {
+    let (fixture, app, cookie, _csrf) = harness().await;
+    seed_notifications(&fixture, 101, 1_000).await;
+    for (limit, expected) in [(0, 1), (1, 1), (100, 100), (101, 100)] {
+        let page = json_body(
+            app.clone()
+                .oneshot(get(
+                    &cookie,
+                    &format!("/api/v1/notifications?limit={limit}"),
+                ))
+                .await
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(page["items"].as_array().unwrap().len(), expected);
+        assert!(page["next_cursor"].is_string());
+    }
+}
+
 #[tokio::test]
 async fn mark_read_is_idempotent_and_updates_counts() {
     let (fixture, app, cookie, csrf) = harness().await;

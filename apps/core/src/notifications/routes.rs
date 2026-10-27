@@ -122,17 +122,18 @@ async fn list_notifications(
     Query(query): Query<ListQuery>,
 ) -> Result<Json<Value>, AppError> {
     state.guard_get(&headers).await?;
-    let before_us = query
+    let (before_us, before_id) = query
         .cursor
         .as_deref()
-        .and_then(|cursor| cursor.strip_prefix("notifications:"))
-        .and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
-        .map(|value| value.timestamp_micros());
+        .map(parse_cursor)
+        .transpose()?
+        .map_or((None, None), |(time, id)| (Some(time), id));
     let (items, next_cursor) = state
         .notifications
         .list(
             query.unread_only.unwrap_or(false),
             before_us,
+            before_id,
             query.limit.unwrap_or(50),
         )
         .await?;
@@ -142,6 +143,22 @@ async fn list_notifications(
         "next_cursor": next_cursor,
         "unread_count": unread_count,
     })))
+}
+
+fn parse_cursor(cursor: &str) -> Result<(i64, Option<Uuid>), AppError> {
+    let invalid = || AppError::new(ErrorCode::ValidationFailed, "invalid notification cursor");
+    if cursor.len() > 512 {
+        return Err(invalid());
+    }
+    let value = cursor.strip_prefix("notifications:").ok_or_else(invalid)?;
+    // 已发出的时间游标保留严格before语义；新游标补齐同一微秒内的ID边界。
+    if let Ok(time) = chrono::DateTime::parse_from_rfc3339(value) {
+        return Ok((time.timestamp_micros(), None));
+    }
+    let (time, id) = value.rsplit_once(':').ok_or_else(invalid)?;
+    let time = chrono::DateTime::parse_from_rfc3339(time).map_err(|_| invalid())?;
+    let id = Uuid::parse_str(id).map_err(|_| invalid())?;
+    Ok((time.timestamp_micros(), Some(id)))
 }
 
 async fn mark_read(
