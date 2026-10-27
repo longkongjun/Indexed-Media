@@ -61,7 +61,38 @@ def missing_inputs(dockerfile):
     return missing
 
 
+def missing_file_dependencies(dockerfile):
+    copies = copied_paths(dockerfile.split('RUN pnpm install', 1)[0])
+    missing = []
+    for manifest, _ in copies:
+        if manifest.name != 'package.json' or not manifest.is_file():
+            continue
+        package = json.loads(manifest.read_text())
+        for field in ('dependencies', 'devDependencies', 'optionalDependencies'):
+            for name, version in package.get(field, {}).items():
+                if not version.startswith('file:'):
+                    continue
+                target = (manifest.parent / version[5:]).resolve()
+                if not target.is_relative_to(ROOT) or not target.exists() or not is_copied(target, copies):
+                    missing.append(f'{manifest.relative_to(ROOT)}: {name} -> {version}')
+    return missing
+
+
 class WebBuildInputsTests(unittest.TestCase):
+    def test_file_dependencies_are_available_before_dependency_install(self):
+        self.assertEqual(missing_file_dependencies(DOCKERFILE.read_text()), [])
+
+    def test_missing_late_or_misplaced_file_dependency_is_detected(self):
+        dockerfile = DOCKERFILE.read_text()
+        dependency = 'vendor/indexed-design/indexed-design-ui-vue-0.15.0.tgz'
+        copy = f'COPY {dependency} {dependency}'
+        missing = '\n'.join(line for line in dockerfile.splitlines() if line != copy)
+        install = next(line for line in missing.splitlines() if line.startswith('RUN pnpm install'))
+        for broken in (missing, missing.replace(install, install + '\n' + copy, 1),
+                       missing.replace(install, f'COPY {dependency} other.tgz\n' + install, 1)):
+            with self.subTest(dockerfile=broken):
+                self.assertTrue(any(dependency in item for item in missing_file_dependencies(broken)))
+
     def test_web_typecheck_import_closure_is_copied(self):
         missing = missing_inputs(DOCKERFILE.read_text())
         if missing:

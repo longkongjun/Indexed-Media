@@ -7,6 +7,7 @@ WORKDIR /src
 RUN npm install --global pnpm@11.10.0
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY patches patches
+COPY vendor/indexed-design/indexed-design-ui-vue-0.15.0.tgz vendor/indexed-design/indexed-design-ui-vue-0.15.0.tgz
 COPY apps/web/package.json apps/web/package.json
 COPY packages/api-client-ts/package.json packages/api-client-ts/package.json
 COPY packages/test-fixtures/package.json packages/test-fixtures/package.json
