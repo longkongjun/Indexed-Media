@@ -15,9 +15,9 @@
 3. 在个人发布环境核对同SHA结果、审阅证据并明确授权后，才推送已有main提交对应的 `vX.Y.Z` tag。`docker-publish.yml`检查该tag属于main且有仍可取得的成功候选证明，跨package复制同digest，不重新构建或修改OCI label。手工重试入口仅在main执行，输入已有tag。
 4. 正式包、源码tag和发布清单身份一致后创建/补齐draft；所有附件及其SHA-256匹配才公开Release。相同版本不同digest或附件拒绝覆盖；中断后只对同一身份重试。候选`mediaflow-dev`和正式`mediaflow`均保持public，发布前后校验可见性；GITHUB_TOKEN仅在对应job使用，Docker凭据存于runner临时目录并logout。
 
-草稿通过有权限的分页Release列表按精确tag定位，后续按release ID读取；不使用只承诺返回已发布版本的`releases/tags/<tag>`接口判断draft是否存在。[GitHub Release API](https://docs.github.com/en/rest/releases/releases#list-releases)
+先通过有权限的分页Release列表按精确tag定位；列表没有匹配项时，沿用GitHub CLI的草稿定位方式，以GraphQL `release(tagName: ...)`查询pending tag对应的database ID，再通过REST按ID读取并核对tag/ID。API或权限错误不会当作不存在，只有两条查询路径都明确无记录才创建草稿；创建后也走相同定位逻辑。保留多匹配拒绝、完整附件摘要和同源码校验，不依赖`releases/tags/<tag>`判断draft是否存在。[GitHub Release API](https://docs.github.com/en/rest/releases/releases#list-releases)、[GitHub CLI草稿定位实现](https://github.com/cli/cli/blob/trunk/pkg/cmd/release/shared/fetch.go)
 
-若旧版本发布因draft查询404中断，保留已有tag、镜像、草稿和附件。修复提交进入main后，在Actions的`docker-publish`选择Run workflow，分支main，tag仍填原来的`vX.Y.Z`，新建一次手工运行；不要仅重跑旧run，旧run仍执行原workflow。promote始终从原tag源码生成发布包并验证原候选digest；release使用本次受信workflow固定SHA的发布工具，仍校验发布包源码与远端tag一致。只补缺失的同摘要附件，完整后公开，不移动tag或重建该版本镜像。
+若发布因draft查询404或`created Release is not visible to the publishing token`中断，保留已有tag、镜像、草稿和附件。修复提交进入main后，在Actions的`docker-publish`选择Run workflow，分支main，tag仍填原来的`vX.Y.Z`，新建一次手工运行；不要仅重跑旧run，旧run仍执行原workflow。promote始终从原tag源码生成发布包并验证原候选digest；release使用本次受信workflow固定SHA的发布工具，仍校验发布包源码与远端tag一致。只补缺失的同摘要附件，完整后公开，不移动tag或重建该版本镜像。
 
 main推送这批工作流会启用候选写入，版本tag会触发正式提升与Release写入。仅授权本地实施时不要推送、创建远端tag或手动启动发布。真实发布前在个人环境确认Actions可写对应包、两包public可见性、Release权限及分支/标签治理；不要在公司设备登录或更改现有账号/remote/凭据。
 

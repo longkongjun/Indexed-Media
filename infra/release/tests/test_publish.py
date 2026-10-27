@@ -109,10 +109,14 @@ class ReleaseTests(unittest.TestCase):
             def command(*args):
                 nonlocal created, draft, fail_once
                 if args[:2] == ('gh', 'api'):
+                    if args[4] == 'graphql':
+                        self.assertIn('tag=v1.2.3', args)
+                        self.assertTrue(any('release(tagName: $tag)' in arg for arg in args))
+                        return json.dumps({'data': {'repository': {'release': {'databaseId': 7} if created else None}}})
                     self.assertEqual(args[4], f'/repos/{publish.REPO}/releases?per_page=100')
                     self.assertIn('--paginate', args)
                     self.assertIn('--slurp', args)
-                    return json.dumps([[dict(id=6, tag_name='v1.2.30')], [record()] if created else []])
+                    return json.dumps([[dict(id=6, tag_name='v1.2.30')], [record()] if created and not draft else []])
                 if args[:3] == ('gh', 'release', 'create'):
                     self.assertFalse(created, 'must resume the existing draft')
                     self.assertIn('--draft', args)
@@ -214,6 +218,37 @@ class ReleaseTests(unittest.TestCase):
         with patch.object(publish, 'command', return_value=json.dumps([[{'tag_name': 'v1.2.3', 'id': 7}], [{'tag_name': 'v1.2.3', 'id': 8}]])):
             with self.assertRaisesRegex(ValueError, 'multiple Releases'):
                 publish.find_release('v1.2.3')
+
+    def test_release_lookup_returns_list_match_without_graphql(self):
+        import json
+        from unittest.mock import patch
+        record = dict(id=7, tag_name='v1.2.3')
+        with patch.object(publish, 'command', return_value=json.dumps([[record]])) as command:
+            self.assertEqual(publish.find_release('v1.2.3'), record)
+            self.assertEqual(command.call_count, 1)
+
+    def test_pending_tag_lookup_errors_never_become_absence(self):
+        import json
+        import subprocess
+        from unittest.mock import patch
+        failures = [subprocess.CalledProcessError(1, ['gh', 'api', 'graphql'], stderr='HTTP 403'),
+                    json.dumps({'errors': [{'message': 'not accessible'}]}),
+                    json.dumps({'data': {'repository': None}}),
+                    json.dumps({'data': {'repository': {'release': {'databaseId': True}}}})]
+        for failure in failures:
+            with self.subTest(failure=failure), patch.object(publish, 'command', side_effect=[json.dumps([[]]), failure]), patch.object(publish, 'api') as api:
+                with self.assertRaises((ValueError, subprocess.CalledProcessError)):
+                    publish.find_release('v1.2.3')
+                api.assert_not_called()
+
+    def test_pending_tag_lookup_rejects_mismatched_record(self):
+        import json
+        from unittest.mock import patch
+        lookup = {'data': {'repository': {'release': {'databaseId': 7}}}}
+        for record in [dict(id=8, tag_name='v1.2.3'), dict(id=7, tag_name='v9.9.9')]:
+            with self.subTest(record=record), patch.object(publish, 'command', side_effect=[json.dumps([[]]), json.dumps(lookup)]), patch.object(publish, 'api', return_value=record):
+                with self.assertRaisesRegex(ValueError, 'pending-tag identity differs'):
+                    publish.find_release('v1.2.3')
 
 
 if __name__ == '__main__':

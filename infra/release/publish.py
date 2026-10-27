@@ -200,12 +200,30 @@ def promote(tag, output):
 
 
 def find_release(tag):
-    # The tag endpoint only promises published releases; drafts need the authenticated list.
+    # REST listings can omit drafts; resolve their pending tag as the gh CLI does.
     pages = json.loads(command('gh', 'api', '--hostname', 'github.com',
                                f'/repos/{REPO}/releases?per_page=100', '--paginate', '--slurp'))
     matches = [record for page in pages for record in page if record.get('tag_name') == tag]
     require(len(matches) <= 1, 'multiple Releases match the tag')
-    return matches[0] if matches else None
+    if matches:
+        return matches[0]
+    owner, name = REPO.split('/')
+    query = ('query($owner: String!, $name: String!, $tag: String!) { '
+             'repository(owner: $owner, name: $name) { release(tagName: $tag) { databaseId } } }')
+    result = json.loads(command('gh', 'api', '--hostname', 'github.com', 'graphql',
+                                '-f', f'query={query}', '-f', f'owner={owner}',
+                                '-f', f'name={name}', '-f', f'tag={tag}'))
+    require(not result.get('errors'), 'Release pending-tag lookup failed')
+    repository = result['data']['repository']
+    require(repository is not None, 'Release repository is not visible to the publishing token')
+    pending = repository['release']
+    if pending is None:
+        return None
+    release_id = pending['databaseId']
+    require(type(release_id) is int and release_id > 0, 'invalid Release ID from pending-tag lookup')
+    record = api(f'/repos/{REPO}/releases/{release_id}')
+    require(record.get('id') == release_id and record.get('tag_name') == tag, 'Release pending-tag identity differs')
+    return record
 
 
 def release(tag, output):
