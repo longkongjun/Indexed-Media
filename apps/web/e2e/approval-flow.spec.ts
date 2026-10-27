@@ -104,6 +104,9 @@ interface BrowserEventSourceController {
 
 async function installControlledSameOriginEventSource(page: Page): Promise<void> {
   await page.addInitScript(() => {
+    const violations: string[] = [];
+    document.addEventListener("securitypolicyviolation", (event) => violations.push(event.effectiveDirective));
+    Object.defineProperty(window, "__approvalCspViolations", { configurable: true, value: violations });
     const sources: ControlledEventSource[] = [];
 
     class ControlledEventSource {
@@ -137,8 +140,8 @@ async function installControlledSameOriginEventSource(page: Page): Promise<void>
     }
 
     const controller: BrowserEventSourceController = {
-      emit(type: string) {
-        for (const source of sources) source.dispatch(type, new MessageEvent(type));
+      emit(type: string, data: string) {
+        for (const source of sources) source.dispatch(type, new MessageEvent(type, { data }));
       },
       fail() {
         for (const source of sources) source.dispatch("error", new Event("error"));
@@ -204,7 +207,7 @@ test("needs_approval banner to authorized execution leaves a verifiable timeline
   await preview.getByRole("button", { name: "批准并执行计划 v2" }).click();
   const dialog = page.getByRole("alertdialog", { name: "确认批准并执行" });
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole("button", { name: "取消" })).toBeFocused();
+  await expect(dialog.getByRole("button", { name: /^取\s*消$/ })).toBeFocused();
   await dialog.getByRole("button", { name: "确认执行计划 v2" }).click();
 
   // ⑥ 执行留痕：journal 行、时间线推进、结果可核对。
@@ -219,4 +222,132 @@ test("needs_approval banner to authorized execution leaves a verifiable timeline
 
   // 分工红线：会话面板内无任何批准/拒绝按钮。
   await expect(page.locator(".ai-session-panel").getByRole("button", { name: /批准|拒绝/ })).toHaveCount(0);
+});
+
+
+test("formal approval and rejection modals preserve focus, themes, busy state and failed version context", async ({ page }) => {
+  await installControlledSameOriginEventSource(page);
+  let version = 2;
+  let executionCount = 0;
+  let ambiguous = false;
+  let projectionUnavailable = false;
+  let cancellationCount = 0;
+  let releaseExecution: (() => void) | undefined;
+  await page.route("**/api/v1/**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    const json = (body: unknown) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+    if (path === "/api/v1/system/bootstrap-status") return json({ requires_initialization: false, version: "v1" });
+    if (path === "/api/v1/session") return json(session);
+    if (path === "/api/v1/notifications") return json({ items: [], next_cursor: null, unread_count: 0 });
+    if (path === "/api/v1/capability-events") return json({ items: [], next_cursor: null });
+    if (path === `/api/v1/processing-tasks/${taskId}`) return json(pausedTask);
+    if (path === `/api/v1/processing-tasks/${taskId}/organization`) {
+      if (projectionUnavailable) return route.abort("failed");
+      return json({ ...pausedProjection, plan: { ...pausedProjection.plan, version } });
+    }
+    if (path === `/api/v1/processing-tasks/${taskId}/organization/executions`) {
+      executionCount += 1;
+      if (ambiguous) return route.abort("failed");
+      await new Promise<void>((resolve) => { releaseExecution = resolve; });
+      return route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ error: { code: "organization.target-exists", message: "conflict", request_id: taskId } }) });
+    }
+    if (path === `/api/v1/processing-tasks/${taskId}/cancel`) {
+      cancellationCount += 1;
+      return route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ error: { code: "task.invalid_state", message: "conflict", request_id: taskId } }) });
+    }
+    return route.fulfill({ status: 404, body: "" });
+  });
+  const response = await page.goto(`/tasks/${taskId}?status=paused`);
+  const preview = page.locator("[data-plan-preview]");
+  const approve = preview.getByRole("button", { name: "批准并执行计划 v2" });
+  const dialog = page.getByRole("alertdialog");
+  const backgrounds: string[] = [];
+  for (const theme of ["light", "dark"] as const) {
+    await page.evaluate((mode) => {
+      document.documentElement.dataset.theme = mode;
+      document.documentElement.dispatchEvent(new CustomEvent("mfd-theme-change"));
+    }, theme);
+    await expect(page.locator(".id-theme")).toHaveAttribute("data-theme", theme);
+    await approve.click();
+    await expect(dialog).toHaveAttribute("aria-modal", "true");
+    const cancel = dialog.getByRole("button", { name: /^取\s*消$/ });
+    await expect(cancel).toBeFocused();
+    const visited: string[] = [];
+    for (let step = 0; step < 6; step += 1) {
+      await page.keyboard.press("Tab");
+      expect(await dialog.evaluate((element) => element.contains(document.activeElement))).toBe(true);
+      visited.push(await page.evaluate(() => document.activeElement?.textContent.replace(/\s/g, "") ?? ""));
+    }
+    expect(visited).toContain("确认执行计划v2");
+    expect(visited).toContain("取消");
+    backgrounds.push(await dialog.locator(".ant-modal-content").evaluate((element) => getComputedStyle(element).backgroundColor));
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+    await expect(approve).toBeFocused();
+  }
+  expect(backgrounds[0]).not.toBe(backgrounds[1]);
+  await approve.click();
+  await dialog.getByRole("button", { name: "确认执行计划 v2" }).click();
+  await expect.poll(() => executionCount).toBe(1);
+  await expect(dialog.getByRole("button", { name: /^取\s*消$/ })).toBeDisabled();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeVisible();
+  releaseExecution?.();
+  await expect(dialog.getByRole("alert")).toContainText("目标位置已有");
+  await expect(dialog.getByRole("alert")).toBeFocused();
+  await expect(dialog.getByRole("button", { name: "确认执行计划 v2" })).toBeEnabled();
+  expect(executionCount).toBe(1);
+  await dialog.getByRole("button", { name: /^取\s*消$/ }).click();
+  await expect(approve).toBeFocused();
+
+  const reject = preview.getByRole("button", { name: "拒绝此计划" });
+  await reject.click();
+  await expect(dialog).toHaveAccessibleName("确认拒绝此计划");
+  await dialog.getByRole("button", { name: "确认拒绝并取消任务" }).click();
+  await expect(dialog.getByRole("alert")).toContainText("当前任务状态不允许");
+  expect(cancellationCount).toBe(1);
+  await dialog.getByRole("button", { name: /^取\s*消$/ }).click();
+  await expect(reject).toBeFocused();
+
+  await approve.click();
+  version = 3;
+  await page.evaluate(({ id }) => {
+    (window as unknown as { __mediaflowApprovalEvents: BrowserEventSourceController }).__mediaflowApprovalEvents.emit("processing-task.state-changed", JSON.stringify({
+      id: 77, type: "processing-task.state-changed", schema_version: "1", occurred_at: "2026-10-27T00:00:00Z", task_id: id,
+      payload: { status: "paused", stage: "planning", recovering: false, reason: "organization.plan-paused" },
+    }));
+  }, { id: taskId });
+  await expect(dialog).toBeHidden();
+  await expect(preview.getByRole("button", { name: "批准并执行计划 v3" })).toBeVisible();
+  expect(executionCount).toBe(1);
+  await expect(preview).toBeFocused();
+
+  // 回执未知且权威GET失败：旧内容inert，恢复模态仍必须可取消并返回可用重试入口。
+  ambiguous = true;
+  projectionUnavailable = true;
+  await preview.getByRole("button", { name: "批准并执行计划 v3" }).click();
+  await dialog.getByRole("button", { name: "确认执行计划 v3" }).click();
+  await expect(dialog.getByRole("alert")).toContainText("操作结果尚未确认");
+  await expect(dialog.getByRole("alert")).toBeFocused();
+  await expect(dialog.getByRole("button", { name: /^取\s*消$/ })).toBeEnabled();
+  await dialog.getByRole("button", { name: /^取\s*消$/ }).click();
+  await expect(dialog).toBeHidden();
+  expect(executionCount).toBe(2);
+  const retry = page.locator("[data-organization-task]").getByRole("button", { name: /重\s*试/ });
+  await expect(retry).toBeFocused();
+  projectionUnavailable = false;
+  await page.keyboard.press("Enter");
+  await expect(preview.getByRole("button", { name: "批准并执行计划 v3" })).toBeEnabled();
+  expect(executionCount).toBe(2);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  expect(await page.evaluate(() => (window as unknown as { __approvalCspViolations: string[] }).__approvalCspViolations)).toEqual([]);
+  const nonce = await page.locator('meta[name="csp-nonce"]').getAttribute("content");
+  // 构建产物CSP宿主提供合法nonce；普通Vite保留未替换占位符。
+  if (nonce && /^[A-Za-z0-9_-]{43}$/.test(nonce)) {
+    expect(response?.headers()["content-security-policy"]).toBe(`default-src 'self'; connect-src 'self'; frame-ancestors 'none'; style-src 'self' 'nonce-${nonce}'`);
+    const styles = await page.locator("style[data-css-hash]").evaluateAll((elements) => elements.map((element) => (element as HTMLStyleElement).nonce));
+    expect(styles.length).toBeGreaterThan(0);
+    expect(styles.every((value) => value === nonce)).toBe(true);
+    console.log(JSON.stringify({ cspFixture: "built-web-static-host", contentSecurityPolicy: response?.headers()["content-security-policy"], nonce, styledElements: styles.length, violations: 0 }));
+  }
 });

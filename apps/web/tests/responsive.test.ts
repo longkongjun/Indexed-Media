@@ -52,6 +52,19 @@ describe("responsive and accessible business primitives", () => {
     wrapper.unmount();
   });
 
+  it("leaves focus with the active modal when page error autofocus is disabled", async () => {
+    const current = document.createElement("button");
+    document.body.append(current);
+    current.focus();
+    const wrapper = mount(ErrorSummary, { attachTo: document.body, props: { message: "同一失败", suppressAutoFocus: true } });
+    await wrapper.vm.$nextTick();
+    expect(document.activeElement).toBe(current);
+    await wrapper.setProps({ message: "新失败", focusKey: 2 });
+    expect(document.activeElement).toBe(current);
+    wrapper.unmount();
+    current.remove();
+  });
+
   it("keeps the 390px task center bounded while tabs remain horizontally reachable", () => {
     expect(layoutCss).toContain(".view-tabs");
     expect(layoutCss).toContain("overflow-x: auto");

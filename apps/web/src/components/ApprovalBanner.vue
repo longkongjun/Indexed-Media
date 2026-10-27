@@ -7,6 +7,7 @@
  * 审批只在 PlanPreview 全影响视图完成（dsh-collaboration 红线）；"稍后处理"仅收起本横幅。
  */
 import type { ProcessingTaskOrganization } from "@mediaflow/api-client-ts";
+import { Button } from "@indexed-design/ui-vue";
 import { computed, ref } from "vue";
 import { ORGANIZATION_OPERATION_LABELS } from "./dictionaries";
 
@@ -34,8 +35,8 @@ function openPlan(): void {
       <p class="approval-banner__version">计划版本 v{{ plan.version }}</p>
     </div>
     <div class="approval-banner__actions">
-      <button type="button" class="approval-banner__primary" @click="openPlan">查看完整计划并审批</button>
-      <button type="button" class="approval-banner__later" @click="dismissed = true">稍后处理</button>
+      <Button type="primary" class="approval-banner__primary" @click="openPlan">查看完整计划并审批</Button>
+      <Button class="approval-banner__later" @click="dismissed = true">稍后处理</Button>
     </div>
   </section>
 </template>

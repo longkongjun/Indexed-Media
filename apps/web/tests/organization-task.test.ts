@@ -1,5 +1,5 @@
 import type { MediaFlowClient, ProcessingTask, ProcessingTaskOrganization } from "@mediaflow/api-client-ts";
-import { flushPromises, mount } from "@vue/test-utils";
+import { DOMWrapper, flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { effectScope } from "vue";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -246,8 +246,8 @@ describe("organization task recovery", () => {
       global: { plugins: [pinia, router], provide: { [identityClientKey as symbol]: api } },
     });
     await flushPromises();
-    await wrapper.get('[class="plan-preview__approve"]').trigger("click");
-    await wrapper.get('[class="plan-preview__confirm-go"]').trigger("click");
+    await wrapper.get('.plan-preview__approve').trigger("click");
+    await new DOMWrapper(document.body).get('.plan-preview__confirm-go').trigger("click");
     await flushPromises();
     expect(execute).toHaveBeenCalledTimes(1);
     expect(execute.mock.calls[0]?.[0]).toBe(taskId);

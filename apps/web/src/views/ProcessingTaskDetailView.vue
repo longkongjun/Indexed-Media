@@ -5,6 +5,7 @@
  * 任务 ID 与返回查询来自路由，详情和操作可用性来自处理任务 feature；关联 SSE 事件触发刷新，
  * 会话状态只用于认证失败处理，页面不自行推进 Core 业务流程。
  */
+import { Button } from "@indexed-design/ui-vue";
 import type { TaskEventEnvelope } from "@mediaflow/api-client-ts";
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
@@ -39,6 +40,7 @@ const organization = useOrganizationTask(
   (error) => handleAuthenticatedFailure(error, session, router, route.fullPath),
 );
 const rollbackConfirming = ref(false);
+const planConfirming = ref(false);
 const rollbackHeading = ref<HTMLElement | null>(null);
 const backQuery = { ...route.query };
 const events = useProjectionEvents({
@@ -109,7 +111,7 @@ onBeforeUnmount(events.stop);
       :plan="organization.projection.value.plan"
       @open="openPlanPreview"
     />
-    <ErrorSummary v-if="detail.actionError.value" :message="detail.actionError.value" heading="任务操作未完成" />
+    <ErrorSummary v-if="detail.actionError.value" :suppress-auto-focus="planConfirming" :message="detail.actionError.value" heading="任务操作未完成" />
     <AsyncState :state="detail.state.value" :error-message="detail.errorMessage.value" offline-message="当前离线，保留最近投影并暂停写操作" @retry="detail.load">
       <article v-if="detail.task.value" class="detail-card">
         <h2><code>{{ detail.task.value.relative_path }}</code></h2>
@@ -119,8 +121,8 @@ onBeforeUnmount(events.stop);
         <nav class="detail-actions" aria-label="处理任务操作">
           <RouterLink v-if="detail.canReview.value && detail.reviewCaseId.value" :to="{ name: 'review-case', params: { id: detail.reviewCaseId.value } }">进入人工确认</RouterLink>
           <span v-else-if="detail.task.value.allowed_actions.includes('review')">需要人工确认</span>
-          <button v-if="detail.task.value.allowed_actions.includes('retry')" type="button" :disabled="!detail.canRetry.value" @click="detail.retry">重试处理</button>
-          <button v-if="detail.task.value.allowed_actions.includes('cancel')" type="button" :disabled="!detail.canCancel.value" @click="detail.cancel">取消处理</button>
+          <Button v-if="detail.task.value.allowed_actions.includes('retry')" :disabled="!detail.canRetry.value" @click="detail.retry">重试处理</Button>
+          <Button v-if="detail.task.value.allowed_actions.includes('cancel')" danger :disabled="!detail.canCancel.value" @click="detail.cancel">取消处理</Button>
         </nav>
         <p v-if="detail.reviewLookupError.value" role="alert">{{ detail.reviewLookupError.value }}</p>
       </article>
@@ -129,6 +131,7 @@ onBeforeUnmount(events.stop);
       <h2 id="organization-task-heading">安全整理</h2>
       <ErrorSummary
         v-if="organization.actionError.value"
+        :suppress-auto-focus="planConfirming"
         :message="organization.actionError.value"
         :focus-key="organization.actionErrorOccurrence.value"
         heading="整理操作结果"
@@ -151,9 +154,12 @@ onBeforeUnmount(events.stop);
             <PlanPreview
               v-if="organization.projection.value.plan"
               :projection="organization.projection.value"
-              :can-approve="organization.canExecute.value"
+              :can-approve="organization.canExecute.value && !detail.pendingAction.value && detail.state.value.kind === 'content' && organization.state.value.kind === 'content'"
               :can-reject="canRejectPlan"
-              :pending="organization.pendingAction.value"
+              :pending="organization.pendingAction.value ?? detail.pendingAction.value"
+              :action-error="organization.actionError.value"
+              :reject-error="detail.actionError.value"
+              @confirmation-change="planConfirming = $event"
               @approve="organization.execute"
               @reject="detail.cancel"
             />
@@ -179,7 +185,7 @@ onBeforeUnmount(events.stop);
           </article>
 
           <nav class="detail-actions" aria-label="安全整理操作">
-            <button v-if="organization.projection.value.allowed_actions.includes('recalculate')" data-organization-action="recalculate" type="button" :disabled="!organization.canRecalculate.value" @click="organization.recalculate">重新计算计划</button>
+            <Button v-if="organization.projection.value.allowed_actions.includes('recalculate')" data-organization-action="recalculate" :disabled="!organization.canRecalculate.value" @click="organization.recalculate">重新计算计划</Button>
             <button v-if="organization.projection.value.allowed_actions.includes('rollback')" data-organization-action="rollback" type="button" :disabled="!organization.canRollback.value" @click="openRollback">回滚本次操作</button>
           </nav>
 

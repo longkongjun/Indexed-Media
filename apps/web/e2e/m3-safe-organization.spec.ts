@@ -186,12 +186,11 @@ test("creates a bounded target and safely recovers execution and rollback respon
   const approveDialog = page.getByRole("alertdialog", { name: "确认批准并执行" });
   await expect(approveDialog).toBeVisible();
   await approveDialog.getByRole("button", { name: "确认执行计划 v3" }).click();
-  await expect(page.getByText(/操作结果尚未确认/)).toBeVisible();
+  await expect(approveDialog.getByRole("alert")).toContainText("操作结果尚未确认");
   expect(executions).toHaveLength(1);
 
-  await page.getByRole("button", { name: "批准并执行计划 v3" }).focus();
-  await page.keyboard.press("Enter");
-  await expect(approveDialog.getByRole("button", { name: "取消" })).toBeFocused();
+  // 未知回执保留同一版本确认；仅显式再次确认才复用原幂等键。
+  await expect(approveDialog).toBeVisible();
   await approveDialog.getByRole("button", { name: "确认执行计划 v3" }).click();
   await expect(page.getByText("NFO：失败")).toBeVisible();
   await expect(page.getByText(/重试只继续这些步骤/)).toBeVisible();
@@ -207,7 +206,7 @@ test("creates a bounded target and safely recovers execution and rollback respon
   await expect(rollbackDialog).toBeVisible();
   await expect(page.getByRole("heading", { name: "确认安全回滚" })).toBeFocused();
   await page.keyboard.press("Tab");
-  await expect(rollbackDialog.getByRole("button", { name: "取消" })).toBeFocused();
+  await expect(rollbackDialog.getByRole("button", { name: /^取\s*消$/ })).toBeFocused();
   await page.keyboard.press("Enter");
   expect(rollbacks).toHaveLength(0);
   await page.getByRole("button", { name: "回滚本次操作" }).focus();

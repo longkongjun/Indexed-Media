@@ -8,7 +8,8 @@
  * 且批准只授权打开确认时冻结的计划版本：确认期间版本变化则确认失效，必须重新审阅。
  */
 import type { ProcessingTaskOrganization } from "@mediaflow/api-client-ts";
-import { computed, nextTick, ref, watch } from "vue";
+import { Button, Modal } from "@indexed-design/ui-vue";
+import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import {
   ORGANIZATION_JOURNAL_KIND_LABELS,
   ORGANIZATION_JOURNAL_STATUS_LABELS,
@@ -16,55 +17,79 @@ import {
 } from "./dictionaries";
 
 /** 服务端权威的组织投影（含计划与已执行 journal）；canApprove/canReject 由父级传入（写可用性）。 */
-const props = defineProps<{ projection: ProcessingTaskOrganization; canApprove: boolean; canReject: boolean; pending: string | null }>();
+const props = defineProps<{ projection: ProcessingTaskOrganization; canApprove: boolean; canReject: boolean; pending: string | null; actionError?: string; rejectError?: string }>();
 /** 批准（执行打开确认时冻结的计划版本，产生 Web 人工授权回执）/ 拒绝（取消任务，计划作废）。 */
-const emit = defineEmits<{ approve: [planVersion: number]; reject: [] }>();
+const emit = defineEmits<{ approve: [planVersion: number]; reject: []; "confirmation-change": [open: boolean] }>();
 
 const approving = ref(false);
 const rejecting = ref(false);
-const confirmCancel = ref<HTMLButtonElement | null>(null);
+watch([approving, rejecting], ([approve, reject]) => { emit("confirmation-change", approve || reject); }, { flush: "sync" });
+onBeforeUnmount(() => { emit("confirmation-change", false); });
+const preview = ref<HTMLElement | null>(null);
+const submitting = ref(false);
+let dialogOpener: HTMLElement | null = null;
 /** 批准确认打开时冻结的计划版本；确认动作只授权该版本。 */
 const confirmedVersion = ref<number | null>(null);
 const plan = computed(() => props.projection.plan);
 const operationLabel = computed(() => (plan.value ? ORGANIZATION_OPERATION_LABELS[plan.value.operation] : ""));
 const hasRisks = computed(() => (plan.value?.risk_codes.length ?? 0) > 0);
-const pendingThis = computed(() => props.pending !== null);
+const confirmationError = computed(() => rejecting.value ? props.rejectError : props.actionError);
+const pendingThis = computed(() => props.pending !== null || submitting.value);
 
-async function openApprove(): Promise<void> {
-  approving.value = true;
-  rejecting.value = false;
+async function openConfirm(event: MouseEvent, approve: boolean): Promise<void> {
+  if (pendingThis.value) return;
+  dialogOpener = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+  approving.value = approve;
+  rejecting.value = !approve;
   confirmedVersion.value = plan.value?.version ?? null;
   await nextTick();
-  confirmCancel.value?.focus();
+  document.querySelector<HTMLButtonElement>(".task-plan-confirmation .plan-preview__cancel")?.focus();
 }
-async function openReject(): Promise<void> {
-  rejecting.value = true;
-  approving.value = false;
-  await nextTick();
-  confirmCancel.value?.focus();
+function modalContainer(): HTMLElement {
+  // 脱离请求态stale/inert内容，同时保留主题变量的作用域。
+  return preview.value?.closest<HTMLElement>(".id-theme") ?? document.body;
+}
+function restoreDialogFocus(): void {
+  const retry = preview.value?.closest("[data-organization-task]")?.querySelector<HTMLElement>(".id-request-state__notice button");
+  const fallback = preview.value?.closest("[inert]") ? retry : preview.value;
+  const target = dialogOpener?.isConnected && !dialogOpener.matches(":disabled") && !dialogOpener.closest("[inert]") ? dialogOpener : fallback;
+  const active = document.activeElement;
+  if (active === document.body || active instanceof HTMLElement && active.closest(".ant-modal")) target?.focus();
 }
 function closeConfirm(): void {
   approving.value = false;
   rejecting.value = false;
   confirmedVersion.value = null;
+  restoreDialogFocus();
+  void nextTick(restoreDialogFocus);
 }
-// 确认打开期间计划版本变化：确认失效，新版本必须重新审阅后才能批准。
+// 投影升版使两种确认都失效，不能批准或拒绝尚未审阅的新计划。
 watch(() => plan.value?.version, (version) => {
-  if (approving.value && version !== confirmedVersion.value) closeConfirm();
+  if ((approving.value || rejecting.value) && version !== confirmedVersion.value) {
+    dialogOpener = null;
+    closeConfirm();
+  }
+});
+watch(() => props.pending, (pending, previous) => {
+  if (previous !== null && pending === null) {
+    submitting.value = false;
+    if (!confirmationError.value) closeConfirm();
+    else void nextTick(() => document.querySelector<HTMLElement>(".task-plan-confirmation .plan-preview__error")?.focus());
+  }
 });
 function confirmAction(): void {
-  if (approving.value && confirmedVersion.value !== null) {
-    const version = confirmedVersion.value;
-    closeConfirm();
-    emit("approve", version);
-  } else if (rejecting.value) {
-    closeConfirm();
+  if (pendingThis.value) return;
+  if (approving.value && confirmedVersion.value !== null && props.canApprove) {
+    submitting.value = true;
+    emit("approve", confirmedVersion.value);
+  } else if (rejecting.value && props.canReject) {
+    submitting.value = true;
     emit("reject");
   }
 }
 </script>
 <template>
-  <article v-if="plan" class="plan-preview" data-plan-preview tabindex="-1">
+  <article v-if="plan" ref="preview" class="plan-preview" data-plan-preview tabindex="-1">
     <header class="plan-preview__header">
       <h3>整理计划 v{{ plan.version }}</h3>
       <p class="plan-preview__meta">
@@ -98,27 +123,36 @@ function confirmAction(): void {
       </li>
     </ul>
     <nav class="plan-preview__actions" aria-label="计划审批操作">
-      <button type="button" class="plan-preview__reject" :disabled="!canReject || pendingThis" @click="openReject">拒绝此计划</button>
-      <button type="button" class="plan-preview__approve" :disabled="!canApprove || pendingThis" aria-describedby="plan-preview-summary" @click="openApprove">
+      <Button danger class="plan-preview__reject" :disabled="!canReject || pendingThis" @click="openConfirm($event, false)">拒绝此计划</Button>
+      <Button type="primary" class="plan-preview__approve" :disabled="!canApprove || pendingThis" aria-describedby="plan-preview-summary" @click="openConfirm($event, true)">
         批准并执行计划 v{{ plan.version }}
-      </button>
+      </Button>
     </nav>
     <p v-if="hasRisks" class="plan-preview__conflict-note" role="status">计划带有风险提示（见清单 ⚠ 行）；执行授权仍只绑定本计划版本，如需调整可先重新计算计划。</p>
     <p class="plan-preview__auth-note">一次性授权只绑定当前计划版本，不会创建可复用规则，也不能覆盖路径、来源或文件系统冲突。</p>
 
-    <section
+    <Modal
       v-if="approving || rejecting"
-      class="confirmation detail-card plan-preview__confirm"
-      role="alertdialog"
-      aria-labelledby="plan-confirm-heading"
+      :open="approving || rejecting"
+      :get-container="modalContainer"
+      wrap-class-name="task-plan-confirmation"
+      centered
+      :width="'min(38rem, calc(100vw - 2rem))'"
+      :closable="false"
+      :mask-closable="!pendingThis"
+      :keyboard="!pendingThis"
+      :focus-trigger-after-close="false"
+      :after-close="restoreDialogFocus"
+      :wrap-props="{ role: 'alertdialog', 'aria-modal': true, 'aria-describedby': 'plan-confirm-description' }"
+      @cancel="closeConfirm"
     >
-      <h3 id="plan-confirm-heading">{{ approving ? "确认批准并执行" : "确认拒绝此计划" }}</h3>
-      <p v-if="approving">将执行 1 项文件操作（{{ operationLabel }}）；此操作经 journal 留痕可回滚，且只授权本计划版本一次。</p>
-      <p v-else>拒绝后本计划不执行，任务将被取消（现有作废语义）；如需调整结果，可先修改规则后重新计算计划。</p>
-      <div class="detail-actions">
-        <button ref="confirmCancel" type="button" @click="closeConfirm">取消</button>
-        <button type="button" class="plan-preview__confirm-go" @click="confirmAction">{{ approving && confirmedVersion !== null ? `确认执行计划 v${confirmedVersion}` : "确认拒绝并取消任务" }}</button>
-      </div>
-    </section>
+      <template #title><h3>{{ approving ? "确认批准并执行" : "确认拒绝此计划" }}</h3></template>
+      <p id="plan-confirm-description">{{ approving ? `将执行 1 项文件操作（${operationLabel}）；此操作经 journal 留痕可回滚，且只授权计划 v${confirmedVersion} 一次。` : "拒绝后本计划不执行，任务将被取消；如需调整结果，可先修改规则后重新计算计划。" }}</p>
+      <p v-if="confirmationError" class="plan-preview__error" role="alert" tabindex="-1">{{ confirmationError }}</p>
+      <template #footer>
+        <Button class="plan-preview__cancel" :disabled="pendingThis" @click="closeConfirm">取消</Button>
+        <Button type="primary" class="plan-preview__confirm-go" :danger="rejecting" :loading="pendingThis" :disabled="pendingThis || (approving ? !canApprove : !canReject)" @click="confirmAction">{{ approving && confirmedVersion !== null ? `确认执行计划 v${confirmedVersion}` : "确认拒绝并取消任务" }}</Button>
+      </template>
+    </Modal>
   </article>
 </template>

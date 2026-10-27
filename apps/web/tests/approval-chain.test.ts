@@ -1,6 +1,6 @@
 // 审批链组件行为测试（approval-banner / plan-preview / task-timeline / AiSessionPanel 审批入口）。
 import type { CapabilityActivityEvent, ProcessingTask, ProcessingTaskOrganization } from "@mediaflow/api-client-ts";
-import { flushPromises, mount } from "@vue/test-utils";
+import { DOMWrapper, flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createMemoryHistory, createRouter } from "vue-router";
@@ -10,6 +10,8 @@ import TaskTimeline from "../src/components/TaskTimeline.vue";
 import AiSessionPanel from "../src/app/AiSessionPanel.vue";
 import type { MediaFlowClient } from "@mediaflow/api-client-ts";
 import { identityClientKey } from "../src/app/client";
+
+const documentBody = () => new DOMWrapper(document.body);
 
 const taskId = "019f0000-0000-7000-8000-000000000110";
 
@@ -82,51 +84,95 @@ describe("PlanPreview", () => {
     expect(wrapper.get("[data-plan-preview]").text()).toContain("incoming/a.mkv");
     expect(wrapper.get("[data-plan-preview]").text()).toContain("library/Movies/a.mkv");
     expect(wrapper.get("[data-plan-preview]").text()).toContain("风险提示");
-    expect(wrapper.get('[class="plan-preview__approve"]').text()).toContain("批准并执行计划 v2");
-    expect(wrapper.get('[class="plan-preview__reject"]').text()).toContain("拒绝此计划");
+    expect(wrapper.get('.plan-preview__approve').text()).toContain("批准并执行计划 v2");
+    expect(wrapper.get('.plan-preview__reject').text()).toContain("拒绝此计划");
     wrapper.unmount();
   });
 
   it("批准走二次确认且确认后 emit approve（Web 人工授权唯一路径）", async () => {
     const wrapper = mount(PlanPreview, { props: { projection, canApprove: true, canReject: true, pending: null } });
-    await wrapper.get('[class="plan-preview__approve"]').trigger("click");
-    expect(wrapper.find('[role="alertdialog"]').exists()).toBe(true);
-    await wrapper.get('[class="plan-preview__confirm-go"]').trigger("click");
+    await wrapper.get('.plan-preview__approve').trigger("click");
+    expect(documentBody().find('[role="alertdialog"]').exists()).toBe(true);
+    await documentBody().get('.plan-preview__confirm-go').trigger("click");
     expect(wrapper.emitted("approve")).toHaveLength(1);
-    expect(wrapper.find('[role="alertdialog"]').exists()).toBe(false);
+    await wrapper.setProps({ pending: "execute" });
+    await wrapper.setProps({ pending: null });
+    expect(documentBody().find('[role="alertdialog"]').exists()).toBe(false);
     wrapper.unmount();
   });
 
   it("确认携带打开确认时冻结的计划版本", async () => {
     const wrapper = mount(PlanPreview, { props: { projection, canApprove: true, canReject: true, pending: null } });
-    await wrapper.get('[class="plan-preview__approve"]').trigger("click");
-    await wrapper.get('[class="plan-preview__confirm-go"]').trigger("click");
+    await wrapper.get('.plan-preview__approve').trigger("click");
+    await documentBody().get('.plan-preview__confirm-go').trigger("click");
     expect(wrapper.emitted("approve")?.[0]).toEqual([2]);
     wrapper.unmount();
   });
 
   it("确认期间计划版本变化必须重新审阅：确认失效且不发 approve", async () => {
     const wrapper = mount(PlanPreview, { props: { projection, canApprove: true, canReject: true, pending: null } });
-    await wrapper.get('[class="plan-preview__approve"]').trigger("click");
-    expect(wrapper.find('[role="alertdialog"]').exists()).toBe(true);
+    await wrapper.get('.plan-preview__approve').trigger("click");
+    expect(documentBody().find('[role="alertdialog"]').exists()).toBe(true);
     await wrapper.setProps({ projection: { ...projection, plan: { ...plan, version: 3 } } });
-    expect(wrapper.find('[role="alertdialog"]').exists()).toBe(false);
+    expect(documentBody().find('[role="alertdialog"]').exists()).toBe(false);
     expect(wrapper.emitted("approve")).toBeUndefined();
     // 重新审阅：在新版本上重新打开确认才允许批准。
-    await wrapper.get('[class="plan-preview__approve"]').trigger("click");
-    await wrapper.get('[class="plan-preview__confirm-go"]').trigger("click");
+    await wrapper.get('.plan-preview__approve').trigger("click");
+    await documentBody().get('.plan-preview__confirm-go').trigger("click");
     expect(wrapper.emitted("approve")?.[0]).toEqual([3]);
     wrapper.unmount();
   });
 
   it("写不可用或动作进行中时批准禁用", () => {
     const disabled = mount(PlanPreview, { props: { projection, canApprove: false, canReject: true, pending: null } });
-    expect(disabled.get('[class="plan-preview__approve"]').attributes("disabled")).toBeDefined();
+    expect(disabled.get('.plan-preview__approve').attributes("disabled")).toBeDefined();
     disabled.unmount();
     const pending = mount(PlanPreview, { props: { projection, canApprove: true, canReject: true, pending: "execute" } });
-    expect(pending.get('[class="plan-preview__approve"]').attributes("disabled")).toBeDefined();
+    expect(pending.get('.plan-preview__approve').attributes("disabled")).toBeDefined();
     pending.unmount();
   });
+
+  it("正式模态默认取消，Esc取消回到触发项，忙碌防重复且失败保留当前版本", async () => {
+    const wrapper = mount(PlanPreview, { attachTo: document.body, props: { projection, canApprove: true, canReject: true, pending: null, actionError: "" } });
+    const opener = wrapper.get<HTMLButtonElement>(".plan-preview__approve");
+    opener.element.focus();
+    await opener.trigger("click");
+    const dialog = documentBody().get('[role="alertdialog"]');
+    expect(dialog.attributes("aria-modal")).toBe("true");
+    expect(dialog.get(".plan-preview__cancel").element).toBe(document.activeElement);
+    await dialog.trigger("keydown", { key: "Escape", keyCode: 27 });
+    expect(document.activeElement).toBe(opener.element);
+    await opener.trigger("click");
+    await documentBody().get(".plan-preview__confirm-go").trigger("click");
+    await wrapper.setProps({ pending: "execute" });
+    await documentBody().get(".plan-preview__confirm-go").trigger("click");
+    await documentBody().get('[role="alertdialog"]').trigger("keydown", { key: "Escape", keyCode: 27 });
+    expect(wrapper.emitted("approve")).toHaveLength(1);
+    expect(documentBody().get('[role="alertdialog"]').isVisible()).toBe(true);
+    await wrapper.setProps({ pending: null, actionError: "计划执行失败，请重试" });
+    expect(documentBody().get('[role="alertdialog"]').text()).toContain("计划执行失败，请重试");
+    expect(documentBody().get(".plan-preview__confirm-go").text()).toContain("v2");
+    await documentBody().get(".plan-preview__cancel").trigger("click");
+    expect(document.activeElement).toBe(opener.element);
+    wrapper.unmount();
+  });
+
+  it("拒绝模态同样防重复、保留失败，取消回拒绝入口", async () => {
+    const wrapper = mount(PlanPreview, { attachTo: document.body, props: { projection, canApprove: true, canReject: true, pending: null, actionError: "" } });
+    const opener = wrapper.get<HTMLButtonElement>(".plan-preview__reject");
+    await opener.trigger("click");
+    expect(documentBody().get('[role="alertdialog"]').text()).toContain("确认拒绝此计划");
+    await documentBody().get(".plan-preview__confirm-go").trigger("click");
+    await wrapper.setProps({ pending: "cancel" });
+    await documentBody().get(".plan-preview__confirm-go").trigger("click");
+    expect(wrapper.emitted("reject")).toHaveLength(1);
+    await wrapper.setProps({ pending: null, rejectError: "取消任务失败" });
+    expect(documentBody().get('[role="alertdialog"]').text()).toContain("取消任务失败");
+    await documentBody().get(".plan-preview__cancel").trigger("click");
+    expect(document.activeElement).toBe(opener.element);
+    wrapper.unmount();
+  });
+
 });
 
 describe("TaskTimeline", () => {

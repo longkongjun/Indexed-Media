@@ -54,6 +54,14 @@ MediaFlow Web 分批接入 `@indexed-design/ui-vue` 设计库。本文件记录�
 - **皮肤影响实测**：选择 sepia/aurora 时，未迁移表面与页面级 `--mfd-*` 样式换肤（实测 body 变色、原生按钮换肤），已迁移设计组件保持 evergreen（实测 `.primary-action` 仍 `#08744b`）。**设计侧任务（待 Indexed-Design 排期）**：为 aurora/sepia 提供对应 IndexedBrand 定义（或等价的品牌变体能力），Web 侧再经 designTheme 桥映射；在此之前不删除皮肤、不静默映射、不新造品牌色。
 - **skipLibCheck 范围**：本接入仅在 `apps/web/tsconfig.json` 启用（见 §1）；`packages/api-client-ts` 存在一处既有 skipLibCheck，与本接入无关，未新增其他静默豁免。
 
+## 3.3 真实任务审批旅程
+
+`WEB-TASK-DETAIL` → `/tasks/:id`（返回查询保留，`?plan=<version>`深链完整计划）；对应U07完整计划/journal/结果与U08审批确认。等待审批横幅和批准/拒绝、任务重试/取消、计划重算采用公开`Button`，二次确认采用公开`Modal`，页面六态继续通过`AsyncState`消费`RequestState`。回滚确认保留原实现，本切片未扩大到全部任务/人工审核页面。
+
+数据入口为`getProcessingTask`、`getProcessingTaskOrganization`；批准调用`executeProcessingTaskOrganization(id, frozenVersion, idempotencyKey)`，拒绝调用`cancelProcessingTask`。对象键重建、服务端allowed_actions、打开时冻结版本、升版失效及现有SSE恢复保持；重算不沿用旧确认。明确失败与未知结果保留确认上下文，busy禁关闭/重复；未知执行先按既有feature GET核对，只有用户显式确认才复用原操作键，不自动重发文件副作用。
+
+模态portal挂到`.id-theme`直属容器，保留主题变量并脱离stale/inert内容。沿用Inbox声明式模式：初始取消、Tab圈闭、Esc取消、取消回触发项；版本失效回完整计划，触发项处于stale/inert时回请求态的重试入口。批准/拒绝错误分别取对应feature，错误在模态内播报并聚焦。正式组件跟随全局Provider浅/暗主题，删除旧按钮皮肤覆盖；页面级token与aurora/sepia品牌缺口继续按§4登记。单个确认关闭不取消已经送达Core的请求。
+
 ## 4. Token 过渡策略
 
 `--mfd-*`（tokens.css，v2.0.0 evergreen 基线 + 皮肤层）与 Indexed token（`token-baseline.json`，同一 v2.0.0 基线值）目前是**两套生成物、同一数字源**：evergreen 浅/暗下两者色值、字体栈、字号一致（`#08744b`/`#12231c`/Inter 栈/1rem 基准）。
@@ -67,6 +75,7 @@ MediaFlow Web 分批接入 `@indexed-design/ui-vue` 设计库。本文件记录�
 | 设计 ID | 生产路由 | 真实 API（@mediaflow/api-client-ts） | 采用组件 | 状态与恢复 |
 |---|---|---|---|---|
 | `WEB-MEDIA-BROWSE` | `/media`（查询参数 `type`/`library_id`/`local_status`/`q`/`cursor`） | `listMediaItems`（游标分页） | `RequestState`、`Button`（提交/清筛选/重试）、原生 select/input（C02/C03 规范原生优先）、页面级 C14 网格卡、`CursorPager` | SSE `catalog.media-changed` 有界刷新；错误/离线 retry 保留筛选并恢复焦点到重试按钮；筛选空提供清筛选；首次空给任务入口 |
+| `WEB-TASK-DETAIL` | `/tasks/:id`（保留返回查询/plan深链） | `getProcessingTask`、`getProcessingTaskOrganization`、`executeProcessingTaskOrganization`、`cancelProcessingTask` | `Button`、`Modal`、既有`AsyncState`→`RequestState` | 当前对象/冻结版本、busy防重复、明确失败留确认、未知执行GET核对、升版重审、Esc/焦点恢复 |
 | `WEB-MEDIA-DETAIL` | `/media/:id`（返回上下文携带列表查询） | `getMediaItem` | `RequestState`、`MediaArtwork`（暂保留旧包）、原生结构化列表（`dl`/层级/版本文件，Descriptions 本批不采用） | SSE 按 `media_item_id` 匹配刷新；retry 焦点回标题；返回列表保留查询 |
 
 设计规格中的合成能力（评审栏状态切换、DSH 会话抽屉、模拟外部播放等）不进入生产页；未提供正式能力的动作不制造按钮。
