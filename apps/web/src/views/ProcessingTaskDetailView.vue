@@ -82,7 +82,7 @@ function openPlanPreview(): void {
 }
 
 /** 拒绝 = 计划不执行（现有作废语义：取消任务）；批准 = Web 人工授权（唯一授权产生方）。 */
-const canRejectPlan = computed(() => Boolean(detail.task.value?.allowed_actions.includes("cancel")) && detail.canCancel.value && organization.pendingAction.value === null);
+const canRejectPlan = computed(() => Boolean(detail.task.value?.allowed_actions.includes("cancel")) && detail.canCancel.value && organization.pendingAction.value === null && detail.state.value.kind === "content" && organization.state.value.kind === "content");
 
 onMounted(() => {
   if (typeof route.query.plan === "string") {

@@ -219,6 +219,7 @@ test("needs_approval banner to authorized execution leaves a verifiable timeline
   await expect(page.locator("[data-timeline-state='attention']").filter({ hasText: "NFO" })).toContainText("失败");
   // 批准后横幅消失（计划不再等待审批）。
   await expect(banner).toBeHidden();
+  await expect(page.locator("[data-plan-preview]")).toBeFocused();
 
   // 分工红线：会话面板内无任何批准/拒绝按钮。
   await expect(page.locator(".ai-session-panel").getByRole("button", { name: /批准|拒绝/ })).toHaveCount(0);
@@ -321,6 +322,25 @@ test("formal approval and rejection modals preserve focus, themes, busy state an
   await expect(preview.getByRole("button", { name: "批准并执行计划 v3" })).toBeVisible();
   expect(executionCount).toBe(1);
   await expect(preview).toBeFocused();
+
+  // 已打开的拒绝确认不能绕过后续SSE刷新失败的stale写保护。
+  await preview.getByRole("button", { name: "拒绝此计划" }).click();
+  projectionUnavailable = true;
+  await page.evaluate(({ id }) => {
+    (window as unknown as { __mediaflowApprovalEvents: BrowserEventSourceController }).__mediaflowApprovalEvents.emit("processing-task.state-changed", JSON.stringify({
+      id: 78, type: "processing-task.state-changed", schema_version: "1", occurred_at: "2026-10-27T00:00:01Z", task_id: id,
+      payload: { status: "paused", stage: "planning", recovering: false, reason: "organization.plan-paused" },
+    }));
+  }, { id: taskId });
+  const recovery = page.locator("[data-organization-task]").getByRole("button", { name: /重\s*试/ });
+  await expect(recovery).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "确认拒绝并取消任务" })).toBeDisabled();
+  expect(cancellationCount).toBe(1);
+  await dialog.getByRole("button", { name: /^取\s*消$/ }).click();
+  await expect(recovery).toBeFocused();
+  projectionUnavailable = false;
+  await page.keyboard.press("Enter");
+  await expect(preview.getByRole("button", { name: "批准并执行计划 v3" })).toBeEnabled();
 
   // 回执未知且权威GET失败：旧内容inert，恢复模态仍必须可取消并返回可用重试入口。
   ambiguous = true;
