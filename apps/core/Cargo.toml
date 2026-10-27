@@ -37,7 +37,7 @@ sha2 = "=0.11.0"
 sqlx = { version = "=0.8.6", default-features = false, features = ["macros", "migrate", "runtime-tokio", "sqlite"] }
 thiserror = "=2.0.18"
 subtle = "=2.6.1"
-tokio = { version = "=1.52.3", features = ["fs", "io-util", "macros", "net", "rt-multi-thread", "signal", "time"] }
+tokio = { version = "=1.53.3", features = ["fs", "io-util", "macros", "net", "rt-multi-thread", "signal", "time"] }
 url = "=2.5.8"
 uuid = { version = "=1.24.0", features = ["serde", "v7"] }
 unicode-normalization = "=0.1.25"
