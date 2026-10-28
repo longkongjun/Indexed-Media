@@ -4,6 +4,7 @@ import kotlinx.serialization.json.Json
 import mediaflow.api.apis.DefaultApi
 import mediaflow.api.models.MediaItemDetail
 import mediaflow.api.models.MediaItemSummary
+import mediaflow.api.models.MediaLibrary
 import mediaflow.client.core.SdkResult
 import mediaflow.client.core.apiCall
 import mediaflow.client.core.errorOrNull
@@ -25,6 +26,13 @@ class MediaRepository(
     private val api: DefaultApi,
     private val json: Json,
 ) {
+    /** 安全媒体库筛选项；只含公开ID与名称，不返回服务端文件系统路径。 */
+    suspend fun libraries(): SdkResult<List<MediaLibrary>> =
+        when (val result = apiCall(json) { api.listMediaLibraries() }) {
+            is SdkResult.Success -> SdkResult.success(result.value.items)
+            is SdkResult.Failure -> result
+        }
+
     /** 建立媒体墙分页器；筛选上下文经闭包固定，换筛选 = 新建分页器。 */
     fun mediaWall(
         filter: MediaFilter = MediaFilter(),

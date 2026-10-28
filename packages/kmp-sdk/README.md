@@ -22,6 +22,7 @@ KMP SDK 公共 API：Ktor client、serialization、SQLDelight、repository、use
 
 - **分层**：`mediaflow.api.*` 为构建期由 `contracts/openapi/mediaflow.v1.yaml` 生成的契约客户端（openapi-generator `kotlin`/`library=multiplatform`，经 JavaExec 驱动 7.26 fat jar；不手改、不进 lint）；`mediaflow.client.*` 为手写 SDK 核心。契约漂移由编译 + fixtures 回放测试（C1）拦截。
 - **目标**：android（AGP 9 内置 KMP 插件）、jvm、iosArm64、iosSimulatorArm64。
+- **TV与桌面共享能力**：只读设备配对和恢复校验、安全媒体库选项、媒体组合筛选、有界海报字节读取、任务视图/筛选/详情/幂等重试。SDK不解码图片、不持有遥控焦点或桌面窗口；应用选择自己的Repository集合。只读设备不订阅管理SSE，Core仍独立执行权限边界。
 - **门禁**：ktlint + detekt（`detekt.yml`）+ multiplatform test + Kover（排除生成代码）+ dokka；入口见根 `justfile` 的 `client-*` 目标与 `.github/workflows/client-ci.yml`。
 
 ## 后续验证

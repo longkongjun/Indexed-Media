@@ -44,7 +44,9 @@ class KeystoreDeviceAuthStore(
     }
 
     override suspend fun clear() {
-        withContext(Dispatchers.IO) { file.delete() }
+        withContext(Dispatchers.IO) {
+            check(!file.exists() || file.delete()) { "device credential file could not be removed" }
+        }
     }
 
     private fun encrypt(plaintext: String): String {

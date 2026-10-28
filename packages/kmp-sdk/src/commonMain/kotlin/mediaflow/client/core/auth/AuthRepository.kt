@@ -2,6 +2,7 @@ package mediaflow.client.core.auth
 
 import io.ktor.client.HttpClient
 import io.ktor.client.request.delete
+import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -10,10 +11,16 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import mediaflow.api.models.DeviceAccessMode
 import mediaflow.api.models.DeviceEnrollment
 import mediaflow.api.models.DeviceEnrollmentInput
 import mediaflow.api.models.DeviceTokenRotation
+import mediaflow.api.models.DeviceView
 import mediaflow.api.models.LoginRequest
 import mediaflow.api.models.SessionResponse
 import mediaflow.client.core.SdkResult
@@ -30,6 +37,7 @@ import mediaflow.client.core.net.SessionAuthCache
  * enrollment 走直连请求（不经生成 API）：需要读取 `Set-Cookie` 或一次性令牌原文。
  * 成功后先写 [SessionAuthCache]（请求立即可用）再落 [DeviceAuthStore]。
  */
+@Suppress("TooManyFunctions") // Cookie、设备和只读设备共用唯一凭据写入口，避免拆分持久化所有权。
 class AuthRepository(
     private val httpClient: HttpClient,
     private val authStore: DeviceAuthStore,
@@ -83,6 +91,57 @@ class AuthRepository(
         deviceName: String,
     ): SdkResult<StoredCredentials> = enroll(DeviceEnrollmentInput(pairingCode = pairingCode, deviceName = deviceName))
 
+    /** TV配对只申请媒体读取；服务端未明确返回该权限时不保存令牌。 */
+    suspend fun enrollReadOnlyWithPairingCode(
+        pairingCode: String,
+        deviceName: String,
+    ): SdkResult<StoredCredentials> =
+        enroll(
+            DeviceEnrollmentInput(
+                pairingCode = pairingCode,
+                deviceName = deviceName,
+                accessMode = DeviceAccessMode.mediaMinusReadMinusOnly,
+            ),
+        )
+
+    /** 恢复只读设备前向服务端核对自身身份；401或权限不匹配清本地，瞬时网络失败保留凭据供重试。 */
+    @Suppress("TooGenericExceptionCaught") // SDK边界映射失败，取消必须原样传播。
+    suspend fun validateReadOnlyDevice(): SdkResult<Unit> {
+        val credentials = authCache.current() as? StoredCredentials.DeviceToken
+        val id = credentials?.deviceId
+        if (id == null || !DEVICE_ID.matches(id)) {
+            clearLocal()
+            return SdkResult.failure(MediaFlowError.Unexpected("read-only device identity is missing"))
+        }
+        return try {
+            val response = httpClient.get("/api/v1/devices/$id")
+            if (response.status != HttpStatusCode.OK) {
+                val error = ErrorMapping.fromResponse(response, json)
+                if (error.isCredentialExpired()) clearLocal()
+                SdkResult.failure(error)
+            } else {
+                val device = json.decodeFromString(DeviceView.serializer(), response.bodyAsText())
+                if (device.id != id || device.accessMode != DeviceAccessMode.mediaMinusReadMinusOnly || device.revokedAt != null) {
+                    clearLocal()
+                    SdkResult.failure(
+                        MediaFlowError.Http(
+                            HttpStatusCode.Forbidden.value,
+                            null,
+                            "device is not authorized for read-only media access",
+                            null,
+                        ),
+                    )
+                } else {
+                    SdkResult.success(Unit)
+                }
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            SdkResult.failure(ErrorMapping.fromThrowable(failure))
+        }
+    }
+
     /** 管理员凭据 enrollment（移动端登录页凭据模式；走登录限流）。 */
     suspend fun enrollWithCredentials(
         administratorName: String,
@@ -126,47 +185,47 @@ class AuthRepository(
      * 登出：按通道失效服务端凭据并清空本地；网络失败也清本地（会话终将过期，
      * 设备令牌可在管理面吊销）。
      */
-    @Suppress("TooGenericExceptionCaught") // 统一映射传输/解码错误；先重抛 CancellationException。
-    suspend fun logout(): SdkResult<Unit> =
-        try {
-            when (val credentials = authCache.current()) {
-                is StoredCredentials.SessionCookie -> {
-                    val response =
-                        httpClient.delete("/api/v1/session") {
-                            header("X-CSRF-Token", credentials.csrfToken)
+    @Suppress("TooGenericExceptionCaught") // 网络与安全存储错误映射；不可取消清理完成后保留原取消。
+    suspend fun logout(): SdkResult<Unit> {
+        var cancellation: CancellationException? = null
+        var cleanupFailure: Exception? = null
+        val result =
+            try {
+                val response =
+                    when (val credentials = authCache.current()) {
+                        is StoredCredentials.SessionCookie ->
+                            httpClient.delete("/api/v1/session") {
+                                header("X-CSRF-Token", credentials.csrfToken)
+                            }
+                        is StoredCredentials.DeviceToken -> {
+                            val deviceId = requireNotNull(credentials.deviceId) { "device credential is missing its device id" }
+                            httpClient.delete("/api/v1/devices/$deviceId")
                         }
-                    clearLocal()
-                    if (response.status == HttpStatusCode.NoContent) {
-                        SdkResult.Success(Unit)
-                    } else {
-                        SdkResult.Failure(ErrorMapping.fromResponse(response, json))
+                        null -> null
                     }
+                if (response == null || response.status == HttpStatusCode.NoContent) {
+                    SdkResult.success(Unit)
+                } else {
+                    SdkResult.failure(ErrorMapping.fromResponse(response, json))
                 }
-                is StoredCredentials.DeviceToken -> {
-                    val deviceId =
-                        credentials.deviceId
-                            ?: return SdkResult.Failure(
-                                MediaFlowError.Unexpected("device credential is missing its device id"),
-                            )
-                    val response = httpClient.delete("/api/v1/devices/$deviceId")
-                    clearLocal()
-                    if (response.status == HttpStatusCode.NoContent) {
-                        SdkResult.Success(Unit)
-                    } else {
-                        SdkResult.Failure(ErrorMapping.fromResponse(response, json))
-                    }
-                }
-                null -> {
-                    clearLocal()
-                    SdkResult.Success(Unit)
+            } catch (cancelled: CancellationException) {
+                cancellation = cancelled
+                null
+            } catch (failure: Exception) {
+                SdkResult.failure(ErrorMapping.fromThrowable(failure))
+            } finally {
+                try {
+                    withContext(NonCancellable) { clearLocal() }
+                } catch (failure: Exception) {
+                    cleanupFailure = failure
                 }
             }
-        } catch (cancellation: CancellationException) {
-            throw cancellation
-        } catch (failure: Exception) {
-            clearLocal()
-            SdkResult.Failure(ErrorMapping.fromThrowable(failure))
-        }
+        cancellation?.let { throw it }
+        currentCoroutineContext().ensureActive()
+        val clearError = cleanupFailure
+        if (clearError is CancellationException) throw clearError
+        return if (clearError != null) SdkResult.failure(ErrorMapping.fromThrowable(clearError)) else requireNotNull(result)
+    }
 
     @Suppress("TooGenericExceptionCaught") // 统一映射传输/解码错误；先重抛 CancellationException。
     private suspend fun enroll(input: DeviceEnrollmentInput): SdkResult<StoredCredentials> =
@@ -180,6 +239,11 @@ class AuthRepository(
                 SdkResult.Failure(ErrorMapping.fromResponse(response, json))
             } else {
                 val enrollment = json.decodeFromString(DeviceEnrollment.serializer(), response.bodyAsText())
+                if (input.accessMode == DeviceAccessMode.mediaMinusReadMinusOnly &&
+                    enrollment.device.accessMode != DeviceAccessMode.mediaMinusReadMinusOnly
+                ) {
+                    return SdkResult.failure(MediaFlowError.Unexpected("server did not grant read-only media access"))
+                }
                 persist(
                     StoredCredentials.DeviceToken(
                         token = enrollment.token,
@@ -194,9 +258,16 @@ class AuthRepository(
             SdkResult.Failure(ErrorMapping.fromThrowable(failure))
         }
 
+    @Suppress("TooGenericExceptionCaught") // 安全存储失败时回滚内存认证镜像，原异常交调用方处理。
     private suspend fun persist(credentials: StoredCredentials): SdkResult<StoredCredentials> {
+        val previous = authCache.current()
         authCache.update(credentials)
-        authStore.save(credentials)
+        try {
+            authStore.save(credentials)
+        } catch (failure: Exception) {
+            authCache.update(previous)
+            throw failure
+        }
         return SdkResult.Success(credentials)
     }
 
@@ -209,6 +280,8 @@ class AuthRepository(
     }
 
     companion object {
+        private val DEVICE_ID = Regex("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+
         /** 从 `__Host-mediaflow_session=<value>; Secure; ...` 提取 cookie 值。 */
         @Suppress("ReturnCount") // 早退即解析失败语义（无 header / 无前缀 / 空值）。
         fun parseSessionCookie(setCookie: String?): String? {
