@@ -5,11 +5,14 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import mediaflow.api.models.MediaItemDetail
@@ -31,6 +34,8 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.util.UUID
 
+internal enum class DesktopWriteOperation { ReviewDecision, TaskCancel }
+
 internal data class DesktopUi(
     val loggedIn: Boolean = false,
     val busy: Boolean = false,
@@ -49,9 +54,10 @@ internal data class DesktopUi(
     val receipt: TaskDecisionReceipt? = null,
     val writeBusy: Boolean = false,
     val writeUnknown: Boolean = false,
+    val writeOperation: DesktopWriteOperation? = null,
 )
 
-/** Desktop-only UI ownership; repositories and platform credential rules stay in the SDK. */
+/** Desktop owns page state; SDK repositories and system credential adapters remain separate. */
 internal class DesktopModel(
     private val directory: Path,
     private val dispatcher: CoroutineDispatcher = Dispatchers.Main,
@@ -113,7 +119,7 @@ internal class DesktopModel(
         password: String,
         restore: Boolean = false,
     ) {
-        if (state.value.busy) return
+        if (state.value.busy || !scope.isActive) return
         update { it.copy(busy = true, message = null) }
         action {
             val server = normalizeServer(serverInput)
@@ -173,7 +179,13 @@ internal class DesktopModel(
                 mutable.value = DesktopUi(loggedIn = true)
                 attach(candidate, token)
             } catch (failure: Exception) {
-                candidate.close()
+                if (session === candidate) {
+                    ++generation
+                    releaseSession()
+                    mutable.value = DesktopUi()
+                } else {
+                    candidate.close()
+                }
                 throw failure
             }
         }
@@ -301,6 +313,31 @@ internal class DesktopModel(
         reloadWall()
         reloadTasks()
         reloadCases()
+        state.value.detail
+            ?.item
+            ?.id
+            ?.let(::detail)
+        reloadSelectedCase()
+    }
+
+    private fun reloadSelectedCase() {
+        if (state.value.writeBusy || state.value.writeUnknown) return
+        val previous = state.value.selectedCase ?: return
+        val selected = ++caseGeneration
+        inSession(stillCurrent = { selected == caseGeneration }) { s, token ->
+            val loaded = s.review.reviewCase(previous.id)
+            if (selected == caseGeneration && !state.value.writeBusy && !state.value.writeUnknown) {
+                result(loaded, s, token) { current ->
+                    update {
+                        it.copy(
+                            selectedCase = current,
+                            candidates = if (previous.version == current.version) it.candidates else emptyList(),
+                            receipt = if (previous.version == current.version) it.receipt else null,
+                        )
+                    }
+                }
+            }
+        }
     }
 
     fun reloadWall(next: Boolean = false) {
@@ -443,35 +480,49 @@ internal class DesktopModel(
     private fun submit(command: ReviewRepository.ReviewDecisionKind) {
         val case = state.value.selectedCase ?: return
         if (state.value.writeBusy || state.value.receipt != null || state.value.writeUnknown) return
+        ++caseGeneration
         pendingDecision = Triple(case.id, case.version, command)
         pendingKey = "desktop-${UUID.randomUUID()}"
         executeDecision()
     }
 
     fun retryDecision() {
-        if (state.value.writeUnknown && !state.value.writeBusy) executeDecision()
+        if (state.value.writeUnknown &&
+            !state.value.writeBusy &&
+            state.value.writeOperation == DesktopWriteOperation.ReviewDecision
+        ) {
+            executeDecision()
+        }
     }
 
     private fun executeDecision() {
         val pending = pendingDecision ?: return
         val key = pendingKey ?: return
         val selected = caseGeneration
-        update { it.copy(writeBusy = true) }
+        update { it.copy(writeBusy = true, writeOperation = DesktopWriteOperation.ReviewDecision) }
         inSession { s, token ->
             val response = s.review.submitDecision(pending.first, pending.second, key, pending.third)
             if (token != generation || selected != caseGeneration) return@inSession
             update { it.copy(writeBusy = false) }
             when (response) {
                 is SdkResult.Success -> {
-                    update { it.copy(receipt = response.value, writeUnknown = false) }
+                    pendingDecision = null
+                    pendingKey = null
+                    update { it.copy(receipt = response.value, writeUnknown = false, writeOperation = null) }
                     reloadCases()
                     reloadTasks()
                 }
                 is SdkResult.Failure -> {
                     val error = response.error
+                    val unknown = error !is MediaFlowError.Http || error.status >= 500 || error.status == 408
+                    if (!unknown) {
+                        pendingDecision = null
+                        pendingKey = null
+                    }
                     update {
                         it.copy(
-                            writeUnknown = error !is MediaFlowError.Http || error.status >= 500 || error.status == 408,
+                            writeUnknown = unknown,
+                            writeOperation = if (unknown) DesktopWriteOperation.ReviewDecision else null,
                             message = readable(error),
                         )
                     }
@@ -489,25 +540,37 @@ internal class DesktopModel(
     }
 
     fun retryTaskCancel() {
-        if (state.value.writeUnknown && !state.value.writeBusy) executeTaskCancel()
+        if (state.value.writeUnknown &&
+            !state.value.writeBusy &&
+            state.value.writeOperation == DesktopWriteOperation.TaskCancel
+        ) {
+            executeTaskCancel()
+        }
     }
 
     private fun executeTaskCancel() {
         val pending = pendingCancel ?: return
-        update { it.copy(writeBusy = true) }
+        update { it.copy(writeBusy = true, writeOperation = DesktopWriteOperation.TaskCancel) }
         inSession { s, token ->
             val response = s.tasks.cancel(pending.first, pending.second)
             if (generation != token || s !== session) return@inSession
             when (response) {
                 is SdkResult.Success -> {
                     pendingCancel = null
-                    update { it.copy(writeBusy = false, writeUnknown = false) }
+                    update { it.copy(writeBusy = false, writeUnknown = false, writeOperation = null) }
                 }
                 is SdkResult.Failure -> {
                     val error = response.error
                     val unknown = error !is MediaFlowError.Http || error.status >= 500 || error.status == 408
                     if (!unknown) pendingCancel = null
-                    update { it.copy(writeBusy = false, writeUnknown = unknown, message = readable(error)) }
+                    update {
+                        it.copy(
+                            writeBusy = false,
+                            writeUnknown = unknown,
+                            writeOperation = if (unknown) DesktopWriteOperation.TaskCancel else null,
+                            message = readable(error),
+                        )
+                    }
                     if (error.isCredentialExpired()) logout(expired = true)
                 }
             }
@@ -524,32 +587,41 @@ internal class DesktopModel(
             mutable.value = DesktopUi(busy = true, message = if (expired) "登录已失效，请重新登录" else null)
             try {
                 if (expired) previous?.auth?.discardLocalCredentials() else previous?.auth?.logout()
+            } catch (cancelled: CancellationException) {
+                withContext(NonCancellable) { previous?.auth?.discardLocalCredentials() }
+                throw cancelled
             } finally {
-                releaseSession()
-                update { it.copy(busy = false) }
+                withContext(NonCancellable) {
+                    releaseSession()
+                    update { it.copy(busy = false) }
+                }
             }
         }
     }
 
-    private suspend fun releaseSession() {
-        sessionWork.cancel()
-        sessionWork = SupervisorJob(scope.coroutineContext[Job])
-        val previous = session
-        session = null
-        wall = null
-        tasks = null
-        cases = null
-        pendingDecision = null
-        pendingKey = null
-        pendingCancel = null
-        previous?.close()
-    }
+    private suspend fun releaseSession() =
+        withContext(NonCancellable) {
+            val work = sessionWork
+            sessionWork = SupervisorJob(scope.coroutineContext[Job])
+            val previous = session
+            session = null
+            wall = null
+            tasks = null
+            cases = null
+            pendingDecision = null
+            pendingKey = null
+            pendingCancel = null
+            work.cancelAndJoin()
+            previous?.close()
+        }
 
     suspend fun close() =
-        withContext(dispatcher) {
+        withContext(NonCancellable + dispatcher) {
             ++generation
-            releaseSession()
             scope.cancel()
+            releaseSession()
+            scope.coroutineContext[Job]?.join()
+            mutable.value = DesktopUi()
         }
 }
 

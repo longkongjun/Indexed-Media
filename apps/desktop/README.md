@@ -20,10 +20,11 @@ just package-desktop
 ## Session and platform boundary
 
 - `DesktopSession` 装配 Repository、单上游 SSE 与驱动；事件先保存游标再广播，所有页面共享同一连接。同步 SQLite 与分页访问走串行 IO，UI 收集 StateFlow。
-- `DesktopModel` 负责桌面状态；会话/页面代次 guard 与生命周期 Job 隔离旧响应。退出、401 和关闭清理资源；退出服务端请求完成前保持忙碌，避免新登录被旧清理关闭。
+- `DesktopModel` 负责桌面状态；会话/页面代次 guard 与生命周期 Job 隔离旧响应。退出、401 和关闭清理资源；关闭等待候选登录及会话任务完成清理，显式登出被窗口关闭打断时仍清除本地凭据。退出服务端请求完成前保持忙碌，避免新登录被旧清理关闭。
 - `DeviceAuthStore` 实现位于桌面：JNA 5.19.1 调用 macOS Keychain Services、Windows Credential Manager，凭据不进入命令行、日志或配置文件。系统存储失败不进入已登录状态，也不明文降级。
 - 配置只保存规范化服务器地址，位于用户 Application Support/LOCALAPPDATA；缓存按服务器和设备 ID 的摘要分文件，防止切换服务器混用。
 - 人工确认沿用 SDK 的版本前提和幂等请求。未知回执保留同一次操作键并阻止新决定/案件切换；任务取消亦沿用同键重试。401 清凭据，409 重取案件，Core 的任务与本地窗口生命周期独立。
+- 恢复窗口焦点、切换页面和手动刷新会重新核对列表及当前详情；同一案件刷新保留查询草稿，写操作忙碌或回执未知时保留原操作上下文。窗口焦点监听随 UI 生命周期移除。
 - 外部播放仅打开 SDK 提供的 HTTP/HTTPS 地址，不执行 shell，也不接管播放/转码。
 
 ## Checks and limits

@@ -3,9 +3,10 @@ package mediaflow.desktop
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -94,7 +95,7 @@ internal class DesktopSession(
 
     suspend fun close() =
         withContext(NonCancellable + io) {
-            scope.cancel()
+            scope.coroutineContext[Job]?.cancelAndJoin()
             eventClient.close()
             transport.close()
             driver?.close()

@@ -4,8 +4,10 @@ import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -56,9 +58,14 @@ class DesktopLateResponseTest {
                         val pending = withTimeout(10_000) { ui.held.await() }
                         assertTrue(Files.exists(directory.resolve("cache/${cacheIdentity(server.url, DEVICE_ID)}.db")))
                         assertFalse(Files.exists(directory.resolve("server.txt")))
-                        model.close()
+                        val closing = async(start = CoroutineStart.UNDISPATCHED) { model.close() }
+                        // UI barrier ensures close has cancelled the held login before it is released.
+                        withContext(ui) { }
                         pending.resume()
-                        withTimeout(10_000) { login.await().join() }
+                        withTimeout(10_000) {
+                            closing.await()
+                            login.await().join()
+                        }
                         assertFalse(model.state.value.loggedIn)
                         assertFalse(Files.exists(directory.resolve("server.txt")))
                         assertEquals(0, server.mediaRequests.get())

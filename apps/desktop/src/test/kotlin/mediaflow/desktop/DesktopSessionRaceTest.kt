@@ -3,10 +3,15 @@ package mediaflow.desktop
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import mediaflow.client.core.auth.DeviceAuthStore
@@ -21,8 +26,10 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class DesktopSessionRaceTest {
     @Test fun blockedLogoutRejectsNewLoginUntilOldSessionIsReleased() =
         runBlocking {
@@ -60,19 +67,17 @@ class DesktopSessionRaceTest {
             }
         }
 
-    @Test fun closingDuringCredentialRestoreCannotPublishOldSession() =
-        runBlocking {
+    @Test fun closingDuringCredentialRestoreWaitsForCandidateCleanup() =
+        runTest {
             RaceServer().use { server ->
                 val entered = CompletableDeferred<Unit>()
                 val release = CompletableDeferred<Unit>()
-                val returned = CompletableDeferred<Unit>()
                 val store =
                     object : DeviceAuthStore {
                         override suspend fun read(): StoredCredentials =
                             withContext(NonCancellable) {
                                 entered.complete(Unit)
                                 release.await()
-                                returned.complete(Unit)
                                 StoredCredentials.DeviceToken("synthetic", "old-device")
                             }
 
@@ -81,19 +86,48 @@ class DesktopSessionRaceTest {
                         override suspend fun clear() = Unit
                     }
                 val directory = Files.createTempDirectory("desktop-restore-race")
+                lateinit var candidate: DesktopSession
+                val model =
+                    DesktopModel(directory, StandardTestDispatcher(testScheduler), { store }) { address, authStore ->
+                        DesktopSession(address, authStore).also { candidate = it }
+                    }
+                try {
+                    model.login(server.url, true, "", "", "", restore = true)
+                    runCurrent()
+                    assertTrue(entered.isCompleted)
+                    val closing = async { model.close() }
+                    runCurrent()
+                    assertFalse(closing.isCompleted, "close must await non-cancellable credential work and candidate cleanup")
+                    release.complete(Unit)
+                    closing.await()
+                    assertFalse(model.state.value.loggedIn)
+                    assertNull(candidate.authCache.current())
+                    assertEquals(0, server.mediaRequests.get())
+                    assertFalse(Files.exists(directory.resolve("server.txt")))
+                } finally {
+                    release.complete(Unit)
+                    model.close()
+                    directory.toFile().deleteRecursively()
+                }
+            }
+        }
+
+    @Test fun closingDuringExplicitLogoutStillClearsPersistedCredentials() =
+        runBlocking {
+            RaceServer(blockLogout = true).use { server ->
+                val directory = Files.createTempDirectory("desktop-close-logout")
                 Executors.newSingleThreadExecutor().asCoroutineDispatcher().use { ui ->
+                    val store = credentials("logout-device")
                     val model = DesktopModel(directory, ui, { store })
                     try {
                         withContext(ui) { model.login(server.url, true, "", "", "", restore = true) }
-                        withTimeout(10_000) { entered.await() }
-                        model.close()
-                        release.complete(Unit)
-                        withTimeout(10_000) { returned.await() }
-                        withContext(ui) { assertFalse(model.state.value.loggedIn) }
-                        assertEquals(0, server.mediaRequests.get())
-                        assertFalse(Files.exists(directory.resolve("server.txt")))
+                        awaitState(model) { it.loggedIn && it.tasks.isNotEmpty() }
+                        withContext(ui) { model.logout() }
+                        withTimeout(10_000) { server.logoutStarted.await() }
+                        withTimeout(10_000) { model.close() }
+                        assertNull(store.read(), "explicit logout must remain durable if the window closes during revocation")
                     } finally {
-                        release.complete(Unit)
+                        server.releaseLogout.countDown()
                         model.close()
                         directory.toFile().deleteRecursively()
                     }

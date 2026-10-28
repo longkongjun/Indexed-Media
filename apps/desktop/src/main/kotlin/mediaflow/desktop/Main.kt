@@ -28,12 +28,14 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -54,6 +56,8 @@ import dev.indexed.design.desktop.PageMode
 import dev.indexed.design.desktop.RequestState
 import kotlinx.coroutines.launch
 import mediaflow.client.core.paging.PageState
+import java.awt.event.WindowAdapter
+import java.awt.event.WindowEvent
 
 fun main() =
     application {
@@ -69,6 +73,7 @@ fun main() =
                 }
             }
         }) {
+            RefreshOnWindowFocus(window, model::refresh)
             MenuBar {
                 Menu("文件") {
                     val mac = System.getProperty("os.name").startsWith("Mac")
@@ -87,6 +92,24 @@ fun main() =
             IndexedTheme(dark = isSystemInDarkTheme()) { Companion(model) }
         }
     }
+
+@Composable
+internal fun RefreshOnWindowFocus(
+    window: java.awt.Window,
+    onRefresh: () -> Unit,
+) {
+    val refresh by rememberUpdatedState(onRefresh)
+    DisposableEffect(window) {
+        val listener =
+            object : WindowAdapter() {
+                override fun windowGainedFocus(event: WindowEvent?) {
+                    refresh()
+                }
+            }
+        window.addWindowFocusListener(listener)
+        onDispose { window.removeWindowFocusListener(listener) }
+    }
+}
 
 @Composable
 internal fun Companion(model: DesktopModel) {
@@ -129,14 +152,26 @@ internal fun Companion(model: DesktopModel) {
                 model.logout()
             }) { Text("退出登录") }
         }
+        if (ui.writeUnknown) {
+            when (ui.writeOperation) {
+                DesktopWriteOperation.TaskCancel ->
+                    if (section != "任务") Text("上次任务取消结果未知，请返回任务页核对。")
+                DesktopWriteOperation.ReviewDecision ->
+                    if (section != "人工确认") Text("上次人工确认提交结果未知，请返回人工确认页核对。")
+                null -> Unit
+            }
+        }
         Row(Modifier.weight(1f).fillMaxWidth()) {
             NavigationRail {
                 for (item in listOf("媒体", "任务", "人工确认")) {
                     NavigationRailItem(
                         selected = section == item,
                         onClick = {
-                            section = item
-                            detailOpen = false
+                            if (section != item) {
+                                section = item
+                                detailOpen = false
+                                model.refresh()
+                            }
                         },
                         icon = { Text(item.take(1), Modifier.clearAndSetSemantics {}) },
                         label = { Text(item) },
@@ -196,8 +231,8 @@ internal fun Companion(model: DesktopModel) {
                         }
                     "任务" ->
                         Column(Modifier.fillMaxSize()) {
-                            if (ui.writeUnknown) {
-                                Text("上次写操作结果未知，请核对当前状态。取消重试将沿用原幂等键。")
+                            if (ui.writeUnknown && ui.writeOperation == DesktopWriteOperation.TaskCancel) {
+                                Text("上次任务取消结果未知，请核对当前状态。取消重试将沿用原幂等键。")
                                 TextButton(enabled = !ui.writeBusy, onClick = model::retryTaskCancel) { Text("重试同一次取消") }
                             }
                             Page(ui.taskState, onRetry = { model.reloadTasks() }) {
@@ -208,7 +243,7 @@ internal fun Companion(model: DesktopModel) {
                                                 Text(task.relativePath)
                                                 Text("${task.status} · ${task.stage}")
                                                 if (task.allowedActions.any { it.toString() == "cancel" }) {
-                                                    TextButton(enabled = !ui.writeBusy, onClick = {
+                                                    TextButton(enabled = !ui.writeBusy && !ui.writeUnknown, onClick = {
                                                         confirm = "取消任务：${task.relativePath}" to { model.cancelTask(task) }
                                                     }) { Text("取消任务") }
                                                 }
@@ -255,7 +290,7 @@ internal fun Companion(model: DesktopModel) {
                                             onClick = { model.search(query, mediaType) },
                                         ) { Text("搜索") }
                                     }
-                                    if (ui.writeUnknown) {
+                                    if (ui.writeUnknown && ui.writeOperation == DesktopWriteOperation.ReviewDecision) {
                                         Text("上次提交结果未知。先刷新核对；重试将沿用原幂等键。")
                                         Button(enabled = !ui.writeBusy, onClick = model::retryDecision) { Text("重试同一次提交") }
                                     }
