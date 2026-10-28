@@ -126,6 +126,11 @@ class GateTests(unittest.TestCase):
         (self.root / "apps/ios").mkdir(parents=True)
         (self.root / "tools/selfcheck").mkdir(parents=True)
         shutil.copy(REPO / "justfile", self.root / "justfile")
+        # Repository-owned vendor checks must run before the isolated native tools.
+        shutil.copytree(REPO / "tools/desktop", self.root / "tools/desktop",
+                        ignore=shutil.ignore_patterns("__pycache__"))
+        shutil.copytree(REPO / "vendor/indexed-design", self.root / "vendor/indexed-design")
+        shutil.copy(REPO / ".gitattributes", self.root / ".gitattributes")
         for script in (REPO / "tools/selfcheck").glob("*.sh"):
             shutil.copy(script, self.root / "tools/selfcheck")
         self.env = dict(os.environ, PATH=f"{self.bin}:/usr/bin:/bin", TMPDIR=str(self.reports))
@@ -136,7 +141,7 @@ class GateTests(unittest.TestCase):
         self.tool("swiftlint", 'if [ "$1" = version ]; then echo 0.65.1; fi; exit "${SWIFTLINT_STATUS:-0}"')
         self.tool("xcodegen", 'echo generator-output; exit "${GENERATOR_STATUS:-0}"')
         self.tool("xcodebuild", 'echo first-build-line; seq 1 80; exit "${BUILD_STATUS:-0}"')
-        self.tool("gradlew", "exit 0", self.root / "gradlew")
+        self.tool("gradlew", 'echo "$*" >> "$TMPDIR/gradle-calls"; exit 0', self.root / "gradlew")
 
     def tool(self, name, body, path=None):
         path = path or self.bin / name
@@ -210,8 +215,11 @@ exit 0''')
     def test_ios_failure_reaches_legacy_and_client_aggregates(self):
         for recipe in ["check-ios", "check-mobile", "client-check"]:
             with self.subTest(recipe=recipe):
+                before = set(self.reports.rglob("status.tsv"))
                 result = self.ios(recipe, BUILD_STATUS="65")
                 self.assertNotEqual(result.returncode, 0, result.stdout)
+                logs = set(self.reports.rglob("status.tsv")) - before
+                self.assertTrue(any("xcodebuild\t65" in p.read_text() for p in logs), result.stdout)
 
     def test_online_advisory_and_independent_failure_are_both_reported(self):
         self.tool("just", 'echo "$*" >> "$TMPDIR/calls"; case "$1" in check-rust-advisories) exit 4;; check-compose-static) exit 9;; esac; exit 0')
@@ -253,6 +261,25 @@ esac''')
         self.assertNotEqual(result.returncode, 0, result.stdout)
         logs = list(self.reports.rglob("status.tsv"))
         self.assertTrue(any("xcodebuild\t65" in p.read_text() for p in logs), result.stdout)
+
+    def test_client_success_reaches_tv_ios_and_desktop(self):
+        result = self.ios("client-check")
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertIn("tv Design vendor: artifacts verified", result.stdout)
+        self.assertIn("desktop Design vendor: artifacts verified", result.stdout)
+        calls = (self.reports / "gradle-calls").read_text()
+        self.assertIn(":apps:android-tv:ktlintCheck", calls)
+        self.assertIn(":apps:desktop:ktlintCheck", calls)
+        self.assertTrue(any("xcodebuild\t0" in p.read_text()
+                            for p in self.reports.rglob("status.tsv")), result.stdout)
+
+    def test_vendor_failure_still_stops_before_ios(self):
+        artifact = next((self.root / "vendor/indexed-design/maven").rglob("*.aar"))
+        artifact.write_bytes(b"tampered")
+        result = self.ios("client-check", BUILD_STATUS="65")
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertIn("digest mismatch", result.stdout)
+        self.assertFalse(list(self.reports.rglob("xcodebuild.log")))
 
     def test_swiftlint_failure_prevents_native_build(self):
         result = self.ios(SWIFTLINT_STATUS="3")
