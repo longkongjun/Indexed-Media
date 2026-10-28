@@ -6,7 +6,7 @@
 
 沿用 [Rust toolchain](../../rust-toolchain.toml)、[Node](../../.node-version)、[pnpm](../../package.json)、[Gradle wrapper](../../gradle/wrapper/gradle-wrapper.properties) 与[版本目录](../../gradle/libs.versions.toml)。Gradle 启动 JDK 与 daemon JVM 分开，后者由 `gradle/gradle-daemon-jvm.properties` 声明；fixture Java/Kotlin 输出均为 JVM 17。
 
-just、cargo-deny、cargo-machete 和 SwiftLint 的固定版本见[工具清单](../../tools/selfcheck/tool-versions.env)。SwiftLint 可由 `bash tools/selfcheck/install-swiftlint.sh <新的本地目录>` 下载官方固定版本并验证 SHA-256，然后将该目录临时加入 PATH；不要求全局安装。iOS 使用完整 Xcode、XcodeGen 与已安装的模拟器，单独的 CommandLineTools 不够。默认目的地是 iPhone 17，可用 `MEDIAFLOW_IOS_DESTINATION` 指定已安装的同类 iOS Simulator。
+just、cargo-deny、cargo-machete 和 SwiftLint 的固定版本见[工具清单](../../tools/selfcheck/tool-versions.env)。SwiftLint 可由 `bash tools/selfcheck/install-swiftlint.sh <新的本地目录>` 下载官方固定版本并验证 SHA-256，然后将该目录临时加入 PATH；不要求全局安装。iOS 使用完整 Xcode、XcodeGen 与已安装的模拟器，单独的 CommandLineTools 不够。 SwiftLint 静态检查可单独执行：若自动发现 SourceKit 失败，而本机 CLT 的 `usr/lib/sourcekitdInProc.framework` 实际存在，可仅为该次命令设置 `TOOLCHAIN_DIR=/Library/Developer/CommandLineTools` 后运行 `just client-lint-ios`；不要修改全局 `xcode-select`，也不能据此推断 iOS SDK 或编译可用。默认目的地是 iPhone 17，可用 `MEDIAFLOW_IOS_DESTINATION` 指定已安装的同类 iOS Simulator。
 
 源码部署自检需要 cargo、just、pnpm、node、python3、cargo-deny/machete；部署静态集合不要求 Docker。镜像构建/Compose 解析需要 Docker。Native、Android 编译仍需相应 SDK；运行交付镜像的 NAS 无需安装源码开发工具。
 
