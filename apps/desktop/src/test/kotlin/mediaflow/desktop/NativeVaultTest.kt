@@ -4,6 +4,7 @@ import org.junit.Assume.assumeTrue
 import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 
 class NativeVaultTest {
@@ -16,6 +17,10 @@ class NativeVaultTest {
             assertNull(vault.read())
             vault.write("synthetic-first".toByteArray())
             assertContentEquals("synthetic-first".toByteArray(), vault.read())
+            for (length in listOf(2561, 0)) {
+                assertFailsWith<IllegalArgumentException> { vault.write(ByteArray(length)) }
+                assertContentEquals("synthetic-first".toByteArray(), vault.read())
+            }
             vault.write("synthetic-replacement".toByteArray())
             assertContentEquals("synthetic-replacement".toByteArray(), vault.read())
             vault.delete()

@@ -54,6 +54,7 @@ internal class MacKeychain(
     }
 
     override fun write(value: ByteArray) {
+        require(value.isNotEmpty() && value.size <= 2560) { "凭据长度无效" }
         val length = IntByReference()
         val data = PointerByReference()
         val item = PointerByReference()

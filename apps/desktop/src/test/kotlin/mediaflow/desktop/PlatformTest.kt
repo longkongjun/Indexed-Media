@@ -18,6 +18,12 @@ class PlatformTest {
         assertNotEquals(cacheIdentity("https://a", "one"), cacheIdentity("https://a", "two"))
     }
 
+    @Test fun externalLinksRejectLocalFilesScriptsAndEmbeddedCredentials() {
+        for (url in listOf("file:///tmp/x", "javascript:alert(1)", "mailto:person@example.com", "https://name:secret@nas", "/relative")) {
+            assertFailsWith<IllegalArgumentException> { openExternal(url) }
+        }
+    }
+
     @Test fun credentialStoreRoundTripAndClearUseVaultOnly() =
         runBlocking {
             val vault = MemoryVault()
