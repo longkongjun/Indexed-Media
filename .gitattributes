@@ -1,0 +1,2 @@
+# Pinned Maven artifacts are verified byte-for-byte; never convert their line endings.
+/vendor/indexed-design/maven/** -text
