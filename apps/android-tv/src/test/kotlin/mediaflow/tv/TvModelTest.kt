@@ -232,6 +232,103 @@ class TvModelTest {
             }
         }
 
+    @Test
+    fun explicitAndSystemThemesResolveAndPersistWithoutSessionOwnership() =
+        runTest {
+            assertEquals(TvTheme.System, TvTheme.fromPreference("unknown"))
+            assertTrue(TvTheme.System.isDark(true))
+            assertFalse(TvTheme.System.isDark(false))
+            assertFalse(TvTheme.Light.isDark(true))
+            assertTrue(TvTheme.Dark.isDark(false))
+            var saved = TvTheme.System
+            val owner = CoroutineScope(coroutineContext + SupervisorJob(coroutineContext[Job]))
+            val cache = SessionAuthCache()
+            val client =
+                client(StandardTestDispatcher(testScheduler)) { path, _ ->
+                    when {
+                        path.endsWith("enrollment") -> enrollment to HttpStatusCode.Created
+                        path.startsWith("/api/v1/devices/") -> "" to HttpStatusCode.NoContent
+                        else -> "{\"items\":[]}" to HttpStatusCode.OK
+                    }
+                }
+            val model = TvModel(owner, { TvSession(it, InMemoryDeviceAuthStore(), cache, client, json) }, rememberTheme = { saved = it })
+            try {
+                model.setTheme(TvTheme.Light)
+                assertEquals(TvTheme.Light, saved)
+                model.connect("https://nas.local", false, "code")
+                advanceUntilIdle()
+                assertEquals("TV", model.state.value.deviceName)
+                assertEquals(TvTheme.Light, model.theme.value)
+                model.logout()
+                advanceUntilIdle()
+                assertEquals(TvTheme.Light, model.theme.value)
+                val restored = TvModel(owner, { error("must not connect") }, initialTheme = saved)
+                assertEquals(TvTheme.Light, restored.theme.value)
+                restored.close()
+            } finally {
+                model.close()
+                owner.cancel()
+            }
+        }
+
+    @Test
+    fun failedThemePersistenceKeepsThePreviousSelectionAndShowsRecovery() =
+        runTest {
+            val model = TvModel(backgroundScope, { error("must not connect") }, rememberTheme = { error("storage sentinel") })
+            try {
+                model.setTheme(TvTheme.Dark)
+                assertEquals(TvTheme.System, model.theme.value)
+                assertTrue(
+                    model.state.value.message
+                        ?.contains("主题") == true,
+                )
+            } finally {
+                model.close()
+            }
+        }
+
+    @Test
+    fun staleOrDuplicateLogoutConfirmationCannotActOnAnotherIdentity() =
+        runTest {
+            var deletes = 0
+            val owner = CoroutineScope(coroutineContext + SupervisorJob(coroutineContext[Job]))
+            val model =
+                TvModel(owner, { server ->
+                    val client =
+                        client(StandardTestDispatcher(testScheduler)) { path, _ ->
+                            when {
+                                path.endsWith("enrollment") -> enrollment to HttpStatusCode.Created
+                                path.startsWith("/api/v1/devices/") -> {
+                                    deletes++
+                                    "" to HttpStatusCode.NoContent
+                                }
+                                else -> "{\"items\":[]}" to HttpStatusCode.OK
+                            }
+                        }
+                    TvSession(server, InMemoryDeviceAuthStore(), SessionAuthCache(), client, json)
+                })
+            try {
+                model.connect("https://nas.local", false, "code")
+                advanceUntilIdle()
+                val previousIdentity = model.state.value.identity
+                model.connect("https://nas.local", false, "new-code")
+                advanceUntilIdle()
+                val identity = model.state.value.identity
+                assertTrue(previousIdentity != identity)
+                assertFalse(model.confirmLogout(previousIdentity))
+                assertTrue(model.state.value.connected)
+                assertEquals(0, deletes)
+                assertTrue(model.confirmLogout(identity))
+                assertFalse(model.confirmLogout(identity))
+                advanceUntilIdle()
+                assertEquals(1, deletes)
+                assertFalse(model.state.value.connected)
+            } finally {
+                model.close()
+                owner.cancel()
+            }
+        }
+
     private fun client(
         dispatcher: CoroutineDispatcher,
         response: suspend (String, String?) -> Pair<String, HttpStatusCode>,

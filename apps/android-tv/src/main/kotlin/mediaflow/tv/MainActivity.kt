@@ -6,6 +6,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -36,13 +37,17 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent { IndexedTvTheme { TvApplication(holder.model) } }
+        setContent { TvApplication(holder.model) }
     }
 }
 
 @Composable
-internal fun TvApplication(model: TvModel) {
+internal fun TvApplication(
+    model: TvModel,
+    version: String = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+) {
     val ui by model.state.collectAsStateWithLifecycle()
+    val theme by model.theme.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val owner = LocalLifecycleOwner.current
     val images = remember(ui.identity) { TvArtworkCache() }
@@ -66,44 +71,40 @@ internal fun TvApplication(model: TvModel) {
     BackHandler(enabled = ui.connected && (ui.detailOpen || settings)) {
         if (ui.detailOpen) model.back() else settings = false
     }
-    Column(
-        Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(horizontal = 48.dp, vertical = 27.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        if (!ui.connected) {
-            TvConnect(ui, model)
-        } else {
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text("MediaFlow", style = MaterialTheme.typography.headlineMedium)
-                IndexedTvButton("影视墙", onClick = {
-                    settings = false
-                    model.back()
-                })
-                IndexedTvButton("刷新", onClick = model::refresh)
-                IndexedTvButton("设置", onClick = {
-                    model.back()
-                    settings = true
-                })
-            }
-            ui.message?.let { message ->
+    IndexedTvTheme(dark = theme.isDark(isSystemInDarkTheme())) {
+        Column(
+            Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(horizontal = 48.dp, vertical = 27.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            if (!ui.connected) {
+                TvConnect(ui, model)
+            } else {
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Text(message, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-                    IndexedTvButton("关闭提示", onClick = { model.message(null) })
+                    Text("MediaFlow", style = MaterialTheme.typography.headlineMedium)
+                    IndexedTvButton("影视墙", onClick = {
+                        settings = false
+                        model.back()
+                    })
+                    IndexedTvButton("刷新", onClick = model::refresh)
+                    IndexedTvButton("设置", onClick = {
+                        model.back()
+                        settings = true
+                    })
                 }
-            }
-            when {
-                settings ->
-                    Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
-                        Text("连接与设备", style = MaterialTheme.typography.headlineMedium)
-                        Text("服务器：${ui.server}")
-                        Text("此设备只可浏览媒体、查看详情和打开外部播放。")
-                        IndexedTvButton("断开并退出设备", onClick = { model.logout() })
+                ui.message?.let { message ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        Text(message, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+                        IndexedTvButton("关闭提示", onClick = { model.message(null) })
                     }
-                ui.detailOpen ->
-                    TvDetail(ui, model, images) { url ->
-                        runCatching { openTvPlayback(context, url) }.onFailure { model.message("无法打开外部播放，请检查电视上是否有可处理该地址的应用") }
-                    }
-                else -> savedScreens.SaveableStateProvider("wall-${ui.identity}") { TvMediaWall(ui, model, images) }
+                }
+                when {
+                    settings -> TvSettings(ui, theme, version, model::setTheme) { model.confirmLogout(it) }
+                    ui.detailOpen ->
+                        TvDetail(ui, model, images) { url ->
+                            runCatching { openTvPlayback(context, url) }.onFailure { model.message("无法打开外部播放，请检查电视上是否有可处理该地址的应用") }
+                        }
+                    else -> savedScreens.SaveableStateProvider("wall-${ui.identity}") { TvMediaWall(ui, model, images) }
+                }
             }
         }
     }

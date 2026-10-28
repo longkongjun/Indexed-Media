@@ -27,6 +27,7 @@ internal data class TvUi(
     val connecting: Boolean = false,
     val server: String = "",
     val identity: Long = 0,
+    val deviceName: String? = null,
     val artworkEpoch: Long = 0,
     val filter: MediaFilter = MediaFilter(),
     val wall: List<MediaItemSummary> = emptyList(),
@@ -45,9 +46,13 @@ internal class TvModel(
     private val scope: CoroutineScope,
     private val sessionFactory: (String) -> TvSession,
     private val rememberServer: (String) -> Unit = {},
+    initialTheme: TvTheme = TvTheme.System,
+    private val rememberTheme: (TvTheme) -> Unit = {},
 ) : AutoCloseable {
     private val mutable = MutableStateFlow(TvUi())
     val state = mutable.asStateFlow()
+    private val mutableTheme = MutableStateFlow(initialTheme)
+    val theme = mutableTheme.asStateFlow()
     private var session: TvSession? = null
     private var generation = 0L
     private var pageGeneration = 0L
@@ -95,7 +100,13 @@ internal class TvModel(
                         is SdkResult.Success -> {
                             session = connected
                             sessionWork = SupervisorJob(scope.coroutineContext[Job])
-                            mutable.value = TvUi(connected = true, server = server, identity = token)
+                            mutable.value =
+                                TvUi(
+                                    connected = true,
+                                    server = server,
+                                    identity = token,
+                                    deviceName = connected.credentials.current()?.displayName,
+                                )
                             rememberServer(server)
                             replacePager(MediaFilter())
                             val current = connected
@@ -296,6 +307,25 @@ internal class TvModel(
                     withContext(NonCancellable) { release() }
                 }
             }
+    }
+
+    /** 确认层只能退出其发起时的会话；重复点击和旧窗口回调不得借用新身份。 */
+    fun confirmLogout(identity: Long): Boolean {
+        if (!state.value.connected || generation != identity || state.value.identity != identity) return false
+        logout()
+        return true
+    }
+
+    fun setTheme(value: TvTheme) {
+        if (value == mutableTheme.value) return
+        try {
+            rememberTheme(value)
+            mutableTheme.value = value
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            message("主题设置未能保存，请重试")
+        }
     }
 
     fun message(value: String?) = update { it.copy(message = value) }

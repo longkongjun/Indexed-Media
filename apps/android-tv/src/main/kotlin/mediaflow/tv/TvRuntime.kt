@@ -37,6 +37,8 @@ internal class TvViewModel(
                 .putString("server", server)
                 .putBoolean("allow-http", server.startsWith("http://"))
                 .apply()
+        }, initialTheme = TvTheme.fromPreference(preferences.getString("theme", null)), rememberTheme = {
+            preferences.edit().putString("theme", it.preference).apply()
         })
 
     init {
