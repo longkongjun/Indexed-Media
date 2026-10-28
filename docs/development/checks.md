@@ -20,7 +20,7 @@ just、cargo-deny、cargo-machete 和 SwiftLint 的固定版本见[工具清单]
 | SDK | `client-check-kmp-sdk`、`client-check-kmp-jvm`、`client-docs-kmp-sdk` | ktlint、所有手写源集 Detekt；commonTest/jvmTest 经 jvmTest；macOS 的 iosSimulatorArm64Test。`packages/kmp-sdk/build/test-results/`、reports、Dokka HTML；Android/JVM/两个 Native 目标分别检查，Kover 只度量其 JVM 范围 | client-ci/kmp-sdk |
 | Android | `client-check-android` | Kotlin/脚本 ktlint、lintDebug、assembleDebug、src/test 的 testDebugUnitTest；`apps/android/build/reports/`、test-results | client-ci/android |
 | iOS | `client-lint-ios`、`client-check-ios` | SwiftLint 后生成工程，MediaFlowiOS scheme 的 MediaFlowiOSTests；独立 `mediaflow-ios-check.*/` 中完整日志、status.tsv 与 tests.xcresult | client-ci/ios |
-| JVM 夹具服务 | `client-check-fixture-server` | ktlint + build；当前没有测试源，不把 NO-SOURCE 写成测试通过。报告在 `tools/client-fixture-server/build/reports/` | client-ci/fixture-server |
+| JVM 夹具服务 | `client-check-fixture-server` | ktlint + build，包含取消端点的实际HTTP契约回归；测试原始XML在 `tools/client-fixture-server/build/test-results/test/`，报告在 `tools/client-fixture-server/build/reports/` | client-ci/fixture-server |
 | 根构建脚本 | `client-check-build-scripts` | 根 Kotlin script ktlint；模块脚本由各模块 ktlint 覆盖 | client-ci/kmp-sdk |
 | 基础设施 | `check-containers-static`、`check-compose-static`、`check-nas`；`check-containers`、`check-compose` 另含构建/解析 | 静态定义、镜像构建/inspect、Compose 解析分别保留；不代表真实 NAS 或运行时 smoke | ci/infra |
 | 门禁传播回归 | `check-gate-regressions` | Python stdlib 隔离真实 recipe/脚本，覆盖原始工具失败、聚合、离线并存失败、缺环境、日志和安装包校验。替身不代签工具正常执行 | ci/contracts |

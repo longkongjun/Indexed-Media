@@ -61,7 +61,7 @@ class TaskRepository(
                         header("X-CSRF-Token", it.csrfToken)
                     }
                 }
-            if (response.status == HttpStatusCode.OK) {
+            if (response.status == HttpStatusCode.Accepted) {
                 SdkResult.success(json.decodeFromString(ProcessingTask.serializer(), response.bodyAsText()))
             } else {
                 SdkResult.failure(ErrorMapping.fromResponse(response, json))

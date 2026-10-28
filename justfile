@@ -581,7 +581,7 @@ client-docs-kmp-sdk:
 client-check-android:
     @./gradlew :apps:android:ktlintCheck :apps:android:lintDebug :apps:android:assembleDebug :apps:android:testDebugUnitTest
 
-# 夹具服务构建与格式检查；没有测试源时不宣称单测通过。
+# 夹具服务格式、构建与实际HTTP端点契约回归。
 client-check-fixture-server:
     @./gradlew :tools:client-fixture-server:ktlintCheck :tools:client-fixture-server:build
 

@@ -6,7 +6,7 @@
 ## 用法
 
 ```bash
-just client-check-fixture-server    # ktlint + build；没有现有测试源，不宣称单测通过
+just client-check-fixture-server    # ktlint + build（含实际HTTP端点契约回归）
 just client-fixture-server          # 0.0.0.0:8642（FIXTURE_PORT 覆盖）
 ```
 
@@ -15,7 +15,7 @@ just client-fixture-server          # 0.0.0.0:8642（FIXTURE_PORT 覆盖）
 - `POST /api/v1/sessions`：用户名任意、密码 `fixture` → 201 + 会话 cookie；其余 401
 - `GET /api/v1/media-items`（首页）/ `GET /api/v1/media-items/{id}`
 - `GET /api/v1/review-cases`、`/{id}`、`/{id}/candidates?q=`、`POST /{id}/decisions`（202）
-- `GET /api/v1/processing-tasks`、`POST /{id}/cancel`
+- `GET /api/v1/processing-tasks`、`POST /{id}/cancel`（202 + 任务投影）
 - `GET /api/v1/integrations/jellyfin`（healthy + base_url → 外部播放可用）
 - `GET /api/v1/events`：SSE 循环回放事件 fixtures（5s 间隔）
 

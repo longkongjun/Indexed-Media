@@ -10,7 +10,9 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.TextContent
 import io.ktor.http.headersOf
 import io.ktor.serialization.kotlinx.json.json
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
+import kotlinx.io.IOException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -19,6 +21,7 @@ import mediaflow.api.models.SelectProviderCandidateCommand
 import mediaflow.client.core.auth.AuthRepository
 import mediaflow.client.core.auth.InMemoryDeviceAuthStore
 import mediaflow.client.core.auth.StoredCredentials
+import mediaflow.client.core.error.MediaFlowError
 import mediaflow.client.core.net.MediaFlowApiFactory
 import mediaflow.client.core.net.SessionAuthCache
 import mediaflow.client.core.playback.PlaybackRepository
@@ -26,6 +29,7 @@ import mediaflow.client.core.review.ReviewRepository
 import mediaflow.client.core.tasks.TaskRepository
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -175,7 +179,7 @@ class RepositoriesTest {
                                 """"recovering":false,"attempt_count":1,"next_retry_at":null,""" +
                                 """"allowed_actions":["review","retry","cancel"],""" +
                                 """"updated_at":"2026-07-23T08:00:00Z"}""",
-                        status = HttpStatusCode.OK,
+                        status = HttpStatusCode.Accepted,
                         headers = okJsonHeaders,
                     )
                 }
@@ -300,7 +304,7 @@ class RepositoriesTest {
                                 """"recovering":false,"attempt_count":1,"next_retry_at":null,""" +
                                 """"allowed_actions":["review","retry","cancel"],""" +
                                 """"updated_at":"2026-07-23T08:00:00Z"}""",
-                        status = HttpStatusCode.OK,
+                        status = HttpStatusCode.Accepted,
                         headers = okJsonHeaders,
                     )
                 }
@@ -311,6 +315,59 @@ class RepositoriesTest {
             val task = assertIs<SdkResult.Success<mediaflow.api.models.ProcessingTask>>(result).value
             assertEquals("waiting-confirmation", task.status.toString())
             assertEquals("cancel-key-0001", captured!!.headers["Idempotency-Key"])
+        }
+
+    @Test
+    fun taskCancelPreservesHttpFailureDetails() =
+        runTest {
+            for ((status, code) in listOf(
+                HttpStatusCode.Unauthorized to "session.expired",
+                HttpStatusCode.Forbidden to "permission.denied",
+                HttpStatusCode.ServiceUnavailable to "internal.error",
+            )) {
+                val client =
+                    HttpClient(
+                        MockEngine {
+                            respond(
+                                content = """{"error":{"code":"$code","message":"cancel rejected","request_id":"cancel-fixture"}}""",
+                                status = status,
+                                headers = okJsonHeaders,
+                            )
+                        },
+                    )
+                try {
+                    val repo =
+                        TaskRepository(DefaultApi(baseUrl = "https://nas.local", httpClient = client), client, SessionAuthCache(), json)
+                    val failure = assertIs<SdkResult.Failure>(repo.cancel("task-1", "cancel-failure-0001"))
+                    val error = assertIs<MediaFlowError.Http>(failure.error)
+                    assertEquals(status.value, error.status)
+                    assertEquals(code, error.code)
+                    assertEquals("cancel-fixture", error.requestId)
+                } finally {
+                    client.close()
+                }
+            }
+        }
+
+    @Test
+    fun taskCancelMapsLostResponseAndPropagatesCancellation() =
+        runTest {
+            val lost = HttpClient(MockEngine { throw IOException("response lost") })
+            try {
+                val repo = TaskRepository(DefaultApi(baseUrl = "https://nas.local", httpClient = lost), lost, SessionAuthCache(), json)
+                val failure = assertIs<SdkResult.Failure>(repo.cancel("task-1", "cancel-lost-0001"))
+                assertEquals(MediaFlowError.NetworkKind.Closed, assertIs<MediaFlowError.Network>(failure.error).kind)
+            } finally {
+                lost.close()
+            }
+            val cancelled = HttpClient(MockEngine { throw CancellationException("cancel request") })
+            try {
+                val repo =
+                    TaskRepository(DefaultApi(baseUrl = "https://nas.local", httpClient = cancelled), cancelled, SessionAuthCache(), json)
+                assertFailsWith<CancellationException> { repo.cancel("task-1", "cancel-interrupted-0001") }
+            } finally {
+                cancelled.close()
+            }
         }
 
     @Test

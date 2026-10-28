@@ -162,6 +162,30 @@ class DesktopSessionRaceTest {
             }
         }
 
+    @Test fun acceptedCancellationDoesNotReportAServiceFailure() =
+        runBlocking {
+            RaceServer(acceptCancel = true).use { server ->
+                val directory = Files.createTempDirectory("desktop-cancel-accepted")
+                Executors.newSingleThreadExecutor().asCoroutineDispatcher().use { ui ->
+                    val store = credentials("fixture-device")
+                    val model = DesktopModel(directory, ui, { store })
+                    try {
+                        withContext(ui) { model.login(server.url, true, "", "", "", restore = true) }
+                        val task = awaitState(model) { it.tasks.isNotEmpty() }.tasks.first()
+                        withContext(ui) { model.cancelTask(task) }
+                        val completed = awaitState(model) { !it.writeBusy }
+                        assertEquals(1, server.cancelKeys.size)
+                        assertFalse(completed.writeUnknown)
+                        assertNull(completed.writeOperation)
+                        assertNull(completed.message, "contract HTTP 202 is an accepted cancellation, not a service error")
+                    } finally {
+                        model.close()
+                        directory.toFile().deleteRecursively()
+                    }
+                }
+            }
+        }
+
     private suspend fun credentials(id: String): DeviceAuthStore =
         InMemoryDeviceAuthStore().apply {
             save(StoredCredentials.DeviceToken("synthetic", id))
@@ -174,6 +198,7 @@ class DesktopSessionRaceTest {
 
     private class RaceServer(
         private val blockLogout: Boolean = false,
+        private val acceptCancel: Boolean = false,
     ) : AutoCloseable {
         private val stopped = CountDownLatch(1)
         val releaseLogout = CountDownLatch(1)
@@ -211,8 +236,12 @@ class DesktopSessionRaceTest {
                             cancelKeys += exchange.requestHeaders.getFirst("Idempotency-Key")
                             respond(
                                 exchange,
-                                """{"error":{"code":"internal.error","message":"fixture failure","request_id":"fixture"}}""",
-                                503,
+                                if (acceptCancel) {
+                                    fixture("processing-task")
+                                } else {
+                                    """{"error":{"code":"internal.error","message":"fixture failure","request_id":"fixture"}}"""
+                                },
+                                if (acceptCancel) 202 else 503,
                             )
                             if (cancelKeys.size == 2) secondCancel.complete(Unit)
                         }
