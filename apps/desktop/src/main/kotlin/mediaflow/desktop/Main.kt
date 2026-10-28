@@ -89,7 +89,7 @@ fun main() =
     }
 
 @Composable
-private fun Companion(model: DesktopModel) {
+internal fun Companion(model: DesktopModel) {
     val ui by model.state.collectAsState()
     LaunchedEffect(model) {
         val server = model.rememberedServer()
@@ -106,7 +106,6 @@ private fun Companion(model: DesktopModel) {
             detailOpen = false
         }
     }
-    LaunchedEffect(confirm) { if (confirm != null) cancelFocus.requestFocus() }
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         (localError ?: ui.message)?.let { message ->
             Row(Modifier.fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite }) {
@@ -310,7 +309,10 @@ private fun Companion(model: DesktopModel) {
                     action.second()
                 }) { Text("确认提交") }
             },
-            dismissButton = { TextButton(onClick = { confirm = null }, modifier = Modifier.focusRequester(cancelFocus)) { Text("取消") } },
+            dismissButton = {
+                TextButton(onClick = { confirm = null }, modifier = Modifier.focusRequester(cancelFocus)) { Text("取消") }
+                LaunchedEffect(Unit) { cancelFocus.requestFocus() }
+            },
         )
     }
 }

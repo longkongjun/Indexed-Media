@@ -21,6 +21,7 @@ dependencies {
     implementation(compose.material3)
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:${libs.versions.kotlinx.coroutines.get()}")
     implementation("net.java.dev.jna:jna:${libs.versions.jna.get()}")
+    testImplementation(compose.desktop.uiTestJUnit4)
     testImplementation(kotlin("test-junit"))
     testImplementation(libs.kotlinx.coroutines.test)
 }
