@@ -2,6 +2,8 @@
 
 Mac/Windows 单窗口伴侣：设备配对/凭据 enrollment、冷启动凭据恢复、媒体墙分页/缓存、详情与外部播放、任务和人工确认。移动客户端仍使用 Compose/SwiftUI；桌面直接消费 KMP SDK JVM 目标，不依赖 Android 或 iOS 页面。
 
+锁定 CMP 1.12.2 的桌面框架下限为 macOS 13 arm64、Windows 10（64位 x86-64/arm64），见[官方支持矩阵](https://kotlinlang.org/docs/multiplatform/compose-compatibility-and-versioning.html)。Mac 包显式声明最低系统 13.0；Intel Mac 不在此版本支持范围。框架支持不代表本应用各系统/CPU组合已经验收，Windows与系统交互仍须独立验证。
+
 ## Build and run
 
 需要 JDK 21、项目 Gradle wrapper 和网络可解析的锁定依赖。Design 库来自本仓库 `vendor/indexed-design/maven`，其来源 commit/三个产物 SHA-256 记录于 `desktop-provenance.json`；不依赖邻仓或已发布的公共 Maven 包。

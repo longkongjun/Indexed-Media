@@ -32,7 +32,10 @@ compose.desktop {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi)
             packageName = "MediaFlow"
             packageVersion = "0.1.0"
-            macOS { packageVersion = "1.1.0" }
+            macOS {
+                packageVersion = "1.1.0"
+                minimumSystemVersion = "13.0"
+            }
             modules("java.sql", "java.desktop", "java.naming", "jdk.unsupported", "jdk.crypto.ec")
         }
     }
