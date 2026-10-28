@@ -9,6 +9,7 @@ import io.ktor.client.request.prepareGet
 import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpStatusCode
 import io.ktor.http.isSuccess
 import io.ktor.utils.io.ByteReadChannel
 import io.ktor.utils.io.readUTF8Line
@@ -45,8 +46,11 @@ enum class TaskEventConnectionState { Idle, Connecting, Connected, Reconnecting 
  * - **stream.gap 透传**：缺口事件作为普通信封上抛，由 Repository 层触发权威刷新。
  *
  * `cursor` 供宿主持久化（跨进程启动续传）；`connection` 供 UI 展示连接状态。
+ * [onUnauthorized] 在事件收集上下文通知宿主；宿主负责切回自身状态线程和关闭会话。默认不改变旧消费方行为。
+ * LongParameterList 例外：保留既有构造参数顺序，可选鉴权通知独立于重连配置。
  * 帧内 `id:` 行忽略——游标以 JSON 信封的 `id` 字段为唯一真源。
  */
+@Suppress("LongParameterList")
 class TaskEventClient(
     baseUrl: String,
     authCache: SessionAuthCache,
@@ -54,6 +58,7 @@ class TaskEventClient(
     engine: HttpClientEngine,
     private val initialBackoffMs: Long = DEFAULT_INITIAL_BACKOFF_MS,
     private val maxBackoffMs: Long = DEFAULT_MAX_BACKOFF_MS,
+    private val onUnauthorized: () -> Unit = {},
 ) {
     private val decoder: Json = json
 
@@ -99,6 +104,7 @@ class TaskEventClient(
                             header(HttpHeaders.Accept, ContentType.Text.EventStream.toString())
                             if (lastAccepted > 0) header("Last-Event-ID", lastAccepted.toString())
                         }.execute { response ->
+                            if (response.status == HttpStatusCode.Unauthorized) onUnauthorized()
                             if (!response.status.isSuccess()) {
                                 throw IOException("SSE stream failed with HTTP ${response.status.value}")
                             }

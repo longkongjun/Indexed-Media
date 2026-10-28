@@ -4,6 +4,7 @@ import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import io.ktor.utils.io.ByteReadChannel
 import kotlinx.coroutines.flow.take
@@ -42,6 +43,47 @@ class TaskEventClientTest {
             initialBackoffMs = 10,
             maxBackoffMs = 50,
         )
+
+    @Test
+    fun unauthorizedNotifiesHostWithoutTreatingForbiddenAsExpired() =
+        runBlocking {
+            withTimeout(10_000) {
+                var requests = 0
+                var expired = 0
+                val engine =
+                    MockEngine {
+                        requests++
+                        when (requests) {
+                            1 -> respond("", HttpStatusCode.Unauthorized)
+                            2 -> respond("", HttpStatusCode.Forbidden)
+                            else -> respond(sseBody(frame(1, "task.progress", "{}")), headers = sseHeaders)
+                        }
+                    }
+                val client =
+                    TaskEventClient(
+                        baseUrl = "https://nas.local",
+                        authCache = SessionAuthCache(),
+                        engine = engine,
+                        initialBackoffMs = 1,
+                        maxBackoffMs = 1,
+                        onUnauthorized = { expired++ },
+                    )
+                try {
+                    assertEquals(
+                        1,
+                        client
+                            .events()
+                            .take(1)
+                            .toList()
+                            .size,
+                    )
+                    assertEquals(1, expired)
+                    assertEquals(3, requests)
+                } finally {
+                    client.close()
+                }
+            }
+        }
 
     @Test
     fun emitsDecodedEventsAndDeduplicatesByCursor() =
