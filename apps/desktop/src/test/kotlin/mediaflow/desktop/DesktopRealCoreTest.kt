@@ -19,14 +19,23 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import mediaflow.api.models.ProcessingTask
 import mediaflow.api.models.SelectGenericVideoCommand
 import mediaflow.client.core.SdkResult
+import mediaflow.client.core.auth.AuthRepository
 import mediaflow.client.core.auth.InMemoryDeviceAuthStore
 import mediaflow.client.core.auth.StoredCredentials
+import mediaflow.client.core.error.MediaFlowError
 import mediaflow.client.core.events.TaskEventEnvelope
 import mediaflow.client.core.getOrNull
+import mediaflow.client.core.media.MediaFilter
+import mediaflow.client.core.media.MediaRepository
+import mediaflow.client.core.net.MediaFlowApiFactory
+import mediaflow.client.core.net.SessionAuthCache
 import mediaflow.client.core.paging.PageState
 import mediaflow.client.core.review.ReviewRepository
+import mediaflow.client.core.tasks.TaskFilter
+import mediaflow.client.core.tasks.TaskRepository
 import org.junit.Test
 import java.net.InetAddress
 import java.net.ServerSocket
@@ -47,6 +56,7 @@ import java.util.concurrent.TimeUnit
 import kotlin.coroutines.CoroutineContext
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -104,6 +114,10 @@ class DesktopRealCoreTest {
                                 ?.versions
                                 ?.isEmpty() == true,
                         )
+
+                        verifyMediaFilters(current, ui, active)
+                        verifyTaskFiltersAndRetry(current, ui, active, core, tasks[3])
+                        verifyReadOnlyPairing(core, mediaId, tasks[3], assertNotNull(firstCredential.deviceId))
 
                         val decisionEvent =
                             async(start = CoroutineStart.UNDISPATCHED) {
@@ -192,6 +206,156 @@ class DesktopRealCoreTest {
                 }
             }
         }
+
+    private suspend fun verifyMediaFilters(
+        model: DesktopModel,
+        ui: CapturedUi,
+        session: DesktopSession,
+    ) {
+        val initial = awaitState(model) { it.mediaLibraries.size == 2 && it.wall.size == 2 }
+        val item = initial.wall.single { it.title == "Integration movie 1" }
+        assertTrue(initial.mediaLibraries.any { it.id == item.libraryId && it.name == "电影库" })
+        val filter = MediaFilter(type = "movie", libraryId = item.libraryId, localStatus = "partial", query = "Integration movie 1")
+        withContext(ui) { model.applyMediaFilter(filter.copy(query = "  Integration movie 1  ")) }
+        awaitState(model) { it.mediaFilter == filter && it.wall.size == 1 && it.wall.single().id == item.id }
+        val refreshing = withContext(ui) { ui.capture { model.refresh() } }
+        withTimeout(30_000) { refreshing.joinAll() }
+        withContext(ui) { }
+        assertEquals(filter, model.state.value.mediaFilter)
+        assertEquals(
+            listOf(item.id),
+            model.state.value.wall
+                .map { it.id },
+        )
+        withContext(session.io) { assertEquals(2, session.cache.cachedWall().size) }
+        withContext(ui) { model.applyMediaFilter(filter.copy(query = "no matching integration media")) }
+        awaitState(model) { it.wallState == PageState.Empty }
+        assertTrue(
+            model.state.value.wall
+                .isEmpty(),
+        )
+        withContext(ui) { model.applyMediaFilter(MediaFilter()) }
+        awaitState(model) { it.mediaFilter == MediaFilter() && it.wall.size == 2 }
+    }
+
+    private suspend fun verifyTaskFiltersAndRetry(
+        model: DesktopModel,
+        ui: CapturedUi,
+        session: DesktopSession,
+        core: RealCore,
+        taskId: String,
+    ) {
+        for (view in listOf("running", "completed")) {
+            withContext(ui) { model.applyTaskFilter(TaskFilter(view = view)) }
+            awaitState(model) { it.taskFilter.view == view && it.taskState == PageState.Empty }
+        }
+        val filter = TaskFilter(view = "all", stage = "identification", status = "paused", query = "Keep Pending")
+        withContext(ui) { model.applyTaskFilter(filter) }
+        awaitState(model) { it.taskFilter == filter && it.tasks.map { task -> task.id } == listOf(taskId) }
+        withContext(ui) { model.selectTask(taskId) }
+        val before = assertNotNull(awaitState(model) { it.selectedTask?.id == taskId && !it.taskDetailLoading }.selectedTask)
+        assertEquals("paused", before.status.toString())
+        assertEquals("identification", before.stage.toString())
+        assertNotNull(before.reason)
+        assertTrue(before.allowedActions.any { it.toString() == "retry" })
+        val originalAttempts = core.attemptCount(taskId)
+        val key = "desktop-real-retry-${UUID.randomUUID()}"
+        val retried = assertIs<SdkResult.Success<ProcessingTask>>(session.tasks.retry(taskId, key)).value
+        val replay = assertIs<SdkResult.Success<ProcessingTask>>(session.tasks.retry(taskId, key)).value
+        assertEquals(taskId, retried.id)
+        assertEquals(taskId, replay.id)
+        assertEquals(before.attemptCount + 1, retried.attemptCount)
+        assertEquals(retried.attemptCount, replay.attemptCount)
+        core.awaitTask(taskId) { it.text("status") == "paused" && it.number("attempt_count") == before.attemptCount + 1 }
+        assertEquals(originalAttempts + 1, core.attemptCount(taskId), "same SDK retry key must create exactly one processing attempt")
+        val refreshing = withContext(ui) { ui.capture { model.refresh() } }
+        withTimeout(30_000) { refreshing.joinAll() }
+        val after = awaitState(model) { it.selectedTask?.attemptCount == before.attemptCount + 1 && !it.taskDetailLoading }
+        assertEquals(filter, after.taskFilter)
+        assertEquals(listOf(taskId), after.tasks.map { it.id })
+        val authority = core.request("GET", "/api/v1/processing-tasks/$taskId")
+        val detail = assertNotNull(after.selectedTask)
+        assertEquals(authority.text("reason"), detail.reason?.toString())
+        assertEquals(authority.text("checkpoint"), detail.checkpoint.toString())
+        val nextRetry = authority.text("next_retry_at").takeUnless { it == "null" }?.let { kotlin.time.Instant.parse(it) }
+        assertEquals(nextRetry, detail.nextRetryAt)
+        withContext(ui) { model.applyTaskFilter(TaskFilter()) }
+        awaitState(model) { it.taskFilter == TaskFilter() && it.tasks.size == 4 && it.selectedTaskId == null }
+    }
+
+    private suspend fun verifyReadOnlyPairing(
+        core: RealCore,
+        mediaId: String,
+        taskId: String,
+        otherDeviceId: String,
+    ) {
+        val issued = core.request("POST", "/api/v1/device-pairing-codes/media-read-only", status = 201)
+        assertEquals("media-read-only", issued.text("access_mode"))
+        val store = InMemoryDeviceAuthStore()
+        val cache = SessionAuthCache()
+        val factory = MediaFlowApiFactory(core.origin, cache)
+        val json = MediaFlowApiFactory.defaultJson()
+        factory.httpClient().use { transport ->
+            val auth = AuthRepository(transport, store, cache, json)
+            val elevated = auth.enrollWithPairingCode(issued.text("pairing_code"), "Invalid elevated TV")
+            assertTrue(elevated is SdkResult.Failure, "read-only pairing must reject elevated enrollment")
+            assertEquals(403, assertIs<MediaFlowError.Http>(elevated.error).status)
+            assertTrue(store.read() == null, "rejected enrollment must leave storage empty")
+            assertTrue(cache.current() == null, "rejected enrollment must leave memory empty")
+            val enrolled = auth.enrollReadOnlyWithPairingCode(issued.text("pairing_code"), "Integration TV")
+            assertTrue(enrolled is SdkResult.Success, "read-only SDK enrollment must succeed")
+            val saved = store.read()
+            assertTrue(saved is StoredCredentials.DeviceToken, "read-only SDK must save a device credential")
+            val device = saved
+            val deviceId = assertNotNull(device.deviceId)
+            assertEquals("media-read-only", core.request("GET", "/api/v1/devices/$deviceId", bearer = device.token).text("access_mode"))
+            val api = factory.defaultApi(transport)
+            val media = MediaRepository(api, json)
+            val libraries = assertNotNull(media.libraries().getOrNull())
+            assertEquals(2, libraries.size)
+            val wall = media.mediaWall(limit = 1)
+            assertTrue(wall.reload())
+            assertTrue(wall.loadNext())
+            assertEquals(2, wall.items.value.size)
+            assertTrue(media.detail(mediaId) is SdkResult.Success)
+            val tasks = TaskRepository(api, transport, cache, json)
+            val denied = tasks.tasks()
+            assertTrue(denied.reload())
+            assertTrue(denied.items.value.isEmpty())
+            assertEquals(403, assertIs<MediaFlowError.Http>(assertIs<PageState.Error>(denied.state.value).error).status)
+            assertEquals(403, assertIs<MediaFlowError.Http>(assertIs<SdkResult.Failure>(tasks.detail(taskId)).error).status)
+            assertEquals(
+                403,
+                assertIs<MediaFlowError.Http>(assertIs<SdkResult.Failure>(tasks.retry(taskId, "readonly-denied-retry")).error).status,
+            )
+            core.request("GET", "/api/v1/events", status = 403, bearer = device.token)
+            core.request("GET", "/api/v1/devices/$otherDeviceId", status = 403, bearer = device.token)
+        }
+        // A new transport loads the persisted credential, then validates only its own device projection.
+        cache.update(null)
+        val restoredCache = SessionAuthCache()
+        restoredCache.load(store)
+        val restoredFactory = MediaFlowApiFactory(core.origin, restoredCache)
+        restoredFactory.httpClient().use { transport ->
+            val auth = AuthRepository(transport, store, restoredCache, json)
+            assertIs<SdkResult.Success<Unit>>(auth.validateReadOnlyDevice())
+            val saved = store.read()
+            assertTrue(saved is StoredCredentials.DeviceToken, "restored read-only identity must remain a device credential")
+            val credential = saved
+            val own = core.request("GET", "/api/v1/devices/${credential.deviceId}", bearer = credential.token)
+            assertEquals("media-read-only", own.text("access_mode"))
+            assertIs<SdkResult.Success<Unit>>(auth.logout())
+            assertTrue(store.read() == null, "revoked identity must leave storage empty")
+            assertTrue(restoredCache.current() == null, "revoked identity must leave memory empty")
+            core.request("GET", "/api/v1/media-items", status = 401, bearer = credential.token)
+            store.save(credential)
+            restoredCache.update(credential)
+            val expired = assertIs<SdkResult.Failure>(auth.validateReadOnlyDevice())
+            assertEquals(401, assertIs<MediaFlowError.Http>(expired.error).status)
+            assertTrue(store.read() == null, "revoked identity must leave storage empty")
+            assertTrue(restoredCache.current() == null, "revoked identity must leave memory empty")
+        }
+    }
 
     private suspend fun awaitState(
         model: DesktopModel,
@@ -537,6 +701,17 @@ class DesktopRealCoreTest {
             start()
             return cases
         }
+
+        fun attemptCount(taskId: String): Long =
+            DriverManager.getConnection("jdbc:sqlite:${config.resolve("mediaflow.db")}").use { connection ->
+                connection.prepareStatement("SELECT COUNT(*) FROM tasks_processing_attempts WHERE task_id=?").use { statement ->
+                    statement.setBytes(1, bytes(UUID.fromString(taskId)))
+                    statement.executeQuery().use { rows ->
+                        check(rows.next())
+                        rows.getLong(1)
+                    }
+                }
+            }
 
         fun decisionCount(): Long =
             DriverManager.getConnection("jdbc:sqlite:${config.resolve("mediaflow.db")}").use { connection ->

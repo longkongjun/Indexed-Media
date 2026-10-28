@@ -21,6 +21,7 @@ import mediaflow.client.core.auth.StoredCredentials
 import java.net.InetSocketAddress
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
@@ -74,6 +75,40 @@ class DesktopLateResponseTest {
                         if (ui.held.isCompleted) ui.held.await().resume()
                         model.close()
                         candidate.get()?.close()
+                        directory.toFile().deleteRecursively()
+                    }
+                }
+            }
+        }
+
+    @Test
+    fun logoutDuringAttachmentCannotRetainOldSessionObservers() =
+        runBlocking {
+            LateServer().use { server ->
+                val directory = Files.createTempDirectory("desktop-attach-logout")
+                Executors.newSingleThreadExecutor().asCoroutineDispatcher().use { executor ->
+                    val ui = ControlledUi(executor)
+                    val store = credentials()
+                    val model = DesktopModel(directory, ui, { store })
+                    ui.holdWhen = { model.state.value.loggedIn }
+                    try {
+                        val login =
+                            withContext(ui) {
+                                ui.captureNextJob().also { model.login(server.url, true, "", "", "", restore = true) }
+                            }
+                        val pending = withTimeout(10_000) { ui.held.await() }
+                        val logout = withContext(ui) { ui.captureNextJob().also { model.logout() } }
+                        withTimeout(10_000) { logout.await().join() }
+                        assertFalse(model.state.value.loggedIn)
+                        pending.resume()
+                        withTimeout(10_000) { login.await().join() }
+                        withContext(ui) { }
+                        assertTrue(ui.activeJobs().isEmpty(), "old attachment must not retain collectors after logout")
+                        assertFalse(model.state.value.loggedIn)
+                        assertEquals(0, server.mediaRequests.get())
+                    } finally {
+                        if (ui.held.isCompleted) ui.held.await().resume()
+                        model.close()
                         directory.toFile().deleteRecursively()
                     }
                 }
@@ -149,6 +184,7 @@ class DesktopLateResponseTest {
     ) : CoroutineDispatcher() {
         private val capture = AtomicReference<Pair<Thread, CompletableDeferred<Job>>?>()
         private val holding = AtomicBoolean(false)
+        private val dispatchedJobs = ConcurrentHashMap.newKeySet<Job>()
         val held = CompletableDeferred<Pending>()
 
         @Volatile
@@ -156,10 +192,13 @@ class DesktopLateResponseTest {
 
         fun captureNextJob(): CompletableDeferred<Job> = CompletableDeferred<Job>().also { capture.set(Thread.currentThread() to it) }
 
+        fun activeJobs(): List<Job> = dispatchedJobs.filter { it.isActive }
+
         override fun dispatch(
             context: CoroutineContext,
             block: Runnable,
         ) {
+            context[Job]?.let(dispatchedJobs::add)
             capture.get()?.let { next ->
                 // Other IO completions cannot steal the action launched synchronously by the UI thread.
                 if (next.first === Thread.currentThread() && capture.compareAndSet(next, null)) {

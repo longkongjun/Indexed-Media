@@ -156,6 +156,8 @@ internal fun Companion(model: DesktopModel) {
             when (ui.writeOperation) {
                 DesktopWriteOperation.TaskCancel ->
                     if (section != "任务") Text("上次任务取消结果未知，请返回任务页核对。")
+                DesktopWriteOperation.TaskRetry ->
+                    if (section != "任务") Text("上次任务重试结果未知，请返回任务页核对。")
                 DesktopWriteOperation.ReviewDecision ->
                     if (section != "人工确认") Text("上次人工确认提交结果未知，请返回人工确认页核对。")
                 null -> Unit
@@ -184,8 +186,24 @@ internal fun Companion(model: DesktopModel) {
                     "媒体" ->
                         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                             if (wide || !detailOpen) {
-                                Column(Modifier.weight(1f)) {
-                                    Page(ui.wallState, onRetry = { model.reloadWall() }) {
+                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    MediaFilters(ui, onApply = {
+                                        detailOpen = false
+                                        model.applyMediaFilter(it)
+                                    }, onReloadLibraries = model::loadMediaLibraries)
+                                    Page(
+                                        ui.wallState,
+                                        onRetry = { model.reloadWall() },
+                                        emptyMessage =
+                                            if (ui.mediaFilter ==
+                                                mediaflow.client.core.media
+                                                    .MediaFilter()
+                                            ) {
+                                                "媒体库暂无内容"
+                                            } else {
+                                                "没有符合筛选条件的媒体，请调整或清除筛选"
+                                            },
+                                    ) {
                                         LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                             items(ui.wall, key = { it.id }) { item ->
                                                 Card(onClick = {
@@ -201,7 +219,14 @@ internal fun Companion(model: DesktopModel) {
                                                     }
                                                 }
                                             }
-                                            item { TextButton(onClick = { model.reloadWall(true) }) { Text("加载更多") } }
+                                            if (ui.wallHasMore) {
+                                                item {
+                                                    TextButton(
+                                                        enabled = ui.wallState !is PageState.Loading,
+                                                        onClick = { model.reloadWall(true) },
+                                                    ) { Text("加载更多") }
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -230,27 +255,89 @@ internal fun Companion(model: DesktopModel) {
                             }
                         }
                     "任务" ->
-                        Column(Modifier.fillMaxSize()) {
-                            if (ui.writeUnknown && ui.writeOperation == DesktopWriteOperation.TaskCancel) {
-                                Text("上次任务取消结果未知，请核对当前状态。取消重试将沿用原幂等键。")
-                                TextButton(enabled = !ui.writeBusy, onClick = model::retryTaskCancel) { Text("重试同一次取消") }
+                        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (ui.writeUnknown &&
+                                ui.writeOperation in setOf(DesktopWriteOperation.TaskCancel, DesktopWriteOperation.TaskRetry)
+                            ) {
+                                val retrying = ui.writeOperation == DesktopWriteOperation.TaskRetry
+                                Text(if (retrying) "上次任务重试结果未知，请刷新核对。再次发送将沿用原幂等键。" else "上次任务取消结果未知，请刷新核对。再次发送将沿用原幂等键。")
+                                TextButton(
+                                    enabled = !ui.writeBusy,
+                                    onClick = if (retrying) model::retryTaskRetry else model::retryTaskCancel,
+                                ) {
+                                    Text(if (retrying) "重发同一次任务重试" else "重试同一次取消")
+                                }
                             }
-                            Page(ui.taskState, onRetry = { model.reloadTasks() }) {
-                                LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    items(ui.tasks, key = { it.id }) { task ->
-                                        Card(Modifier.fillMaxWidth()) {
-                                            Column(Modifier.padding(12.dp)) {
-                                                Text(task.relativePath)
-                                                Text("${task.status} · ${task.stage}")
-                                                if (task.allowedActions.any { it.toString() == "cancel" }) {
-                                                    TextButton(enabled = !ui.writeBusy && !ui.writeUnknown, onClick = {
-                                                        confirm = "取消任务：${task.relativePath}" to { model.cancelTask(task) }
-                                                    }) { Text("取消任务") }
+                            Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                                if (wide || ui.selectedTaskId == null) {
+                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        TaskFilters(ui, model::applyTaskFilter)
+                                        Page(
+                                            ui.taskState,
+                                            onRetry = { model.reloadTasks() },
+                                            emptyMessage = taskEmptyMessage(ui.taskFilter),
+                                        ) {
+                                            LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                items(ui.tasks, key = { it.id }) { task ->
+                                                    Card(onClick = { model.selectTask(task.id) }, modifier = Modifier.fillMaxWidth()) {
+                                                        Column(Modifier.padding(12.dp)) {
+                                                            Text(task.relativePath)
+                                                            Text(
+                                                                "${taskStatus(
+                                                                    task.status.toString(),
+                                                                )} · ${taskStage(task.stage.toString())}",
+                                                            )
+                                                            TaskActions(task, ui, onRetry = {
+                                                                confirm = "重试任务：${task.relativePath}" to { model.retryTask(task) }
+                                                            }, onCancel = {
+                                                                confirm = "取消任务：${task.relativePath}" to { model.cancelTask(task) }
+                                                            })
+                                                        }
+                                                    }
+                                                }
+                                                if (ui.taskHasMore) {
+                                                    item {
+                                                        TextButton(
+                                                            enabled = ui.taskState !is PageState.Loading,
+                                                            onClick = { model.reloadTasks(true) },
+                                                        ) { Text("加载更多") }
+                                                    }
                                                 }
                                             }
                                         }
                                     }
-                                    item { TextButton(onClick = { model.reloadTasks(true) }) { Text("加载更多") } }
+                                }
+                                ui.selectedTaskId?.let { taskId ->
+                                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        TextButton(
+                                            enabled = !ui.writeBusy && !ui.writeUnknown,
+                                            onClick = model::clearTask,
+                                        ) { Text("返回任务列表") }
+                                        if (ui.taskDetailLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
+                                        ui.taskDetailMessage?.let {
+                                            Text(it)
+                                            TextButton(onClick = { model.selectTask(taskId) }) { Text("重试任务详情") }
+                                        }
+                                        ui.selectedTask?.let { task ->
+                                            LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                item { Text(task.relativePath, style = MaterialTheme.typography.titleLarge) }
+                                                item { Text("任务状态：${taskStatus(task.status.toString())}") }
+                                                item { Text("处理阶段：${taskStage(task.stage.toString())}") }
+                                                item { Text("当前检查点：${taskCheckpoint(task.checkpoint.toString())}") }
+                                                item { Text("原因：${taskReason(task.reason?.toString())}") }
+                                                item { Text("已尝试：${task.attemptCount}次") }
+                                                item { Text("下次自动重试：${task.nextRetryAt?.toString() ?: "未安排"}") }
+                                                if (task.recovering) item { Text("服务器正在恢复此任务") }
+                                                item {
+                                                    TaskActions(task, ui, onRetry = {
+                                                        confirm = "重试任务：${task.relativePath}" to { model.retryTask(task) }
+                                                    }, onCancel = {
+                                                        confirm = "取消任务：${task.relativePath}" to { model.cancelTask(task) }
+                                                    })
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -353,6 +440,23 @@ internal fun Companion(model: DesktopModel) {
 }
 
 @Composable
+private fun TaskActions(
+    task: mediaflow.api.models.ProcessingTask,
+    ui: DesktopUi,
+    onRetry: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (task.allowedActions.any { it.toString() == "retry" }) {
+            TextButton(enabled = !ui.writeBusy && !ui.writeUnknown, onClick = onRetry) { Text("重试任务") }
+        }
+        if (task.allowedActions.any { it.toString() == "cancel" }) {
+            TextButton(enabled = !ui.writeBusy && !ui.writeUnknown, onClick = onCancel) { Text("取消任务") }
+        }
+    }
+}
+
+@Composable
 private fun Login(
     model: DesktopModel,
     busy: Boolean,
@@ -393,6 +497,7 @@ private fun Login(
 private fun Page(
     state: PageState,
     onRetry: () -> Unit,
+    emptyMessage: String? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val mode =
@@ -413,9 +518,7 @@ private fun Page(
     RequestState(
         mode,
         stale,
-        (state as? PageState.Error)?.let {
-            readable(it.error)
-        },
+        if (state == PageState.Empty) emptyMessage else (state as? PageState.Error)?.let { readable(it.error) },
         onRetry,
     ) { Column(Modifier.fillMaxSize(), content = content) }
 }
