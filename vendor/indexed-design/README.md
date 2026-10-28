@@ -28,3 +28,9 @@ shasum -a 256 /tmp/indexed-design-ui-vue-0.15.0.tgz
 
 - npm 未发布 `@indexed-design/ui-vue`；`npm install @indexed-design/ui-vue` 不可用。
 - 2026-10-26 起 Indexed-Design 远端 `origin/main` 已含该基线（本地推送 `afd8d4d..60da115`），git 依赖技术上可达；但 npm 仍未发布，且 git 依赖不提供锁文件级字节校验，本仓库继续以 vendored tgz + integrity 为唯一分发真源。后续若发布 npm 或统一改用 git 依赖，可评估退役本目录；切换前本目录是唯一真源。
+
+## CMP Desktop 0.15.0
+
+`maven/dev/indexed/design/compose-desktop/0.15.0` 保存尚未发布公共Maven的桌面库 JAR/POM/Gradle module 三个固定产物。`desktop-provenance.json` 记录完整来源 commit 和逐文件 SHA-256。消费端通过 Gradle exclusiveContent 只从此目录解析该模块，不回退公共同名包。
+
+从对应来源提交的 Indexed-Design `platforms/desktop` 执行 `./gradlew :library:publishDesktopPublicationToProjectLocalRepository` 后拷贝这三个产物并更新清单。更新需要重新运行 `python3 tools/desktop/check-vendor.py`、篡改反例和桌面消费者测试；JAR 内不包含业务 SDK 或凭据。此目录不声称已发布远程Maven。

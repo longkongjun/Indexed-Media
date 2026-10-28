@@ -19,6 +19,15 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        exclusiveContent {
+            forRepository {
+                maven {
+                    name = "indexedDesignVendored"
+                    url = uri("vendor/indexed-design/maven")
+                }
+            }
+            filter { includeModule("dev.indexed.design", "compose-desktop") }
+        }
     }
 }
 
@@ -32,3 +41,5 @@ include(":packages:ui-android")
 include(":packages:ui-android-tv")
 include(":tools:ui-android-consumer")
 include(":tools:ui-tv-consumer")
+
+include(":apps:desktop")

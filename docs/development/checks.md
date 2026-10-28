@@ -82,3 +82,7 @@ just bench-m2-recovery-timing
 结果应放在源码树以外；输出父目录必须已存在，结果及同名前缀日志不能覆盖。入口先核对参考硬件/OS/文件系统/CPU数/内存/临时路径深度和1分钟负载，再以test-opt0（debug=0、incremental=0）运行两个完整原生用例；不能与既有release版100k/1000容量数字混用。每个场景测量1次完整流程，只记录单次总耗时，不声称p95或长期稳定性。每项在全部正确性断言通过后输出阶段计时，记录命令、SHA、Core源码摘要、profile、参考/实测环境和原始日志。原生扫描计时包括Scanner执行，重启计时从第二个Core启动至completed，均不包括数据集准备；不是整份测试总耗时。
 
 退出0且status=passed才是本参考环境的两项性能通过；超预算或正确性失败退出1/status=failed；环境不匹配或负载超出参考条件退出2/status=environment-unavailable，保持待验。计时样本缺失、错误数据量、重复样本、源码中途变化不能通过；自定义Rust flags不属于该参考profile。普通正确性全绿、受控fixture完成或缺环境均不能代签本性能出口，也不证明NAS/实机/CI或人工G1/L0验收。
+
+## CMP Desktop
+
+`just client-check-desktop` 校验固定Design JAR/POM/module的来源指纹、篡改反例以及桌面ktlint/行为测试/编译；已纳入client-check。`just package-desktop`只构建当前宿主自包含目录。桌面CI为独立Mac/Windows矩阵，系统安全存储使用唯一随机测试项与非敏感数据并清理。当前执行证据由Personal Forge change维护；Windows运行、签名、公证、人工体验及真实Core验收不由构建或fixture代签。详见[桌面模块](../../apps/desktop/README.md)。

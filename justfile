@@ -606,3 +606,15 @@ client-check:
     @just client-check-android
     @just client-check-fixture-server
     @just client-check-ios
+    @just client-check-desktop
+
+# 桌面伴侣工程检查；使用仓库内固定Design产物，不依赖邻仓构建目录。
+client-check-desktop:
+    @python3 tools/desktop/check-vendor.py
+    @PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools/desktop -p 'test_*.py'
+    @./gradlew :apps:desktop:ktlintCheck :apps:desktop:test :apps:desktop:classes --console=plain
+
+# 对应宿主的可运行自包含桌面目录；Mac/Windows分别构建、运行和验收。
+package-desktop:
+    @python3 tools/desktop/check-vendor.py
+    @./gradlew :apps:desktop:createDistributable --console=plain

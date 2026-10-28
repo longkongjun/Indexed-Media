@@ -2,6 +2,8 @@
 # 升级走独立提交 + 全量门禁，不与功能提交混合。
 
 [versions]
+compose-multiplatform = "1.12.2"
+jna = "5.19.1"
 kotlin = "2.4.21"
 agp = "9.4.1"
 compose-bom = "2026.06.00"
@@ -49,6 +51,7 @@ sqldelight-driver-native = { module = "app.cash.sqldelight:native-driver", versi
 openapi-generator-cli = { module = "org.openapitools:openapi-generator-cli", version.ref = "openapi-generator" }
 
 [plugins]
+compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "compose-multiplatform" }
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }

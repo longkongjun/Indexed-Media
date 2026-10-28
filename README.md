@@ -19,6 +19,7 @@ MediaFlow/
 |   |-- core/                     # Rust Core、API、任务与文件处理
 |   |-- web/                      # Vue Web / PWA
 |   |-- android/                  # Jetpack Compose 手机与平板客户端
+|   |-- desktop/                  # CMP Desktop Mac/Windows 伴侣
 |   |-- ios/                      # SwiftUI 手机与平板客户端
 |   |-- android-tv/               # Compose for TV 客户端
 |   `-- tvos/                     # SwiftUI tvOS 客户端

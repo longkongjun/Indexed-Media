@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "coordinate": "dev.indexed.design:compose-desktop:0.15.0",
+  "source_repository": "https://github.com/longkongjun/Indexed-Design",
+  "source_commit": "d2dc5bf0641534c288f77326f8aac5685d98c374",
+  "files": {
+    "dev/indexed/design/compose-desktop/0.15.0/compose-desktop-0.15.0.jar": "6bea46880f3a1813f04181cb020e6e698142036e9878a6bb41dec937fb8055ba",
+    "dev/indexed/design/compose-desktop/0.15.0/compose-desktop-0.15.0.pom": "95434c7784c259c014dab56c4293d3f6d4b29b91246d48a1610433b4964043fc",
+    "dev/indexed/design/compose-desktop/0.15.0/compose-desktop-0.15.0.module": "250d6d2f0a73398a9ec7e0964611f2ec87f4d07d471ad09a89a43c68d5c4c557"
+  }
+}

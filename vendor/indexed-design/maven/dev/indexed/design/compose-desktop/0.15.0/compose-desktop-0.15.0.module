@@ -1,0 +1,124 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "dev.indexed.design",
+    "module": "compose-desktop",
+    "version": "0.15.0",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.8.1"
+    }
+  },
+  "variants": [
+    {
+      "name": "apiElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.jvm.version": 21,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.compose.runtime",
+          "module": "runtime",
+          "version": {
+            "requires": "1.12.2"
+          }
+        },
+        {
+          "group": "org.jetbrains.compose.foundation",
+          "module": "foundation",
+          "version": {
+            "requires": "1.12.2"
+          }
+        },
+        {
+          "group": "org.jetbrains.compose.material3",
+          "module": "material3",
+          "version": {
+            "requires": "1.9.0"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.21"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "compose-desktop-0.15.0.jar",
+          "url": "compose-desktop-0.15.0.jar",
+          "size": 15901,
+          "sha512": "86aad56a875517589fcd98970b969239ae00c82c36db3fd0e5406285695719ec176f6708bae0ff5b83039f406fb0d58bb21cbbbe5c64d740bad5181b082301d0",
+          "sha256": "6bea46880f3a1813f04181cb020e6e698142036e9878a6bb41dec937fb8055ba",
+          "sha1": "cb6edd21c6af6bb8cb1afc332a5d8d37db1fe02a",
+          "md5": "16d3d43ab02f3254067ae66fb8313cec"
+        }
+      ]
+    },
+    {
+      "name": "runtimeElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.jvm.environment": "standard-jvm",
+        "org.gradle.jvm.version": 21,
+        "org.gradle.libraryelements": "jar",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.compose.runtime",
+          "module": "runtime",
+          "version": {
+            "requires": "1.12.2"
+          }
+        },
+        {
+          "group": "org.jetbrains.compose.foundation",
+          "module": "foundation",
+          "version": {
+            "requires": "1.12.2"
+          }
+        },
+        {
+          "group": "org.jetbrains.compose.material3",
+          "module": "material3",
+          "version": {
+            "requires": "1.9.0"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.21"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "compose-desktop-0.15.0.jar",
+          "url": "compose-desktop-0.15.0.jar",
+          "size": 15901,
+          "sha512": "86aad56a875517589fcd98970b969239ae00c82c36db3fd0e5406285695719ec176f6708bae0ff5b83039f406fb0d58bb21cbbbe5c64d740bad5181b082301d0",
+          "sha256": "6bea46880f3a1813f04181cb020e6e698142036e9878a6bb41dec937fb8055ba",
+          "sha1": "cb6edd21c6af6bb8cb1afc332a5d8d37db1fe02a",
+          "md5": "16d3d43ab02f3254067ae66fb8313cec"
+        }
+      ]
+    }
+  ]
+}
