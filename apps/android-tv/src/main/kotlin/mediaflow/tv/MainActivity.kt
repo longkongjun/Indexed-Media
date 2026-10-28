@@ -14,9 +14,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -52,14 +54,15 @@ internal fun TvApplication(
     val owner = LocalLifecycleOwner.current
     val images = remember(ui.identity) { TvArtworkCache() }
     val savedScreens = rememberSaveableStateHolder()
-    var settings by remember(ui.identity) { mutableStateOf(false) }
-    DisposableEffect(images, ui.identity) {
-        val wallKey = "wall-${ui.identity}"
-        onDispose {
-            images.clear()
-            savedScreens.removeState(wallKey)
+    var settings by rememberSaveable(ui.identity) { mutableStateOf(false) }
+    var previousIdentity by rememberSaveable { mutableStateOf(ui.identity) }
+    LaunchedEffect(ui.identity) {
+        if (previousIdentity != ui.identity) {
+            savedScreens.removeState("wall-$previousIdentity")
+            previousIdentity = ui.identity
         }
     }
+    DisposableEffect(images) { onDispose { images.clear() } }
     DisposableEffect(owner, model) {
         val observer =
             LifecycleEventObserver { _, event ->
@@ -69,7 +72,7 @@ internal fun TvApplication(
         onDispose { owner.lifecycle.removeObserver(observer) }
     }
     BackHandler(enabled = ui.connected && (ui.detailOpen || settings)) {
-        if (ui.detailOpen) model.back() else settings = false
+        if (ui.detailOpen) model.backInDetail() else settings = false
     }
     IndexedTvTheme(dark = theme.isDark(isSystemInDarkTheme())) {
         Column(

@@ -18,14 +18,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -275,68 +272,11 @@ internal fun TvPoster(
     }
 }
 
-@Composable
-internal fun TvDetail(
-    ui: TvUi,
-    model: TvModel,
-    images: TvArtworkCache,
-    open: (String) -> Unit,
-) {
-    val back = remember { FocusRequester() }
-    var initialFocus by remember { mutableStateOf(true) }
-    Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(32.dp)) {
-        ui.detail?.item?.let { item -> TvPoster(ui, model, images, item.id, Modifier.width(240.dp)) }
-        LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            item {
-                IndexedTvButton("返回影视墙", onClick = model::back, modifier = Modifier.focusRequester(back))
-                // 等待Lazy子项真正装配，刷新或重新滚入时不抢夺阅读焦点。
-                LaunchedEffect(Unit) {
-                    if (initialFocus) {
-                        back.requestFocus()
-                        initialFocus = false
-                    }
-                }
-            }
-            item { if (ui.detailLoading) Text("正在加载影片详情") }
-            ui.detail?.let { detail ->
-                item { TvReadableText(detail.item.title, MaterialTheme.typography.headlineMedium) }
-                item {
-                    val status = if (detail.item.localStatus.toString() == "complete") "完整入库" else "部分入库"
-                    TvReadableText("${detail.item.year ?: ""} · $status")
-                }
-                items(
-                    detail.metadata,
-                ) { metadata -> TvReadableText("${metadataLabel(metadata.field)}：${metadata.value ?: "未提供"}") }
-                items(detail.versions) { version -> TvReadableText("${version.label ?: "媒体版本"} · ${version.files.size} 个文件") }
-                items(detail.children) { child -> TvReadableText(child.title) }
-            }
-            item {
-                val url = ui.playbackUrl
-                if (url == null) {
-                    TvReadableText("外部播放尚未配置或暂不可用，请在Web管理端检查连接。")
-                } else {
-                    IndexedTvButton("打开外部播放服务", onClick = { open(url) })
-                }
-            }
-            item { IndexedTvButton("重新加载详情", onClick = model::refresh) }
-        }
-    }
-}
-
 private fun mediaTypeName(type: String): String =
     when (type) {
         "movie" -> "电影"
         "series" -> "剧集"
         else -> "通用视频"
-    }
-
-private fun metadataLabel(field: String): String =
-    when (field) {
-        "title" -> "片名"
-        "original_title" -> "原名"
-        "overview" -> "简介"
-        "year" -> "年份"
-        else -> "资料"
     }
 
 private data class PosterImage(
@@ -347,6 +287,7 @@ private data class PosterImage(
 @Composable
 internal fun TvReadableText(
     text: String,
+    modifier: Modifier = Modifier,
     style: TextStyle = MaterialTheme.typography.bodyLarge,
 ) {
     var focused by remember { mutableStateOf(false) }
@@ -355,7 +296,7 @@ internal fun TvReadableText(
     val step = with(LocalDensity.current) { 60.dp.toPx() }
     Text(
         text,
-        Modifier
+        modifier
             .fillMaxWidth()
             .heightIn(max = 180.dp)
             .border(2.dp, if (focused) MaterialTheme.colorScheme.primary else Color.Transparent)

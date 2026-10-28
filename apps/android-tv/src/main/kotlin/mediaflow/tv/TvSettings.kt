@@ -12,6 +12,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -35,7 +36,7 @@ internal fun TvSettings(
     onLogout: (Long) -> Unit,
 ) {
     var confirming by remember(ui.identity) { mutableStateOf(false) }
-    var restoreExit by remember(ui.identity) { mutableStateOf(false) }
+    var restoreExit by rememberSaveable(ui.identity) { mutableStateOf(false) }
     val exit = remember { FocusRequester() }
     LaunchedEffect(confirming, restoreExit) {
         if (!confirming && restoreExit) {
@@ -57,7 +58,10 @@ internal fun TvSettings(
                 modifier = Modifier.semantics { selected = theme == choice },
             )
         }
-        IndexedTvButton("断开并退出设备", onClick = { confirming = true }, modifier = Modifier.focusRequester(exit))
+        IndexedTvButton("断开并退出设备", onClick = {
+            restoreExit = true
+            confirming = true
+        }, modifier = Modifier.focusRequester(exit))
     }
     if (confirming) {
         TvLogoutDialog(ui, onCancel = {
@@ -66,6 +70,7 @@ internal fun TvSettings(
         }, onConfirm = {
             if (confirming) {
                 confirming = false
+                restoreExit = false
                 onLogout(ui.identity)
             }
         })

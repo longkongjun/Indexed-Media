@@ -35,6 +35,8 @@ internal data class TvUi(
     val hasMore: Boolean = false,
     val libraries: List<MediaLibrary> = emptyList(),
     val detail: MediaItemDetail? = null,
+    val detailMediaId: String? = null,
+    val detailPath: TvDetailPath = TvDetailPath(),
     val detailLoading: Boolean = false,
     val detailOpen: Boolean = false,
     val playbackUrl: String? = null,
@@ -62,7 +64,6 @@ internal class TvModel(
     private var pageWork: Job? = null
     private var detailWork: Job? = null
     private var pager: CursorPager<MediaItemSummary>? = null
-    private var selectedDetailId: String? = null
 
     fun connect(
         serverInput: String,
@@ -148,7 +149,6 @@ internal class TvModel(
     fun filter(value: MediaFilter) {
         if (value == state.value.filter || session == null) return
         ++detailGeneration
-        selectedDetailId = null
         detailWork?.cancel()
         update {
             it.copy(
@@ -158,6 +158,8 @@ internal class TvModel(
                 hasMore = false,
                 detailOpen = false,
                 detail = null,
+                detailMediaId = null,
+                detailPath = TvDetailPath(),
                 playbackUrl = null,
             )
         }
@@ -181,6 +183,8 @@ internal class TvModel(
                 page = PageState.Loading(false),
                 hasMore = false,
                 detail = null,
+                detailMediaId = null,
+                detailPath = TvDetailPath(),
                 detailOpen = false,
                 playbackUrl = null,
             )
@@ -230,22 +234,38 @@ internal class TvModel(
                 }
             }
         }
-        if (state.value.detailOpen) selectedDetailId?.let(::detail)
+        if (state.value.detailOpen) state.value.detailMediaId?.let(::detail)
     }
 
     fun detail(id: String) {
         val current = session ?: return
-        selectedDetailId = id
+        val refreshing = state.value.detailMediaId == id
         val token = generation
         val selected = ++detailGeneration
         detailWork?.cancel()
-        update { it.copy(detailOpen = true, detail = null, detailLoading = true, playbackUrl = null, message = null) }
+        update {
+            it.copy(
+                detailOpen = true,
+                detailMediaId = id,
+                detailPath = if (refreshing) it.detailPath else TvDetailPath(),
+                detail = if (refreshing) it.detail else null,
+                detailLoading = true,
+                playbackUrl = if (refreshing) it.playbackUrl else null,
+                message = null,
+            )
+        }
         detailWork =
             CoroutineScope(scope.coroutineContext + sessionWork).launch {
                 when (val response = current.media.detail(id)) {
                     is SdkResult.Success ->
                         if (session === current && generation == token && detailGeneration == selected) {
-                            update { it.copy(detail = response.value, detailLoading = false) }
+                            update {
+                                it.copy(
+                                    detail = response.value,
+                                    detailLoading = false,
+                                    detailPath = reconcileDetailPath(response.value, it.detailPath),
+                                )
+                            }
                             when (val playback = current.playback.externalPlaybackUrl()) {
                                 is SdkResult.Success ->
                                     if (session === current &&
@@ -267,10 +287,45 @@ internal class TvModel(
     }
 
     fun back() {
-        selectedDetailId = null
         ++detailGeneration
         detailWork?.cancel()
-        update { it.copy(detailOpen = false, detail = null, detailLoading = false, playbackUrl = null) }
+        update {
+            it.copy(
+                detailOpen = false,
+                detail = null,
+                detailMediaId = null,
+                detailPath = TvDetailPath(),
+                detailLoading = false,
+                playbackUrl = null,
+            )
+        }
+    }
+
+    fun selectDetailNode(id: String): Boolean {
+        val ui = state.value
+        val detail = ui.detail ?: return false
+        if (!ui.connected || !ui.detailOpen || ui.detailLoading) return false
+        val node = tvDetailNodes(detail, ui.detailPath).firstOrNull { it.id == id } ?: return false
+        val path =
+            if (node.type ==
+                mediaflow.api.models.MediaChild.Type.season
+            ) {
+                TvDetailPath(seasonId = id)
+            } else {
+                ui.detailPath.copy(childId = id)
+            }
+        update { it.copy(detailPath = path) }
+        return true
+    }
+
+    /** 物理Back和详情返回逐级后退；全局导航继续使用back直接回影视墙。 */
+    fun backInDetail() {
+        val path = state.value.detailPath
+        when {
+            path.childId != null -> update { it.copy(detailPath = path.copy(childId = null)) }
+            path.seasonId != null -> update { it.copy(detailPath = TvDetailPath()) }
+            else -> back()
+        }
     }
 
     suspend fun artwork(id: String): SdkResult<Artwork> {
@@ -347,7 +402,6 @@ internal class TvModel(
         pager = null
         pageWork = null
         detailWork = null
-        selectedDetailId = null
     }
 
     private fun update(change: (TvUi) -> TvUi) {
@@ -361,7 +415,6 @@ internal class TvModel(
         session?.close()
         session = null
         pager = null
-        selectedDetailId = null
         mutable.value = TvUi(server = state.value.server, identity = generation)
     }
 }

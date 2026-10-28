@@ -4,6 +4,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -19,6 +20,19 @@ import kotlin.test.assertEquals
 class TvSettingsTest {
     @get:Rule val compose = createComposeRule()
     private val ui = TvUi(connected = true, identity = 7, server = "https://nas.local", deviceName = "Living room")
+
+    @Test
+    fun recreationClosesConfirmationAndRestoresItsTriggerWithoutLoggingOut() {
+        var exits = 0
+        val restoration = StateRestorationTester(compose)
+        restoration.setContent { IndexedTvTheme { TvSettings(ui, TvTheme.System, "test", {}, { exits++ }) } }
+        compose.onNodeWithText("断开并退出设备").performScrollTo().performClick()
+        compose.onNodeWithText("取消").assertIsFocused()
+        restoration.emulateSavedInstanceStateRestore()
+        compose.onNodeWithText("取消").assertDoesNotExist()
+        compose.onNodeWithText("断开并退出设备").assertIsFocused()
+        compose.runOnIdle { assertEquals(0, exits) }
+    }
 
     @Test
     fun settingsShowsIdentityVersionAndExplicitThemeSelection() {
