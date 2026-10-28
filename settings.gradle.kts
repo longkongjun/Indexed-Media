@@ -24,9 +24,13 @@ dependencyResolutionManagement {
                 maven {
                     name = "indexedDesignVendored"
                     url = uri("vendor/indexed-design/maven")
+                    metadataSources { gradleMetadata() }
                 }
             }
-            filter { includeModule("dev.indexed.design", "compose-desktop") }
+            filter {
+                includeModule("dev.indexed.design", "compose-desktop")
+                includeModule("dev.indexed.design", "compose-tv")
+            }
         }
     }
 }
@@ -43,3 +47,4 @@ include(":tools:ui-android-consumer")
 include(":tools:ui-tv-consumer")
 
 include(":apps:desktop")
+include(":apps:android-tv")

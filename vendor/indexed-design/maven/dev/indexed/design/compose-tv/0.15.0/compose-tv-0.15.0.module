@@ -1,0 +1,148 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "dev.indexed.design",
+    "module": "compose-tv",
+    "version": "0.15.0",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.8.1"
+    }
+  },
+  "variants": [
+    {
+      "name": "releaseVariantReleaseApiPublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-api"
+      },
+      "dependencies": [
+        {
+          "group": "androidx.compose",
+          "module": "compose-bom",
+          "version": {
+            "requires": "2026.06.00"
+          },
+          "attributes": {
+            "org.gradle.category": "platform"
+          },
+          "endorseStrictVersions": true
+        },
+        {
+          "group": "androidx.compose.ui",
+          "module": "ui"
+        },
+        {
+          "group": "androidx.compose.foundation",
+          "module": "foundation"
+        },
+        {
+          "group": "androidx.tv",
+          "module": "tv-material",
+          "version": {
+            "requires": "1.1.0"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.21"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "compose-tv-0.15.0.aar",
+          "url": "compose-tv-0.15.0.aar",
+          "size": 25140,
+          "sha512": "0777984efd834c65d3a174234dcdf58ceb447af9adf8c39ee0f1dd16f929d66c430000c4146685e762eea239113238aa323ada4f4441f390edb918e6b359f9d0",
+          "sha256": "3a1a21b2a07feec0f884973f9eebcdf83df56a6071501d3fcedeb05489bc7ad4",
+          "sha1": "25c9b23abdaced128f4fc62b215d4470a3a2e387",
+          "md5": "0be3188403da5d680f98f0a2de811365"
+        }
+      ]
+    },
+    {
+      "name": "releaseVariantReleaseRuntimePublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-runtime"
+      },
+      "dependencies": [
+        {
+          "group": "androidx.compose",
+          "module": "compose-bom",
+          "version": {
+            "requires": "2026.06.00"
+          },
+          "attributes": {
+            "org.gradle.category": "platform"
+          },
+          "endorseStrictVersions": true
+        },
+        {
+          "group": "androidx.compose.ui",
+          "module": "ui"
+        },
+        {
+          "group": "androidx.compose.foundation",
+          "module": "foundation"
+        },
+        {
+          "group": "androidx.tv",
+          "module": "tv-material",
+          "version": {
+            "requires": "1.1.0"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.21"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "compose-tv-0.15.0.aar",
+          "url": "compose-tv-0.15.0.aar",
+          "size": 25140,
+          "sha512": "0777984efd834c65d3a174234dcdf58ceb447af9adf8c39ee0f1dd16f929d66c430000c4146685e762eea239113238aa323ada4f4441f390edb918e6b359f9d0",
+          "sha256": "3a1a21b2a07feec0f884973f9eebcdf83df56a6071501d3fcedeb05489bc7ad4",
+          "sha1": "25c9b23abdaced128f4fc62b215d4470a3a2e387",
+          "md5": "0be3188403da5d680f98f0a2de811365"
+        }
+      ]
+    },
+    {
+      "name": "releaseVariantReleaseSourcePublication",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.usage": "java-runtime"
+      },
+      "files": [
+        {
+          "name": "compose-tv-0.15.0-sources.jar",
+          "url": "compose-tv-0.15.0-sources.jar",
+          "size": 4019,
+          "sha512": "98f52634fc8eb233f78fb98f9397dd8c04850dfa66cee07305652a8b02a1b87a16cad8945731b939c8a507e3b3e094ad1f27c3b74d95700075b20fed6cc2815a",
+          "sha256": "127c560ee2c9d5ee24172f989352b413729c3dc123e8514ec228eb65e3068209",
+          "sha1": "3e9989029a234b96d294f89376366a2f7622b28c",
+          "md5": "bfc2de0678599c2844dcba6738b69222"
+        }
+      ]
+    }
+  ]
+}

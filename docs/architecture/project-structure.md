@@ -23,6 +23,7 @@ MediaFlow/
 - Core 不提供播放、转码、站点聚合或必需的云端控制面。
 - 正式 Web 使用 Vue；Android 使用 Jetpack Compose；iOS 使用 SwiftUI。
 - KMP SDK 共享业务与数据逻辑，不包含 UI；新增 `apps/desktop` 使用 JVM 目标，在 Mac/Windows 之间共享 CMP Desktop 页面，Android/iOS 仍分别使用 Compose/SwiftUI。
+- `apps/android-tv` 独立持有 Compose for TV 页面、遥控焦点、IME、Android生命周期和图片解码；复用KMP的只读设备认证、媒体查询和有界图片传输，消费固定来源的Indexed-Design TV组件。Core按显式allowlist限制TV设备，不把手机或桌面的任务管理能力带入TV。
 
 Vue基础库位于`packages/ui-vue`，公开JS/类型/CSS入口；媒体页只做必要按钮消费。Android/Android TV/SwiftUI基础库分别位于`packages/ui-android`、`packages/ui-android-tv`、`packages/ui-swift`。它们只依赖平台框架/成熟UI原语，不导入业务SDK、实体、路由、权限或Core契约；`tools/ui-*-consumer`是从公开入口依赖的无业务原生消费者，不是展示站或正式TV客户端。SwiftUI包与iOS消费源码已纳入main，完整iOS构建与UI测试仍需具备匹配Xcode/SDK后验收。
 

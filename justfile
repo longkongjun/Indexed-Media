@@ -353,7 +353,7 @@ test-web-identity:
     @CI=true pnpm --filter @mediaflow/web typecheck
     @CI=true pnpm --filter @mediaflow/web test -- --run tests/router.test.ts tests/identity.test.ts tests/accessibility.test.ts
 
-# 检查当前 Android/iOS；TV 仍使用独立未初始化入口。
+# 检查手机和平板 Android/iOS。
 check-mobile:
     @just check-android
     @just check-ios
@@ -366,10 +366,9 @@ check-android:
 check-ios:
     @just client-check-ios
 
-# 检查 Android TV 应用；当前模块未初始化，因此返回状态 2。
+# 检查正式 Android TV 影视墙应用。
 check-android-tv:
-    @printf '未初始化：apps/android-tv\n' >&2
-    @exit 2
+    @just client-check-android-tv
 
 # 检查 tvOS 应用；当前模块未初始化，因此返回状态 2。
 check-tvos:
@@ -581,6 +580,12 @@ client-docs-kmp-sdk:
 client-check-android:
     @./gradlew :apps:android:ktlintCheck :apps:android:lintDebug :apps:android:assembleDebug :apps:android:testDebugUnitTest
 
+# TV JVM、lint、应用与遥控测试APK编译；真机执行另行验收。
+client-check-android-tv:
+    @python3 tools/desktop/check-vendor.py tv
+    @PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools/desktop -p 'test_*.py'
+    @./gradlew :apps:android-tv:ktlintCheck :apps:android-tv:lintDebug :apps:android-tv:testDebugUnitTest :apps:android-tv:assembleDebug :apps:android-tv:assembleDebugAndroidTest
+
 # 夹具服务格式、构建与实际HTTP端点契约回归。
 client-check-fixture-server:
     @./gradlew :tools:client-fixture-server:ktlintCheck :tools:client-fixture-server:build
@@ -604,6 +609,7 @@ client-check:
     @just client-check-kmp-sdk
     @just client-docs-kmp-sdk
     @just client-check-android
+    @just client-check-android-tv
     @just client-check-fixture-server
     @just client-check-ios
     @just client-check-desktop

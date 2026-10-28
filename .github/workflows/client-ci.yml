@@ -69,7 +69,7 @@ jobs:
         with:
           cache-read-only: ${{ github.event_name != 'push' || github.ref != 'refs/heads/main' }}
       - name: android
-        run: just client-check-android 2>&1 | tee "$RUNNER_TEMP/android.log"
+        run: just client-check-android client-check-android-tv 2>&1 | tee "$RUNNER_TEMP/android.log"
       - name: Preserve android reports
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

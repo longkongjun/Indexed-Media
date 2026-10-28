@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "coordinate": "dev.indexed.design:compose-tv:0.15.0",
+  "source_repository": "https://github.com/longkongjun/Indexed-Design",
+  "source_commit": "c4fec4e014f2c050d3b15b824090c983dfa8f246",
+  "files": {
+    "dev/indexed/design/compose-tv/0.15.0/compose-tv-0.15.0.aar": "3a1a21b2a07feec0f884973f9eebcdf83df56a6071501d3fcedeb05489bc7ad4",
+    "dev/indexed/design/compose-tv/0.15.0/compose-tv-0.15.0.pom": "dca70f7db4b132585e99f5c3ad7bf66d481aa1a17faa2a362f5b9f590aa52049",
+    "dev/indexed/design/compose-tv/0.15.0/compose-tv-0.15.0.module": "93bc443bcf2310eb9d011237237bb6977727581e774df31a3cfaea30d7216692",
+    "dev/indexed/design/compose-tv/0.15.0/compose-tv-0.15.0-sources.jar": "127c560ee2c9d5ee24172f989352b413729c3dc123e8514ec228eb65e3068209"
+  }
+}

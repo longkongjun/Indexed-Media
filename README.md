@@ -51,7 +51,7 @@ MediaFlow/
 
 正式代码的依赖方向是 `apps -> packages -> contracts`。`labs` 可以使用 `packages` 和 `contracts`，但正式应用与共享包不能依赖 `labs` 或 `archive`。
 
-当前已实现 Rust Core、Vue Web、契约/TS 包、KMP SDK、Android、iOS、JVM 夹具服务及单容器部署入口。TV、Dart、Flutter 等未初始化模块保留独立边界；已实现不等于已经通过真实服务、设备或正式交付验收。
+当前已实现 Rust Core、Vue Web、契约/TS 包、KMP SDK、Android、iOS、CMP Desktop、[Android TV 影视墙](apps/android-tv/README.md)、JVM 夹具服务及单容器部署入口。tvOS、Dart、Flutter 等未初始化模块保留独立边界；已实现不等于已经通过真实服务、设备或正式交付验收。
 
 ## 检查状态
 
