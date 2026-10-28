@@ -119,6 +119,18 @@ class DesktopRefreshTest {
         }
 
     @Test
+    fun sameMediaRefreshKeepsTheLoadedProjection() =
+        withCompanion { model, _ ->
+            compose.onNodeWithText("沙丘").performClick()
+            compose.waitUntil(10_000) { model.state.value.detail != null }
+            compose.runOnIdle {
+                val before = requireNotNull(model.state.value.detail)
+                model.detail(before.item.id)
+                assertEquals(before, model.state.value.detail)
+            }
+        }
+
+    @Test
     fun unknownTaskCancelDoesNotOfferReviewResubmission() =
         withCompanion { model, _ ->
             compose.onNodeWithText("人工确认").performClick()

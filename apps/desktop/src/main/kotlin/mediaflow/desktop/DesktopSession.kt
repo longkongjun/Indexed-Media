@@ -45,6 +45,9 @@ internal class DesktopSession(
     private val api = factory.defaultApi(transport)
     val auth = AuthRepository(transport, store, authCache, json)
     val media = MediaRepository(api, json)
+    val artwork =
+        mediaflow.client.core.media
+            .ArtworkRepository(transport, json)
     val review = ReviewRepository(api, transport, authCache, json)
     val tasks = TaskRepository(api, transport, authCache, json)
     val playback = PlaybackRepository(api, json)

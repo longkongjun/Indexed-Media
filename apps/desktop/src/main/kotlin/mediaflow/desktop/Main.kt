@@ -32,6 +32,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -118,6 +119,12 @@ internal fun Companion(model: DesktopModel) {
         val server = model.rememberedServer()
         if (server.isNotBlank()) model.login(server, true, "", "", "", restore = true)
     }
+    val wallGrid =
+        key(ui.sessionEpoch, ui.mediaFilter) {
+            androidx.compose.foundation.lazy.grid
+                .rememberLazyGridState()
+        }
+    var selectedMedia by remember(ui.sessionEpoch) { mutableStateOf<String?>(null) }
     var section by remember { mutableStateOf("媒体") }
     var detailOpen by remember { mutableStateOf(false) }
     var localError by remember { mutableStateOf<String?>(null) }
@@ -204,46 +211,39 @@ internal fun Companion(model: DesktopModel) {
                                                 "没有符合筛选条件的媒体，请调整或清除筛选"
                                             },
                                     ) {
-                                        LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            items(ui.wall, key = { it.id }) { item ->
-                                                Card(onClick = {
+                                        key(ui.sessionEpoch) {
+                                            DesktopPosterWall(
+                                                ui.wall,
+                                                ui.wallHasMore,
+                                                ui.wallState is PageState.Loading,
+                                                model::artwork,
+                                                onSelect = { id ->
+                                                    selectedMedia = id
                                                     detailOpen = true
-                                                    model.detail(item.id)
-                                                }, modifier = Modifier.fillMaxWidth()) {
-                                                    Column(Modifier.padding(12.dp)) {
-                                                        Text(item.title)
-                                                        Text(
-                                                            "${item.year ?: ""} · ${item.localStatus}",
-                                                            style = MaterialTheme.typography.bodyMedium,
-                                                        )
-                                                    }
-                                                }
-                                            }
-                                            if (ui.wallHasMore) {
-                                                item {
-                                                    TextButton(
-                                                        enabled = ui.wallState !is PageState.Loading,
-                                                        onClick = { model.reloadWall(true) },
-                                                    ) { Text("加载更多") }
-                                                }
-                                            }
+                                                    model.detail(id)
+                                                },
+                                                onMore = { model.reloadWall(true) },
+                                                modifier = Modifier.weight(1f),
+                                                gridState = wallGrid,
+                                                selectedId = selectedMedia,
+                                                restoreFocus = !detailOpen,
+                                            )
                                         }
                                     }
                                 }
                             }
                             if (detailOpen) {
                                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    TextButton(onClick = { detailOpen = false }) { Text("返回媒体列表") }
+                                    if (ui.detail == null) {
+                                        TextButton(onClick = { detailOpen = false }) { Text("返回媒体列表") }
+                                        if (!ui.detailLoading) {
+                                            TextButton(onClick = { selectedMedia?.let(model::detail) }) { Text("重试媒体详情") }
+                                        }
+                                    }
                                     if (ui.detailLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
-                                    ui.detail?.let { detail ->
-                                        LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            item { Text(detail.item.title, style = MaterialTheme.typography.titleLarge) }
-                                            item { Text("状态：${detail.item.localStatus}") }
-                                            items(detail.metadata) { metadata -> Text("${metadata.field}：${metadata.value ?: "未提供"}") }
-                                            items(
-                                                detail.versions,
-                                            ) { version -> Text("${version.label ?: "媒体版本"} · ${version.files.size} 个文件") }
-                                            items(detail.children) { child -> Text(child.title) }
+                                    key(ui.sessionEpoch) {
+                                        ui.detail?.let { detail ->
+                                            DesktopMediaDetail(detail, Modifier.weight(1f)) { detailOpen = false }
                                         }
                                     }
                                     ui.playbackUrl?.let { url ->

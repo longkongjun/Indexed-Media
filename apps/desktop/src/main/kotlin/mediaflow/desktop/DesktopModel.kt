@@ -47,6 +47,7 @@ private data class PendingTaskWrite(
 
 internal data class DesktopUi(
     val loggedIn: Boolean = false,
+    val sessionEpoch: Long = 0,
     val busy: Boolean = false,
     val message: String? = null,
     val wall: List<MediaItemSummary> = emptyList(),
@@ -201,7 +202,7 @@ internal class DesktopModel(
                     return@action
                 }
                 session = candidate
-                mutable.value = DesktopUi(loggedIn = true)
+                mutable.value = DesktopUi(loggedIn = true, sessionEpoch = token)
                 attach(candidate, token)
             } catch (failure: Exception) {
                 if (session === candidate) {
@@ -570,12 +571,28 @@ internal class DesktopModel(
         }
     }
 
+    suspend fun artwork(id: String): mediaflow.client.core.media.Artwork? {
+        val (current, token) = withContext(dispatcher) { session to generation }
+        val active = current ?: return null
+        val response = active.artwork.poster(id)
+        return withContext(dispatcher) {
+            if (generation != token || session !== active) return@withContext null
+            when (response) {
+                is SdkResult.Success -> response.value
+                is SdkResult.Failure -> {
+                    if (response.error.isCredentialExpired()) logout(expired = true)
+                    null
+                }
+            }
+        }
+    }
+
     fun detail(id: String) {
         val selected = ++detailGeneration
-        update { it.copy(detail = null, detailLoading = true, playbackUrl = null) }
+        update { it.copy(detail = it.detail?.takeIf { detail -> detail.item.id == id }, detailLoading = true, playbackUrl = null) }
         inSession(stillCurrent = { selected == detailGeneration }) { s, token ->
             val cache = withContext(s.io) { s.cache.cachedDetail(id) }
-            if (token == generation && selected == detailGeneration) update { it.copy(detail = cache) }
+            if (token == generation && selected == detailGeneration) update { it.copy(detail = it.detail ?: cache) }
             val loaded = s.media.detail(id)
             if (selected != detailGeneration) return@inSession
             result(loaded, s, token) { detail -> update { it.copy(detail = detail, detailLoading = false) } }
