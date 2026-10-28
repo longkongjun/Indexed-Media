@@ -3,7 +3,7 @@ use std::sync::Arc;
 use axum::body::Body;
 use axum::extract::State;
 use axum::http::{Request, StatusCode, Uri, header};
-use axum::middleware::{Next, from_fn};
+use axum::middleware::{Next, from_fn, from_fn_with_state};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
@@ -163,8 +163,12 @@ pub fn build_router_with_outbox(
         }
         if !organization_available {
             // 部署根不可用时能力协议保持只读降级，而不是整块关闭。
-            router = router.merge(capability_router(config, &db));
+            router = router.merge(capability_router(config.clone(), &db));
         }
+        router = router.layer(from_fn_with_state(
+            crate::identity::IdentityService::new(db.pool().clone(), config.config_dir),
+            crate::platform::request_security::enforce_device_access,
+        ));
     }
     router.layer(from_fn(security_headers))
 }

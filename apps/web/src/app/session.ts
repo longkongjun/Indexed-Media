@@ -5,7 +5,7 @@ import type { Router } from "vue-router";
 
 type CsrfClient = Pick<MediaFlowClient, "setCsrfToken">;
 
-const businessPath = /^\/(?:tasks(?:\/|$)|review-cases(?:\/|$)|media(?:\/|$)|scan-tasks(?:\/|$)|inbox-directories(?:\/|$)|downloads(?:\/|$)|connections\/downloaders(?:\/|$)|organization\/targets(?:\/|$)|automation\/(?:sources|events)(?:\/|$))/;
+const businessPath = /^\/(?:devices\/tv-pairing$|tasks(?:\/|$)|review-cases(?:\/|$)|media(?:\/|$)|scan-tasks(?:\/|$)|inbox-directories(?:\/|$)|downloads(?:\/|$)|connections\/downloaders(?:\/|$)|organization\/targets(?:\/|$)|automation\/(?:sources|events)(?:\/|$))/;
 
 /**
  * 仅接受适用于登录后导航的精确同源业务路由。

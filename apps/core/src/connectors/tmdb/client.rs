@@ -16,6 +16,7 @@ use crate::connectors::tmdb::mapper::{map_work, merge_localized, original_locale
 use crate::platform::secrets::SecretBytes;
 
 const PRODUCTION_ORIGIN: &str = "https://api.themoviedb.org/3/";
+const IMAGE_ORIGIN: &str = "https://image.tmdb.org/t/p/w500/";
 const MAX_RESULTS: usize = 20;
 const MAX_SEARCH_PAGES: u16 = 3;
 
@@ -62,6 +63,7 @@ pub enum TmdbClientBuildError {
 pub struct TmdbClient {
     http: reqwest::Client,
     origin: Url,
+    image_origin: Url,
     origin_display: Arc<str>,
     permits: Arc<Semaphore>,
     options: TmdbClientOptions,
@@ -134,9 +136,16 @@ impl TmdbClient {
             .build()
             .map_err(|_| TmdbClientBuildError::ClientBuildFailed)?;
         let origin_display: Arc<str> = Arc::from(origin.as_str());
+        let image_origin = if origin.scheme() == "http" {
+            origin.join("/t/p/w500/")
+        } else {
+            Url::parse(IMAGE_ORIGIN)
+        }
+        .map_err(|_| TmdbClientBuildError::ClientBuildFailed)?;
         Ok(Self {
             http,
             origin,
+            image_origin,
             origin_display,
             permits: Arc::new(Semaphore::new(options.max_concurrency)),
             options,
@@ -147,6 +156,82 @@ impl TmdbClient {
     /// 返回供诊断或测试使用的固定无凭据来源。
     pub fn origin(&self) -> &str {
         &self.origin_display
+    }
+
+    /// 下载已确认媒体身份的有界海报；生产来源固定，图片请求不携带元数据凭据。
+    ///
+    /// # Errors
+    /// 提供方、路径、媒体类型或响应大小无效时返回稳定错误。
+    pub async fn poster(
+        &self,
+        token: &SecretBytes,
+        kind: ProviderMediaKind,
+        provider_id: i64,
+        locale: &str,
+    ) -> Result<Option<PosterImage>, ProviderError> {
+        if provider_id <= 0 || !valid_locale(locale) {
+            return Err(ProviderError::InvalidResponse);
+        }
+        let details = self.details_dto(token, kind, provider_id, locale).await?;
+        if details.id != provider_id {
+            return Err(ProviderError::InvalidResponse);
+        }
+        let Some(path) = details.poster_path else {
+            return Ok(None);
+        };
+        let name = poster_basename(&path).ok_or(ProviderError::InvalidResponse)?;
+        let url = self
+            .image_origin
+            .join(name)
+            .map_err(|_| ProviderError::InvalidResponse)?;
+        if url.origin() != self.image_origin.origin() {
+            return Err(ProviderError::InvalidResponse);
+        }
+        let _permit = self
+            .permits
+            .acquire()
+            .await
+            .map_err(|_| ProviderError::InvalidResponse)?;
+        let mut response = self
+            .http
+            .get(url)
+            .send()
+            .await
+            .map_err(|error| map_transport_error(&error))?;
+        if response.status().as_u16() == 404 {
+            return Ok(None);
+        }
+        if !response.status().is_success() {
+            return Err(ProviderError::InvalidResponse);
+        }
+        if response
+            .content_length()
+            .is_some_and(|length| length > self.options.max_response_bytes as u64)
+        {
+            return Err(ProviderError::ResponseTooLarge);
+        }
+        let declared = response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.split(';').next())
+            .map(str::to_owned);
+        let mut bytes = Vec::new();
+        while let Some(chunk) = response
+            .chunk()
+            .await
+            .map_err(|error| map_transport_error(&error))?
+        {
+            if bytes.len().saturating_add(chunk.len()) > self.options.max_response_bytes {
+                return Err(ProviderError::ResponseTooLarge);
+            }
+            bytes.extend_from_slice(&chunk);
+        }
+        let image = PosterImage::from_bytes(bytes)?;
+        if declared.as_deref() != Some(image.content_type) {
+            return Err(ProviderError::InvalidResponse);
+        }
+        Ok(Some(image))
     }
 
     /// 最多搜索三页，并保留至多 20 个类型化候选。
@@ -542,4 +627,61 @@ impl TmdbConnectionTester for TmdbClient {
     ) -> Result<(), ProviderError> {
         self.probe(token, "configuration").await
     }
+}
+
+/// 已限制大小并核对类型/文件签名的海报响应。
+pub struct PosterImage {
+    /// 图片原始字节。
+    pub bytes: Vec<u8>,
+    /// 受支持的固定响应媒体类型。
+    pub content_type: &'static str,
+}
+
+impl PosterImage {
+    pub(crate) fn from_bytes(bytes: Vec<u8>) -> Result<Self, ProviderError> {
+        let content_type = if bytes.starts_with(b"\x89PNG\r\n\x1a\n")
+            && bytes.len() >= 24
+            && &bytes[12..16] == b"IHDR"
+        {
+            let width = u32::from_be_bytes(
+                bytes[16..20]
+                    .try_into()
+                    .map_err(|_| ProviderError::InvalidResponse)?,
+            );
+            let height = u32::from_be_bytes(
+                bytes[20..24]
+                    .try_into()
+                    .map_err(|_| ProviderError::InvalidResponse)?,
+            );
+            if width == 0 || height == 0 || width > 4096 || height > 4096 {
+                return Err(ProviderError::InvalidResponse);
+            }
+            "image/png"
+        } else if bytes.starts_with(b"\xff\xd8\xff") && bytes.ends_with(b"\xff\xd9") {
+            "image/jpeg"
+        } else if bytes.len() >= 16 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WEBP" {
+            "image/webp"
+        } else {
+            return Err(ProviderError::InvalidResponse);
+        };
+        if bytes.len() > 2 * 1024 * 1024 {
+            return Err(ProviderError::ResponseTooLarge);
+        }
+        Ok(Self {
+            bytes,
+            content_type,
+        })
+    }
+}
+
+fn poster_basename(path: &str) -> Option<&str> {
+    let name = path.strip_prefix('/')?;
+    let (stem, extension) = name.rsplit_once('.')?;
+    (!stem.is_empty()
+        && stem.len() <= 128
+        && stem
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+        && matches!(extension, "jpg" | "jpeg" | "png" | "webp"))
+    .then_some(name)
 }

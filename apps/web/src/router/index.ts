@@ -34,6 +34,7 @@ const routes: RouteRecordRaw[] = [
     path: "/",
     component: AppShell,
     children: [
+      { path: "devices/tv-pairing", name: "tv-pairing", component: () => import("../views/TvPairingView.vue"), meta: { requiresAuth: true } },
       { path: "inbox-directories", name: "inbox-directories", component: () => import("../views/InboxListView.vue"), meta: { requiresAuth: true } },
       { path: "inbox-directories/:id", name: "inbox-directory", component: () => import("../views/InboxDetailView.vue"), meta: { requiresAuth: true } },
       { path: "tasks", name: "tasks", component: () => import("../views/TaskCenterView.vue"), meta: { requiresAuth: true } },

@@ -443,6 +443,22 @@ impl IdentityService {
     ///
     /// 安全随机数失败或数据库失败时返回 [`AppError`]。
     pub async fn issue_pairing_code(&self, account_id: Uuid) -> Result<(String, i64), AppError> {
+        self.issue_pairing_code_with_access(
+            account_id,
+            crate::identity::model::DeviceAccessMode::Administrator,
+        )
+        .await
+    }
+
+    /// 签发具有持久化权限上限的一次性配对码。
+    ///
+    /// # Errors
+    /// 随机数生成或持久化失败时返回错误。
+    pub async fn issue_pairing_code_with_access(
+        &self,
+        account_id: Uuid,
+        access_mode: crate::identity::model::DeviceAccessMode,
+    ) -> Result<(String, i64), AppError> {
         let mut bytes = [0_u8; PAIRING_CODE_BYTES];
         getrandom::fill(&mut bytes)
             .map_err(|error| AppError::new(ErrorCode::Internal, error.to_string()))?;
@@ -456,6 +472,7 @@ impl IdentityService {
                 &random::sha256(code.as_bytes()),
                 now,
                 expires,
+                access_mode,
             )
             .await?;
         audit::record(
@@ -485,6 +502,26 @@ impl IdentityService {
         device_name: &str,
         source_key: &str,
     ) -> Result<NewDevice, AppError> {
+        self.enroll_with_pairing_code_access(
+            pairing_code,
+            device_name,
+            source_key,
+            crate::identity::model::DeviceAccessMode::Administrator,
+        )
+        .await
+    }
+
+    /// 按明确访问能力配对设备。
+    ///
+    /// # Errors
+    /// 返回配对、限流和持久化错误。
+    pub async fn enroll_with_pairing_code_access(
+        &self,
+        pairing_code: &str,
+        device_name: &str,
+        source_key: &str,
+        access_mode: crate::identity::model::DeviceAccessMode,
+    ) -> Result<NewDevice, AppError> {
         let candidate = random::domain_digest(b"device-enrollment", source_key.as_bytes());
         let source = random::domain_digest(b"device-enrollment-source", b"pairing-code");
         let now = chrono::Utc::now().timestamp_micros();
@@ -495,7 +532,7 @@ impl IdentityService {
         let normalized = normalize_pairing_code(pairing_code);
         let account_id = match self
             .store
-            .consume_pairing_code(&random::sha256(normalized.as_bytes()), now)
+            .consume_pairing_code(&random::sha256(normalized.as_bytes()), now, access_mode)
             .await
         {
             Ok(value) => value,
@@ -510,7 +547,7 @@ impl IdentityService {
             }
         };
         self.store.clear_throttle(&candidate, &source).await?;
-        self.enroll(account_id, device_name).await
+        self.enroll(account_id, device_name, access_mode).await
     }
 
     /// 以管理员凭据完成设备 enrollment（移动端登录页凭据模式），签发设备令牌。
@@ -526,6 +563,28 @@ impl IdentityService {
         password: &str,
         device_name: &str,
         source_key: &str,
+    ) -> Result<NewDevice, AppError> {
+        self.enroll_with_credentials_access(
+            administrator_name,
+            password,
+            device_name,
+            source_key,
+            crate::identity::model::DeviceAccessMode::Administrator,
+        )
+        .await
+    }
+
+    /// 按明确访问能力使用管理员凭据注册设备。
+    ///
+    /// # Errors
+    /// 返回认证、限流和持久化错误。
+    pub async fn enroll_with_credentials_access(
+        &self,
+        administrator_name: &str,
+        password: &str,
+        device_name: &str,
+        source_key: &str,
+        access_mode: crate::identity::model::DeviceAccessMode,
     ) -> Result<NewDevice, AppError> {
         let normalized = normalize_name(administrator_name);
         let candidate = random::domain_digest(b"login-candidate", normalized.as_bytes());
@@ -553,7 +612,7 @@ impl IdentityService {
             ));
         };
         self.store.clear_throttle(&candidate, &source).await?;
-        self.enroll(account.id, device_name).await
+        self.enroll(account.id, device_name, access_mode).await
     }
 
     /// 认证原始设备令牌（仅摘要查表），并按 60 秒节流更新 `last_used_at`。
@@ -633,7 +692,12 @@ impl IdentityService {
         Ok(records.iter().map(device_view).collect())
     }
 
-    async fn enroll(&self, account_id: Uuid, device_name: &str) -> Result<NewDevice, AppError> {
+    async fn enroll(
+        &self,
+        account_id: Uuid,
+        device_name: &str,
+        access_mode: crate::identity::model::DeviceAccessMode,
+    ) -> Result<NewDevice, AppError> {
         let name = device_name.trim();
         if name.is_empty() || name.chars().count() > 64 {
             return Err(AppError::new(
@@ -651,7 +715,16 @@ impl IdentityService {
         let expires = device_absolute_expiry();
         let id = new_id();
         self.store
-            .insert_device(id, account_id, name, &digest, credential, expires, now)
+            .insert_device(
+                access_mode,
+                id,
+                account_id,
+                name,
+                &digest,
+                credential,
+                expires,
+                now,
+            )
             .await?;
         audit::record(
             self.store.pool(),
@@ -662,6 +735,7 @@ impl IdentityService {
         .await?;
         Ok(NewDevice {
             device: DeviceView {
+                access_mode,
                 id,
                 display_name: name.to_owned(),
                 created_at: micros_to_rfc3339(now),
@@ -722,6 +796,7 @@ fn encode_pairing_code(bytes: [u8; PAIRING_CODE_BYTES]) -> String {
 
 fn device_view(record: &DeviceRecord) -> DeviceView {
     DeviceView {
+        access_mode: record.access_mode,
         id: record.id,
         display_name: record.display_name.clone(),
         created_at: micros_to_rfc3339(record.created_at_us),

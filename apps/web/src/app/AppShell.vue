@@ -95,6 +95,7 @@ onMounted(() => {
       <section v-if="accountOpen" id="account-panel" data-account-panel class="account-panel" aria-labelledby="account-heading">
         <h2 id="account-heading">账户与系统</h2>
         <p v-if="session.account">当前管理员：{{ session.account.administrator_name }}</p>
+        <RouterLink to="/devices/tv-pairing">TV 配对</RouterLink>
         <RouterLink to="/automation/sources">管理来源自动化</RouterLink>
         <RouterLink to="/capability-events">AI 能力活动</RouterLink>
         <RouterLink to="/notifications">通知中心<span v-if="notificationsBadge.unreadCount > 0" class="nav-badge" aria-label="{{ notificationsBadge.unreadCount }} 条未读通知">{{ notificationsBadge.unreadCount }}</span></RouterLink>

@@ -12,6 +12,8 @@ export type BootstrapResponse = components["schemas"]["BootstrapResponse"];
 export type LoginRequest = components["schemas"]["LoginRequest"];
 /** 会话返回的已认证账户投影和内存中的 CSRF 令牌。 */
 export type SessionResponse = components["schemas"]["SessionResponse"];
+/** 仅在签发响应中返回一次的设备配对码及其权限上限。 */
+export type DevicePairingCode = components["schemas"]["DevicePairingCode"];
 /** 管理员可见的有界部署能力根目录列表。 */
 export type DeploymentRootList = components["schemas"]["DeploymentRootList"];
 /** 用于不持久化收件箱预检的能力根目录标识符和相对路径。 */
@@ -231,6 +233,8 @@ export interface MediaFlowClient {
   getSession(): Promise<SessionResponse>;
   /** 删除服务端会话，并在成功收到空响应后完成。 */
   deleteSession(): Promise<void>;
+  /** @returns 十分钟有效、只能授予媒体只读权限的一次性 TV 配对码。 */
+  createMediaReadOnlyDevicePairingCode(): Promise<DevicePairingCode>;
   /** @returns 本地运维人员配置的部署根目录。 */
   listDeploymentRoots(): Promise<DeploymentRootList>;
   /** @param body - 待检查但不持久化的根目录和相对路径。@returns 规范化和安全检查结果。 */
@@ -389,6 +393,7 @@ const operations = {
   createSession: ["POST", "/api/v1/sessions"],
   getSession: ["GET", "/api/v1/session"],
   deleteSession: ["DELETE", "/api/v1/session"],
+  createMediaReadOnlyDevicePairingCode: ["POST", "/api/v1/device-pairing-codes/media-read-only"],
   listDeploymentRoots: ["GET", "/api/v1/deployment-roots"],
   preflightInboxDirectory: ["POST", "/api/v1/inbox-directories/preflight"],
   listInboxDirectories: ["GET", "/api/v1/inbox-directories"],
@@ -531,6 +536,7 @@ export function createMediaFlowClient(options: { baseUrl?: string; fetch?: typeo
     createSession: (body) => request("createSession", { body }),
     getSession: () => request("getSession"),
     deleteSession: () => request("deleteSession"),
+    createMediaReadOnlyDevicePairingCode: () => request("createMediaReadOnlyDevicePairingCode"),
     listDeploymentRoots: () => request("listDeploymentRoots"),
     preflightInboxDirectory: (body) => request("preflightInboxDirectory", { body }),
     listInboxDirectories: (cursor) => request("listInboxDirectories", { cursor }),

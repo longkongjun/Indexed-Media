@@ -91,6 +91,28 @@ pub struct NewSession {
     pub account: AccountSummary,
 }
 
+/// 设备的服务端访问能力；既有设备默认保留管理员访问。
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DeviceAccessMode {
+    /// 既有移动/桌面设备的管理员业务访问。
+    #[default]
+    Administrator,
+    /// TV 只读媒体消费；由 HTTP 边界使用明确允许列表执行。
+    MediaReadOnly,
+}
+
+impl DeviceAccessMode {
+    /// 返回存储和契约共用的稳定值。
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Administrator => "administrator",
+            Self::MediaReadOnly => "media-read-only",
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 /// 请求凭据的来源通道；cookie 会话与设备令牌互不可替换。
 pub enum Principal {
@@ -112,6 +134,8 @@ pub enum Principal {
 /// 会话通道携带 CSRF 摘要；设备令牌通道按"令牌即写证明"豁免同源/CSRF（见
 /// `platform::request_security`），因此没有 CSRF 摘要。
 pub struct AuthenticatedSession {
+    /// 凭据持久化的能力，浏览器会话始终为管理员。
+    pub access_mode: DeviceAccessMode,
     /// 拥有该凭据的活跃管理员。
     pub account: AccountSummary,
     /// 会话通道的 32 字节 CSRF 摘要；设备通道为 `None`。
@@ -238,6 +262,9 @@ pub struct FamilyMemberView {
 ///
 /// 自定义 `Debug` 隐藏 `password`；配对码与密码在验证后即丢弃。
 pub struct DeviceEnrollmentRequest {
+    /// 只允许降低新设备权限；省略时兼容旧客户端。
+    #[serde(default)]
+    pub access_mode: DeviceAccessMode,
     /// 一次性配对码（Web 管理页签发）。与服务端规范化规则一致：忽略大小写、`-` 与空格。
     pub pairing_code: Option<String>,
     /// 凭据模式：管理员名称。
@@ -252,6 +279,8 @@ pub struct DeviceEnrollmentRequest {
 #[serde(rename_all = "snake_case")]
 /// 一次性配对码签发结果；`code` 原文仅此一次返回。
 pub struct PairingCodeResponse {
+    /// 配对码可以授予的权限上限。
+    pub access_mode: DeviceAccessMode,
     /// 8 字符 base32 配对码（客户端按原样输入，服务端负责规范化）。
     pub pairing_code: String,
     /// 过期时间 UTC RFC3339；过期后不可用于 enrollment。
@@ -264,6 +293,8 @@ pub struct PairingCodeResponse {
 #[serde(rename_all = "snake_case")]
 /// 设备的公开表示；绝不包含令牌材料。
 pub struct DeviceView {
+    /// 服务端持久化并实际执行的设备访问能力。
+    pub access_mode: DeviceAccessMode,
     /// 设备稳定 UUID。
     pub id: uuid::Uuid,
     /// enrollment 时提供的显示名称。
@@ -310,6 +341,7 @@ impl std::fmt::Debug for DeviceEnrollmentRequest {
             .field("administrator_name", &self.administrator_name)
             .field("password", &"[REDACTED]")
             .field("device_name", &self.device_name)
+            .field("access_mode", &self.access_mode)
             .finish()
     }
 }
@@ -323,6 +355,7 @@ mod device_model_tests {
         let output = format!(
             "{:?}",
             DeviceEnrollmentRequest {
+                access_mode: super::DeviceAccessMode::Administrator,
                 pairing_code: Some("pairing-code-sentinel".to_owned()),
                 administrator_name: Some("admin".to_owned()),
                 password: Some("password-sentinel".to_owned()),

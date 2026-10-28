@@ -54,6 +54,7 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/SessionResponse' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '500': { $ref: '#/components/responses/InternalError' }
     delete:
       operationId: deleteSession
@@ -77,6 +78,7 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/FamilyMemberPage' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
         '500': { $ref: '#/components/responses/InternalError' }
     post:
@@ -133,6 +135,27 @@ paths:
         '429': { $ref: '#/components/responses/RateLimited' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
         '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/device-pairing-codes/media-read-only:
+    post:
+      operationId: createMediaReadOnlyDevicePairingCode
+      summary: Issue a one-time media-read-only TV pairing code
+      description: Issues a single-use code valid for ten minutes with a persisted media-read-only ceiling. Enrollment requesting administrator is forbidden without consuming the code. Web administrator session and CSRF required; never returns device credentials.
+      # 内联展开 write-security/write-parameters：SnakeYAML 别名上限 50，文档锚引用已满，
+      # 新增端点不得再引用共享锚（改动现有锚点属主线领地）。
+      security:
+        - cookieAuth: []
+          csrfHeader: []
+      parameters:
+        - { $ref: '#/components/parameters/CsrfToken' }
+        - { $ref: '#/components/parameters/Origin' }
+        - { $ref: '#/components/parameters/SecFetchSite' }
+      responses:
+        '201': { $ref: '#/components/responses/PairingCodeCreated' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
   /api/v1/devices/enrollment:
     post:
       operationId: enrollDevice
@@ -147,6 +170,7 @@ paths:
       responses:
         '201': { $ref: '#/components/responses/DeviceEnrollmentCreated' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '429': { $ref: '#/components/responses/RateLimited' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
@@ -160,10 +184,23 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/DevicePage' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
         '500': { $ref: '#/components/responses/InternalError' }
   /api/v1/devices/{deviceId}:
     parameters: [{ name: deviceId, in: path, required: true, schema: { type: string, format: uuid } }]
+    get:
+      operationId: getDevice
+      summary: Read the calling device identity or an administrator-selected device
+      description: Device tokens can read only their own identity, including server-enforced access_mode. Browser administrator sessions can inspect any device.
+      security: [{ cookieAuth: [] }, { deviceTokenAuth: [] }]
+      responses:
+        '200': { description: Device identity without token material, content: { application/json: { schema: { $ref: '#/components/schemas/DeviceView' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
     delete:
       operationId: revokeDevice
       summary: Revoke a device token
@@ -204,6 +241,7 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/DeploymentRootList' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
         '500': { $ref: '#/components/responses/InternalError' }
   /api/v1/inbox-directories/preflight:
@@ -233,6 +271,7 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/InboxDirectoryPage' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
         '500': { $ref: '#/components/responses/InternalError' }
     post:
@@ -261,6 +300,7 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/InboxDirectory' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
         '500': { $ref: '#/components/responses/InternalError' }
@@ -295,6 +335,7 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/ScanTaskPage' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
         '500': { $ref: '#/components/responses/InternalError' }
@@ -308,6 +349,7 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/ScanTask' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
@@ -365,6 +407,7 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/DiscoveredFilePage' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
@@ -380,6 +423,7 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/ScanErrorPage' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
@@ -392,6 +436,7 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/TmdbIntegration' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
         '500': { $ref: '#/components/responses/InternalError' }
     put:
@@ -439,6 +484,7 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/BackupPage' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
         '500': { $ref: '#/components/responses/InternalError' }
     post:
@@ -464,6 +510,7 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/NotificationPage' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
         '500': { $ref: '#/components/responses/InternalError' }
@@ -479,6 +526,7 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/NotificationReadReceipt' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
         '500': { $ref: '#/components/responses/InternalError' }
@@ -490,6 +538,7 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/NotificationWebhookPage' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
         '500': { $ref: '#/components/responses/InternalError' }
     post:
@@ -504,6 +553,7 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/NotificationWebhookAccepted' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
@@ -518,6 +568,7 @@ paths:
       responses:
         '204': { description: Webhook removed }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
@@ -535,6 +586,7 @@ paths:
       responses:
         '200': { description: Probe accepted by the target, content: { application/json: { schema: { $ref: '#/components/schemas/NotificationWebhookProbeReceipt' } } } }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
         '500': { $ref: '#/components/responses/InternalError' }
@@ -546,6 +598,7 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/JellyfinIntegration' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
         '500': { $ref: '#/components/responses/InternalError' }
     put:
@@ -561,6 +614,7 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/JellyfinIntegration' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
@@ -572,6 +626,7 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/JellyfinIntegration' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
         '500': { $ref: '#/components/responses/InternalError' }
     delete:
@@ -582,6 +637,7 @@ paths:
       responses:
         '204': { description: Connection removed }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
@@ -599,6 +655,7 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/JellyfinConnectionTestResult' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
         '500': { $ref: '#/components/responses/InternalError' }
@@ -626,6 +683,7 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/DiscoveryPolicy' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
         '500': { $ref: '#/components/responses/InternalError' }
@@ -664,6 +722,7 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/ProcessingTaskPage' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
         '500': { $ref: '#/components/responses/InternalError' }
@@ -676,6 +735,7 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/ProcessingTask' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
         '500': { $ref: '#/components/responses/InternalError' }
@@ -688,6 +748,7 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/IdentificationDetail' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
         '500': { $ref: '#/components/responses/InternalError' }
@@ -745,6 +806,7 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/ReviewCasePage' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
         '500': { $ref: '#/components/responses/InternalError' }
@@ -757,6 +819,7 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/ReviewCase' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
         '500': { $ref: '#/components/responses/InternalError' }
@@ -775,6 +838,7 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/ReviewCandidatePage' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
         '429': { $ref: '#/components/responses/RateLimited' }
@@ -803,6 +867,41 @@ paths:
         '422': { $ref: '#/components/responses/ValidationFailed' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
         '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/media-libraries:
+    get:
+      operationId: listMediaLibraries
+      summary: List safe names of libraries containing formal media
+      description: Account-isolated media-consumption projection, capped at 200 libraries. No host paths, credentials or organization configuration are returned.
+      security: [{ cookieAuth: [] }, { deviceTokenAuth: [] }]
+      responses:
+        '200': { description: Safe media library names, content: { application/json: { schema: { $ref: '#/components/schemas/MediaLibraryPage' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /api/v1/media-items/{mediaItemId}/artwork:
+    parameters: [{ $ref: '#/components/parameters/MediaItemId' }]
+    get:
+      operationId: getMediaItemArtwork
+      summary: Read a bounded poster for an existing authorized media item
+      description: Resolves only the item's confirmed TMDB identity, fetches from fixed trusted origins, and caches derived poster bytes. No arbitrary URL or path input is accepted. This derived cache does not modify the verified local catalog artwork_refs. Missing posters are a local image state.
+      security: [{ cookieAuth: [] }, { deviceTokenAuth: [] }]
+      responses:
+        '200':
+          description: Validated poster, at most 2 MiB, privately cacheable; ETag identifies its exact bytes.
+          headers:
+            ETag: { schema: { type: string } }
+            Cache-Control: { schema: { type: string } }
+          content:
+            image/jpeg: { schema: { type: string, format: binary } }
+            image/png: { schema: { type: string, format: binary } }
+            image/webp: { schema: { type: string, format: binary } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '503': { $ref: '#/components/responses/ServiceUnavailable' }
+        '500': { $ref: '#/components/responses/InternalError' }
   /api/v1/media-items:
     get:
       operationId: listMediaItems
@@ -819,6 +918,7 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/MediaItemPage' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
         '500': { $ref: '#/components/responses/InternalError' }
@@ -831,6 +931,7 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/MediaItemDetail' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
         '500': { $ref: '#/components/responses/InternalError' }
@@ -843,6 +944,7 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/OrganizationTargetPage' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
         '500': { $ref: '#/components/responses/InternalError' }
@@ -885,6 +987,7 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/OrganizationTarget' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
         '500': { $ref: '#/components/responses/InternalError' }
@@ -933,6 +1036,7 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/ProcessingTaskOrganization' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
         '500': { $ref: '#/components/responses/InternalError' }
@@ -1007,6 +1111,7 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/DownloaderConnectionPage' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
         '500': { $ref: '#/components/responses/InternalError' }
@@ -1048,6 +1153,7 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/DownloaderConnection' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
         '500': { $ref: '#/components/responses/InternalError' }
@@ -1101,6 +1207,7 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/DownloadTaskPage' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
         '500': { $ref: '#/components/responses/InternalError' }
@@ -1132,6 +1239,7 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/DownloadTask' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
         '500': { $ref: '#/components/responses/InternalError' }
@@ -1144,6 +1252,7 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/AutomationSourcePage' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
         '500': { $ref: '#/components/responses/InternalError' }
@@ -1187,6 +1296,7 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/AutomationSource' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
         '500': { $ref: '#/components/responses/InternalError' }
@@ -1261,6 +1371,7 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/AutomationEventPage' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
         '500': { $ref: '#/components/responses/InternalError' }
@@ -1273,6 +1384,7 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/AutomationEvent' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
         '500': { $ref: '#/components/responses/InternalError' }
@@ -1328,6 +1440,7 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/CapabilityActivityPage' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '422': { $ref: '#/components/responses/ValidationFailed' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
         '500': { $ref: '#/components/responses/InternalError' }
@@ -1339,6 +1452,7 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/IdentificationEnhancer' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '503': { $ref: '#/components/responses/ServiceUnavailable' }
         '500': { $ref: '#/components/responses/InternalError' }
     put:
@@ -1388,6 +1502,7 @@ paths:
       responses:
         '202': { $ref: '#/components/responses/AutomationEventAccepted' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '409': { $ref: '#/components/responses/Conflict' }
         '413': { description: Signed body exceeds the fixed byte limit. }
         '422': { $ref: '#/components/responses/ValidationFailed' }
@@ -1959,6 +2074,20 @@ components:
         id: { type: string, format: uuid }
         kind: { enum: [poster, backdrop] }
         state: { enum: [available, missing] }
+    MediaLibrary:
+      description: Safe opaque media library identity and human-readable name.
+      type: object
+      additionalProperties: false
+      required: [id, name]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, minLength: 1, maxLength: 100 }
+    MediaLibraryPage:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items: { type: array, maxItems: 200, items: { $ref: '#/components/schemas/MediaLibrary' } }
     MediaItemSummary:
       description: Formal local media summary created only from a verified local result.
       type: object
@@ -2556,12 +2685,18 @@ components:
       properties:
         display_name: { type: string, minLength: 1, maxLength: 100 }
         password: { type: string, minLength: 8, maxLength: 512 }
+    DeviceAccessMode:
+      description: Server-enforced device capability. Legacy devices default to administrator. Media-read-only devices can read catalog/library/artwork/playback projections and manage their own identity/token only; all other API methods/paths, including general SSE, are denied.
+      type: string
+      enum: [administrator, media-read-only]
+      default: administrator
     DeviceView:
-      description: Enrolled device projection; never carries token material.
+      description: Enrolled device projection; never carries token material. Missing access_mode in legacy recorded fixtures means administrator.
       type: object
       additionalProperties: false
       required: [id, display_name, created_at, expires_at]
       properties:
+        access_mode: { $ref: '#/components/schemas/DeviceAccessMode' }
         id: { type: string, format: uuid }
         display_name: { type: string, minLength: 1, maxLength: 64 }
         created_at: { type: string, format: date-time }
@@ -2581,6 +2716,7 @@ components:
       additionalProperties: false
       required: [device_name]
       properties:
+        access_mode: { $ref: '#/components/schemas/DeviceAccessMode' }
         pairing_code: { type: string, minLength: 8, maxLength: 16, description: Eight base32 characters; case and separator characters are normalized server-side. }
         administrator_name: { type: string, minLength: 1, maxLength: 100 }
         password: { type: string, minLength: 1, maxLength: 512 }
@@ -2600,6 +2736,7 @@ components:
       additionalProperties: false
       required: [pairing_code, expires_at, version]
       properties:
+        access_mode: { $ref: '#/components/schemas/DeviceAccessMode' }
         pairing_code: { type: string, pattern: '^[A-Z2-7]{8}$' }
         expires_at: { type: string, format: date-time }
         version: { const: v1 }

@@ -7,6 +7,9 @@ use crate::shared::error::AppError;
 
 use self::model::VerifiedLocalResult;
 
+/// 已确认媒体身份的有界派生海报缓存。
+pub mod artwork;
+
 /// 目录领域类型及对外读模型。
 pub mod model;
 /// 已认证的目录查询 HTTP 路由。

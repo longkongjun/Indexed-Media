@@ -14,6 +14,7 @@ export function useMediaFlowClient(): MediaFlowClient {
   const injected = inject(identityClientKey, null);
   if (injected) return injected;
   return {
+    createMediaReadOnlyDevicePairingCode: unavailable,
     getBootstrapStatus: unavailable, bootstrap: unavailable, createSession: unavailable, getSession: unavailable, deleteSession: unavailable,
     listDeploymentRoots: unavailable, preflightInboxDirectory: unavailable, listInboxDirectories: unavailable,
     createInboxDirectory: unavailable, getInboxDirectory: unavailable, createScanTask: unavailable, listScanTasks: unavailable,

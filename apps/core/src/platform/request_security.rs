@@ -1,9 +1,12 @@
 use crate::identity::IdentityUseCases;
-use crate::identity::model::AuthenticatedSession;
+use crate::identity::model::{AuthenticatedSession, DeviceAccessMode, Principal};
 use crate::identity::service::IdentityService;
 use crate::platform::random;
 use crate::shared::error::{AppError, ErrorCode};
-use axum::http::{HeaderMap, header};
+use axum::extract::{Request, State};
+use axum::http::{HeaderMap, Method, header};
+use axum::middleware::Next;
+use axum::response::{IntoResponse, Response};
 use ipnet::IpNet;
 use std::net::{IpAddr, SocketAddr};
 use subtle::ConstantTimeEq;
@@ -201,6 +204,72 @@ pub(crate) fn bearer_token(headers: &HeaderMap) -> Option<&str> {
 }
 fn untrusted_origin() -> AppError {
     AppError::new(ErrorCode::OriginUntrusted, "same-origin proof rejected")
+}
+
+/// 在全部 API 路由之前执行只读设备允许列表；新路由默认拒绝。
+pub async fn enforce_device_access(
+    State(service): State<IdentityService>,
+    request: Request,
+    next: Next,
+) -> Response {
+    if request.uri().path().starts_with("/api/") && bearer_token(request.headers()).is_some() {
+        let authenticated =
+            SessionGuard::authenticate_without_sliding(request.headers(), &service).await;
+        let authenticated = match authenticated {
+            Err(error)
+                if error.code() == ErrorCode::SessionExpired
+                    && session_token(request.headers()).is_some() =>
+            {
+                // 无效cookie不能让已知只读设备绕过限制；目标路由仍保留原cookie认证优先级。
+                service
+                    .authenticate_device(bearer_token(request.headers()).unwrap_or_default())
+                    .await
+            }
+            other => other,
+        };
+        match authenticated {
+            Ok(session) if session.access_mode == DeviceAccessMode::MediaReadOnly => {
+                let Principal::Device { device_id } = session.principal else {
+                    return AppError::new(
+                        ErrorCode::PermissionDenied,
+                        "read-only identity is not a device",
+                    )
+                    .into_response();
+                };
+                if !media_read_only_request(request.method(), request.uri().path(), device_id) {
+                    return AppError::new(
+                        ErrorCode::PermissionDenied,
+                        "device is restricted to media consumption",
+                    )
+                    .into_response();
+                }
+            }
+            Ok(_) => {}
+            // 非设备Bearer可能属于独立capability凭据面，最终认证仍由目标路由执行。
+            Err(error) if error.code() == ErrorCode::SessionExpired => {}
+            Err(error) => return error.into_response(),
+        }
+    }
+    next.run(request).await
+}
+
+fn media_read_only_request(method: &Method, path: &str, device_id: uuid::Uuid) -> bool {
+    let segments: Vec<_> = path
+        .strip_prefix("/api/v1/")
+        .unwrap_or_default()
+        .split('/')
+        .collect();
+    match (method, segments.as_slice()) {
+        (&Method::GET, ["media-items" | "media-libraries"] | ["integrations", "jellyfin"])
+        | (&Method::POST, ["devices", "current", "token-rotation"]) => true,
+        (&Method::GET, ["media-items", id] | ["media-items", id, "artwork"]) => {
+            uuid::Uuid::parse_str(id).is_ok()
+        }
+        (&Method::GET | &Method::DELETE, ["devices", id]) => {
+            uuid::Uuid::parse_str(id) == Ok(device_id)
+        }
+        _ => false,
+    }
 }
 
 #[cfg(test)]

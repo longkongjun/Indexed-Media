@@ -27,6 +27,7 @@ pub(super) struct WorkDto {
     pub release_date: Option<String>,
     pub first_air_date: Option<String>,
     pub overview: Option<String>,
+    pub poster_path: Option<String>,
 }
 
 impl WorkDto {

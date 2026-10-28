@@ -148,6 +148,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/device-pairing-codes/media-read-only": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Issue a one-time media-read-only TV pairing code
+         * @description Issues a single-use code valid for ten minutes with a persisted media-read-only ceiling. Enrollment requesting administrator is forbidden without consuming the code. Web administrator session and CSRF required; never returns device credentials.
+         */
+        post: operations["createMediaReadOnlyDevicePairingCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/devices/enrollment": {
         parameters: {
             query?: never;
@@ -197,7 +217,11 @@ export interface paths {
             };
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Read the calling device identity or an administrator-selected device
+         * @description Device tokens can read only their own identity, including server-enforced access_mode. Browser administrator sessions can inspect any device.
+         */
+        get: operations["getDevice"];
         put?: never;
         post?: never;
         /**
@@ -840,6 +864,48 @@ export interface paths {
          * @description Accepts a version-bound command and returns a durable receipt before asynchronous re-identification or planning proceeds.
          */
         post: operations["submitReviewDecision"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/media-libraries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List safe names of libraries containing formal media
+         * @description Account-isolated media-consumption projection, capped at 200 libraries. No host paths, credentials or organization configuration are returned.
+         */
+        get: operations["listMediaLibraries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/media-items/{mediaItemId}/artwork": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                mediaItemId: components["parameters"]["MediaItemId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read a bounded poster for an existing authorized media item
+         * @description Resolves only the item's confirmed TMDB identity, fetches from fixed trusted origins, and caches derived poster bytes. No arbitrary URL or path input is accepted. This derived cache does not modify the verified local catalog artwork_refs. Missing posters are a local image state.
+         */
+        get: operations["getMediaItemArtwork"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1825,6 +1891,15 @@ export interface components {
             /** @enum {unknown} */
             state: "available" | "missing";
         };
+        /** @description Safe opaque media library identity and human-readable name. */
+        MediaLibrary: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+        };
+        MediaLibraryPage: {
+            items: components["schemas"]["MediaLibrary"][];
+        };
         /** @description Formal local media summary created only from a verified local result. */
         MediaItemSummary: {
             /** Format: uuid */
@@ -2374,8 +2449,15 @@ export interface components {
             display_name: string;
             password: string;
         };
-        /** @description Enrolled device projection; never carries token material. */
+        /**
+         * @description Server-enforced device capability. Legacy devices default to administrator. Media-read-only devices can read catalog/library/artwork/playback projections and manage their own identity/token only; all other API methods/paths, including general SSE, are denied.
+         * @default administrator
+         * @enum {string}
+         */
+        DeviceAccessMode: "administrator" | "media-read-only";
+        /** @description Enrolled device projection; never carries token material. Missing access_mode in legacy recorded fixtures means administrator. */
         DeviceView: {
+            access_mode?: components["schemas"]["DeviceAccessMode"];
             /** Format: uuid */
             id: string;
             display_name: string;
@@ -2394,6 +2476,7 @@ export interface components {
         };
         /** @description One enrollment gate; a pairing code or administrator credentials, never both. Secrets are discarded after verification. */
         DeviceEnrollmentInput: {
+            access_mode?: components["schemas"]["DeviceAccessMode"];
             /** @description Eight base32 characters; case and separator characters are normalized server-side. */
             pairing_code?: string;
             administrator_name?: string;
@@ -2410,6 +2493,7 @@ export interface components {
         };
         /** @description One-time pairing code issuance; the code is returned exactly once. */
         DevicePairingCode: {
+            access_mode?: components["schemas"]["DeviceAccessMode"];
             pairing_code: string;
             /** Format: date-time */
             expires_at: string;
@@ -3637,6 +3721,7 @@ export interface operations {
         responses: {
             200: components["responses"]["SessionResponse"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             500: components["responses"]["InternalError"];
         };
     };
@@ -3680,6 +3765,7 @@ export interface operations {
         responses: {
             200: components["responses"]["FamilyMemberPage"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };
@@ -3767,6 +3853,29 @@ export interface operations {
             503: components["responses"]["ServiceUnavailable"];
         };
     };
+    createMediaReadOnlyDevicePairingCode: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CSRF-Token": components["parameters"]["CsrfToken"];
+                /** @description Exact public origin proof used when Fetch Metadata is absent and checked whenever supplied. */
+                Origin?: components["parameters"]["Origin"];
+                /** @description Browser Fetch Metadata primary same-origin proof; cross-site and malformed values fail closed. */
+                "Sec-Fetch-Site"?: components["parameters"]["SecFetchSite"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            201: components["responses"]["PairingCodeCreated"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
     enrollDevice: {
         parameters: {
             query?: never;
@@ -3782,6 +3891,7 @@ export interface operations {
         responses: {
             201: components["responses"]["DeviceEnrollmentCreated"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             422: components["responses"]["ValidationFailed"];
             429: components["responses"]["RateLimited"];
             500: components["responses"]["InternalError"];
@@ -3799,6 +3909,34 @@ export interface operations {
         responses: {
             200: components["responses"]["DevicePage"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getDevice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Device identity without token material */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceView"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };
@@ -3862,6 +4000,7 @@ export interface operations {
         responses: {
             200: components["responses"]["DeploymentRootList"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };
@@ -3905,6 +4044,7 @@ export interface operations {
         responses: {
             200: components["responses"]["InboxDirectoryPage"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };
@@ -3947,6 +4087,7 @@ export interface operations {
         responses: {
             200: components["responses"]["InboxDirectory"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
@@ -3994,6 +4135,7 @@ export interface operations {
         responses: {
             200: components["responses"]["ScanTaskPage"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             422: components["responses"]["ValidationFailed"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
@@ -4012,6 +4154,7 @@ export interface operations {
         responses: {
             200: components["responses"]["ScanTask"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             422: components["responses"]["ValidationFailed"];
             500: components["responses"]["InternalError"];
@@ -4090,6 +4233,7 @@ export interface operations {
         responses: {
             200: components["responses"]["DiscoveredFilePage"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             422: components["responses"]["ValidationFailed"];
             500: components["responses"]["InternalError"];
@@ -4112,6 +4256,7 @@ export interface operations {
         responses: {
             200: components["responses"]["ScanErrorPage"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             422: components["responses"]["ValidationFailed"];
             500: components["responses"]["InternalError"];
@@ -4129,6 +4274,7 @@ export interface operations {
         responses: {
             200: components["responses"]["TmdbIntegration"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };
@@ -4203,6 +4349,7 @@ export interface operations {
         responses: {
             200: components["responses"]["BackupPage"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };
@@ -4243,6 +4390,7 @@ export interface operations {
         responses: {
             200: components["responses"]["NotificationPage"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             422: components["responses"]["ValidationFailed"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
@@ -4263,6 +4411,7 @@ export interface operations {
         responses: {
             200: components["responses"]["NotificationReadReceipt"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
@@ -4279,6 +4428,7 @@ export interface operations {
         responses: {
             200: components["responses"]["NotificationWebhookPage"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };
@@ -4298,6 +4448,7 @@ export interface operations {
         responses: {
             200: components["responses"]["NotificationWebhookAccepted"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
             422: components["responses"]["ValidationFailed"];
             500: components["responses"]["InternalError"];
@@ -4326,6 +4477,7 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
             422: components["responses"]["ValidationFailed"];
             500: components["responses"]["InternalError"];
@@ -4355,6 +4507,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             422: components["responses"]["ValidationFailed"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
@@ -4371,6 +4524,7 @@ export interface operations {
         responses: {
             200: components["responses"]["JellyfinIntegration"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };
@@ -4393,6 +4547,7 @@ export interface operations {
         responses: {
             200: components["responses"]["JellyfinIntegration"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
             422: components["responses"]["ValidationFailed"];
             500: components["responses"]["InternalError"];
@@ -4410,6 +4565,7 @@ export interface operations {
         responses: {
             200: components["responses"]["JellyfinIntegration"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };
@@ -4434,6 +4590,7 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
             422: components["responses"]["ValidationFailed"];
             500: components["responses"]["InternalError"];
@@ -4455,6 +4612,7 @@ export interface operations {
         responses: {
             200: components["responses"]["JellyfinConnectionTestResult"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             422: components["responses"]["ValidationFailed"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
@@ -4497,6 +4655,7 @@ export interface operations {
         responses: {
             200: components["responses"]["DiscoveryPolicy"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
@@ -4550,6 +4709,7 @@ export interface operations {
         responses: {
             200: components["responses"]["ProcessingTaskPage"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             422: components["responses"]["ValidationFailed"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
@@ -4568,6 +4728,7 @@ export interface operations {
         responses: {
             200: components["responses"]["ProcessingTask"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
@@ -4586,6 +4747,7 @@ export interface operations {
         responses: {
             200: components["responses"]["IdentificationDetail"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
@@ -4664,6 +4826,7 @@ export interface operations {
         responses: {
             200: components["responses"]["ReviewCasePage"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             422: components["responses"]["ValidationFailed"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
@@ -4682,6 +4845,7 @@ export interface operations {
         responses: {
             200: components["responses"]["ReviewCase"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
@@ -4705,6 +4869,7 @@ export interface operations {
         responses: {
             200: components["responses"]["ReviewCandidatePage"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             422: components["responses"]["ValidationFailed"];
             429: components["responses"]["RateLimited"];
@@ -4743,6 +4908,62 @@ export interface operations {
             503: components["responses"]["ServiceUnavailable"];
         };
     };
+    listMediaLibraries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Safe media library names */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaLibraryPage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getMediaItemArtwork: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                mediaItemId: components["parameters"]["MediaItemId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Validated poster, at most 2 MiB, privately cacheable; ETag identifies its exact bytes. */
+            200: {
+                headers: {
+                    ETag?: string;
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                    "image/png": string;
+                    "image/webp": string;
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["ValidationFailed"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
     listMediaItems: {
         parameters: {
             query?: {
@@ -4761,6 +4982,7 @@ export interface operations {
         responses: {
             200: components["responses"]["MediaItemPage"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             422: components["responses"]["ValidationFailed"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
@@ -4779,6 +5001,7 @@ export interface operations {
         responses: {
             200: components["responses"]["MediaItemDetail"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
@@ -4798,6 +5021,7 @@ export interface operations {
         responses: {
             200: components["responses"]["OrganizationTargetPage"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             422: components["responses"]["ValidationFailed"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
@@ -4865,6 +5089,7 @@ export interface operations {
         responses: {
             200: components["responses"]["OrganizationTarget"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
@@ -4946,6 +5171,7 @@ export interface operations {
         responses: {
             200: components["responses"]["ProcessingTaskOrganization"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
@@ -5049,6 +5275,7 @@ export interface operations {
         responses: {
             200: components["responses"]["DownloaderConnectionPage"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             422: components["responses"]["ValidationFailed"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
@@ -5115,6 +5342,7 @@ export interface operations {
         responses: {
             200: components["responses"]["DownloaderConnection"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
@@ -5200,6 +5428,7 @@ export interface operations {
         responses: {
             200: components["responses"]["DownloadTaskPage"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             422: components["responses"]["ValidationFailed"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
@@ -5244,6 +5473,7 @@ export interface operations {
         responses: {
             200: components["responses"]["DownloadTask"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
@@ -5263,6 +5493,7 @@ export interface operations {
         responses: {
             200: components["responses"]["AutomationSourcePage"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             422: components["responses"]["ValidationFailed"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
@@ -5330,6 +5561,7 @@ export interface operations {
         responses: {
             200: components["responses"]["AutomationSource"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
@@ -5445,6 +5677,7 @@ export interface operations {
         responses: {
             200: components["responses"]["AutomationEventPage"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             422: components["responses"]["ValidationFailed"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
@@ -5463,6 +5696,7 @@ export interface operations {
         responses: {
             200: components["responses"]["AutomationEvent"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
@@ -5538,6 +5772,7 @@ export interface operations {
         responses: {
             200: components["responses"]["CapabilityActivityPage"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             422: components["responses"]["ValidationFailed"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
@@ -5554,6 +5789,7 @@ export interface operations {
         responses: {
             200: components["responses"]["IdentificationEnhancer"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             500: components["responses"]["InternalError"];
             503: components["responses"]["ServiceUnavailable"];
         };
@@ -5625,6 +5861,7 @@ export interface operations {
         responses: {
             202: components["responses"]["AutomationEventAccepted"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
             /** @description Signed body exceeds the fixed byte limit. */
             413: {

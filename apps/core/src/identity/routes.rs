@@ -69,11 +69,15 @@ pub fn router(config: AppConfig, db: &Db) -> Router {
         .route("/api/v1/sessions", post(create_session))
         .route("/api/v1/session", get(get_session).delete(delete_session))
         .route("/api/v1/device-pairing-codes", post(create_pairing_code))
+        .route(
+            "/api/v1/device-pairing-codes/media-read-only",
+            post(create_media_read_only_pairing_code),
+        )
         .route("/api/v1/devices/enrollment", post(enroll_device))
         .route("/api/v1/devices", get(list_devices))
         .route(
             "/api/v1/devices/{deviceId}",
-            axum::routing::delete(delete_device),
+            get(get_device).delete(delete_device),
         )
         .route(
             "/api/v1/devices/current/token-rotation",
@@ -290,25 +294,55 @@ async fn create_pairing_code(
     State(state): State<Arc<IdentityHttpState>>,
     headers: HeaderMap,
 ) -> Result<impl IntoResponse, AppError> {
+    issue_pairing_code_response(
+        &state,
+        &headers,
+        crate::identity::model::DeviceAccessMode::Administrator,
+    )
+    .await
+}
+
+async fn create_media_read_only_pairing_code(
+    State(state): State<Arc<IdentityHttpState>>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, AppError> {
+    issue_pairing_code_response(
+        &state,
+        &headers,
+        crate::identity::model::DeviceAccessMode::MediaReadOnly,
+    )
+    .await
+}
+
+async fn issue_pairing_code_response(
+    state: &IdentityHttpState,
+    headers: &HeaderMap,
+    access_mode: crate::identity::model::DeviceAccessMode,
+) -> Result<Response, AppError> {
     state.ensure_ready().await?;
-    let session = guard_web_admin(&state, &headers).await?;
-    if let Err(error) = validate_same_origin(&headers, &state.config.public_origin) {
+    let session = guard_web_admin(state, headers).await?;
+    if let Err(error) = validate_same_origin(headers, &state.config.public_origin) {
         state.service.audit_denial("origin").await?;
         return Err(error);
     }
-    if let Err(error) = CsrfGuard::validate(&headers, &session) {
+    if let Err(error) = CsrfGuard::validate(headers, &session) {
         state.service.audit_denial("csrf").await?;
         return Err(error);
     }
-    let (code, expires_at_us) = state.service.issue_pairing_code(session.account.id).await?;
+    let (code, expires_at_us) = state
+        .service
+        .issue_pairing_code_with_access(session.account.id, access_mode)
+        .await?;
     Ok((
         StatusCode::CREATED,
         Json(crate::identity::model::PairingCodeResponse {
+            access_mode,
             pairing_code: code,
             expires_at: micros_to_rfc3339(expires_at_us),
             version: "v1",
         }),
-    ))
+    )
+        .into_response())
 }
 
 /// 设备 enrollment：移动端入口端点，**不做同源校验**（非浏览器客户端无 Fetch Metadata
@@ -336,7 +370,12 @@ async fn enroll_device(
     } else if let Some(code) = request.pairing_code.as_deref() {
         state
             .service
-            .enroll_with_pairing_code(code, &request.device_name, &source)
+            .enroll_with_pairing_code_access(
+                code,
+                &request.device_name,
+                &source,
+                request.access_mode,
+            )
             .await?
     } else if let (Some(name), Some(password)) = (
         request.administrator_name.as_deref(),
@@ -344,7 +383,13 @@ async fn enroll_device(
     ) {
         state
             .service
-            .enroll_with_credentials(name, password, &request.device_name, &source)
+            .enroll_with_credentials_access(
+                name,
+                password,
+                &request.device_name,
+                &source,
+                request.access_mode,
+            )
             .await?
     } else {
         return Err(AppError::new(
@@ -371,6 +416,25 @@ async fn list_devices(
     guard_web_admin(&state, &headers).await?;
     let devices = state.service.list_devices().await?;
     Ok(Json(serde_json::json!({ "items": devices })))
+}
+
+/// 读取设备身份；设备令牌只允许核对自身，供恢复时验证访问能力。
+async fn get_device(
+    State(state): State<Arc<IdentityHttpState>>,
+    headers: HeaderMap,
+    axum::extract::Path(device_id): axum::extract::Path<uuid::Uuid>,
+) -> Result<Json<crate::identity::model::DeviceView>, AppError> {
+    state.ensure_ready().await?;
+    let session = SessionGuard::authenticate_without_sliding(&headers, &state.service).await?;
+    if let crate::identity::model::Principal::Device { device_id: own } = session.principal
+        && own != device_id
+    {
+        return Err(AppError::new(
+            ErrorCode::PermissionDenied,
+            "devices may only read their own identity",
+        ));
+    }
+    Ok(Json(state.service.device(device_id).await?))
 }
 
 /// 吊销设备：管理员（Web）可吊销任意设备；设备令牌只能吊销自己（移动端登出）。

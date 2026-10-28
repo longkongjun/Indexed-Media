@@ -412,3 +412,19 @@ pub struct MediaItemDetail {
     /// 参与生成或最近更新该投影的处理任务 UUID。
     pub related_task_ids: Vec<Uuid>,
 }
+
+/// 媒体消费面可见的库标识与名称；不公开主机路径或写配置。
+#[derive(Clone, Debug, Serialize)]
+pub struct MediaLibrary {
+    /// 不透明的媒体库标识。
+    pub id: Uuid,
+    /// 管理员设置的显示名称，历史无目标配置的库使用媒体类型名称。
+    pub name: String,
+}
+
+/// 安全的媒体库选择列表。
+#[derive(Clone, Debug, Serialize)]
+pub struct MediaLibraryPage {
+    /// 至多 200 个可见媒体库。
+    pub items: Vec<MediaLibrary>,
+}

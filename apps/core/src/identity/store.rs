@@ -1,7 +1,7 @@
 use sqlx::{Row, SqlitePool};
 use uuid::Uuid;
 
-use crate::identity::model::{AccountSummary, AuthenticatedSession};
+use crate::identity::model::{AccountSummary, AuthenticatedSession, DeviceAccessMode};
 use crate::shared::error::{AppError, ErrorCode};
 
 #[derive(Clone)]
@@ -221,6 +221,7 @@ impl IdentityStore {
             .try_into()
             .map_err(|_| AppError::new(ErrorCode::Internal, "invalid csrf digest"))?;
         Ok(AuthenticatedSession {
+            access_mode: DeviceAccessMode::Administrator,
             account: AccountSummary {
                 id: Uuid::from_slice(&account_bytes)
                     .map_err(|error| AppError::new(ErrorCode::Internal, error.to_string()))?,
@@ -434,6 +435,8 @@ impl IdentityStore {
 
 /// 设备行中需要暴露给管理面或认证结果的结构化材料。
 pub struct DeviceRecord {
+    /// 服务端实际执行的持久化访问能力。
+    pub access_mode: DeviceAccessMode,
     /// 设备稳定 UUID。
     pub id: Uuid,
     /// 拥有设备的账户 UUID。
@@ -459,6 +462,7 @@ impl IdentityStore {
     /// `SQLite` 拒绝插入时返回 [`AppError`]。
     pub async fn insert_device(
         &self,
+        access_mode: DeviceAccessMode,
         id: Uuid,
         account_id: Uuid,
         display_name: &str,
@@ -469,8 +473,8 @@ impl IdentityStore {
     ) -> Result<(), AppError> {
         sqlx::query(
             "INSERT INTO identity_devices
-             (id,account_id,display_name,token_sha256,credential_version,absolute_expires_at_us,created_at_us)
-             VALUES (?,?,?,?,?,?,?)",
+             (id,account_id,display_name,token_sha256,credential_version,absolute_expires_at_us,created_at_us,access_mode)
+             VALUES (?,?,?,?,?,?,?,?)",
         )
         .bind(id.as_bytes().as_slice())
         .bind(account_id.as_bytes().as_slice())
@@ -479,6 +483,7 @@ impl IdentityStore {
         .bind(credential_version)
         .bind(absolute_expires_at_us)
         .bind(now_us)
+        .bind(access_mode.as_str())
         .execute(&self.pool)
         .await
         .map_err(|error| AppError::with_source(ErrorCode::Internal, error))?;
@@ -512,7 +517,7 @@ impl IdentityStore {
                  WHERE a.id=identity_devices.account_id AND a.status='active'
                    AND a.credential_version=identity_devices.credential_version
                )
-             RETURNING id,account_id",
+             RETURNING id,account_id,access_mode",
         )
         .bind(now_us)
         .bind(TOUCH_INTERVAL_US)
@@ -535,7 +540,7 @@ impl IdentityStore {
     /// 设备不存在或数据库失败时返回 [`AppError`]。
     pub async fn device(&self, device_id: Uuid) -> Result<DeviceRecord, AppError> {
         let row = sqlx::query(
-            "SELECT id,account_id,display_name,absolute_expires_at_us,created_at_us,last_used_at_us,revoked_at_us
+            "SELECT id,account_id,display_name,absolute_expires_at_us,created_at_us,last_used_at_us,revoked_at_us,access_mode
              FROM identity_devices WHERE id=?",
         )
         .bind(device_id.as_bytes().as_slice())
@@ -553,7 +558,7 @@ impl IdentityStore {
     /// 数据库失败时返回 [`AppError`]。
     pub async fn list_devices(&self) -> Result<Vec<DeviceRecord>, AppError> {
         let rows = sqlx::query(
-            "SELECT id,account_id,display_name,absolute_expires_at_us,created_at_us,last_used_at_us,revoked_at_us
+            "SELECT id,account_id,display_name,absolute_expires_at_us,created_at_us,last_used_at_us,revoked_at_us,access_mode
              FROM identity_devices ORDER BY created_at_us",
         )
         .fetch_all(&self.pool)
@@ -631,16 +636,18 @@ impl IdentityStore {
         code_hash: &[u8],
         now_us: i64,
         expires_at_us: i64,
+        access_mode: DeviceAccessMode,
     ) -> Result<(), AppError> {
         sqlx::query(
-            "INSERT INTO identity_pairing_codes (id,account_id,code_sha256,created_at_us,expires_at_us)
-             VALUES (?,?,?,?,?)",
+            "INSERT INTO identity_pairing_codes (id,account_id,code_sha256,created_at_us,expires_at_us,access_mode)
+             VALUES (?,?,?,?,?,?)",
         )
         .bind(id.as_bytes().as_slice())
         .bind(account_id.as_bytes().as_slice())
         .bind(code_hash)
         .bind(now_us)
         .bind(expires_at_us)
+        .bind(access_mode.as_str())
         .execute(&self.pool)
         .await
         .map_err(|error| AppError::with_source(ErrorCode::Internal, error))?;
@@ -657,24 +664,43 @@ impl IdentityStore {
         &self,
         code_hash: &[u8],
         now_us: i64,
+        requested_mode: DeviceAccessMode,
     ) -> Result<Uuid, AppError> {
         let row = sqlx::query(
             "UPDATE identity_pairing_codes SET used_at_us=?
              WHERE code_sha256=? AND used_at_us IS NULL AND expires_at_us>?
+             AND (access_mode='administrator' OR ?='media-read-only')
              RETURNING account_id",
         )
         .bind(now_us)
         .bind(code_hash)
         .bind(now_us)
+        .bind(requested_mode.as_str())
         .fetch_optional(&self.pool)
         .await
-        .map_err(|error| AppError::with_source(ErrorCode::Internal, error))?
-        .ok_or_else(|| {
-            AppError::new(
-                ErrorCode::InvalidCredentials,
-                "pairing code is unknown, expired, or already used",
+        .map_err(|error| AppError::with_source(ErrorCode::Internal, error))?;
+        let Some(row) = row else {
+            let valid_code: bool = sqlx::query_scalar(
+                "SELECT EXISTS(SELECT 1 FROM identity_pairing_codes
+                 WHERE code_sha256=? AND used_at_us IS NULL AND expires_at_us>?)",
             )
-        })?;
+            .bind(code_hash)
+            .bind(now_us)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|error| AppError::with_source(ErrorCode::Internal, error))?;
+            return Err(if valid_code {
+                AppError::new(
+                    ErrorCode::PermissionDenied,
+                    "pairing code cannot grant requested access",
+                )
+            } else {
+                AppError::new(
+                    ErrorCode::InvalidCredentials,
+                    "pairing code is unknown, expired, or already used",
+                )
+            });
+        };
         let account_bytes: Vec<u8> = row.get("account_id");
         Uuid::from_slice(&account_bytes)
             .map_err(|error| AppError::new(ErrorCode::Internal, error.to_string()))
@@ -714,6 +740,7 @@ async fn session_from_device_row(
             .await
             .map_err(|error| AppError::with_source(ErrorCode::Internal, error))?;
     Ok(crate::identity::model::AuthenticatedSession {
+        access_mode: device_access_mode(row.get::<&str, _>("access_mode"))?,
         account: crate::identity::model::AccountSummary {
             id: Uuid::from_slice(&account_bytes)
                 .map_err(|error| AppError::new(ErrorCode::Internal, error.to_string()))?,
@@ -728,6 +755,7 @@ fn device_record_from_row(row: &sqlx::sqlite::SqliteRow) -> Result<DeviceRecord,
     let id: Vec<u8> = row.get("id");
     let account_id: Vec<u8> = row.get("account_id");
     Ok(DeviceRecord {
+        access_mode: device_access_mode(row.get::<&str, _>("access_mode"))?,
         id: Uuid::from_slice(&id)
             .map_err(|error| AppError::new(ErrorCode::Internal, error.to_string()))?,
         account_id: Uuid::from_slice(&account_id)
@@ -738,4 +766,15 @@ fn device_record_from_row(row: &sqlx::sqlite::SqliteRow) -> Result<DeviceRecord,
         last_used_at_us: row.get("last_used_at_us"),
         revoked_at_us: row.get("revoked_at_us"),
     })
+}
+
+fn device_access_mode(value: &str) -> Result<DeviceAccessMode, AppError> {
+    match value {
+        "administrator" => Ok(DeviceAccessMode::Administrator),
+        "media-read-only" => Ok(DeviceAccessMode::MediaReadOnly),
+        _ => Err(AppError::new(
+            ErrorCode::DatabaseInvalid,
+            "invalid device access mode",
+        )),
+    }
 }

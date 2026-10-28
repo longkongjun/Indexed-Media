@@ -572,3 +572,341 @@ fn bearer_get(token: &str, path: &str) -> Request<axum::body::Body> {
 async fn json_body(response: axum::response::Response) -> Value {
     serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap()
 }
+
+async fn assert_media_read_only_http_policy(app: &axum::Router, token: &str) {
+    for path in [
+        "/api/v1/media-items",
+        "/api/v1/media-libraries",
+        "/api/v1/integrations/jellyfin",
+    ] {
+        let response = app.clone().oneshot(bearer_get(token, path)).await.unwrap();
+        assert_eq!(
+            response.status(),
+            StatusCode::OK,
+            "readonly must read {path}"
+        );
+    }
+    for (method, path) in [
+        ("GET", "/api/v1/processing-tasks"),
+        ("GET", "/api/v1/review-cases"),
+        ("GET", "/api/v1/events"),
+        ("GET", "/api/v1/notifications"),
+        ("GET", "/api/v1/devices"),
+        ("GET", "/api/v1/integrations/tmdb"),
+        ("POST", "/api/v1/device-pairing-codes"),
+        (
+            "POST",
+            "/api/v1/processing-tasks/00000000-0000-7000-8000-0000000000ff/cancel",
+        ),
+        ("PUT", "/api/v1/integrations/jellyfin"),
+        ("POST", "/api/v1/capabilities/invocations"),
+        ("GET", "/api/v1/not-yet-declared-route"),
+    ] {
+        let request = Request::builder()
+            .method(method)
+            .uri(path)
+            .header(header::AUTHORIZATION, format!("Bearer {token}"))
+            .body(Body::empty())
+            .unwrap();
+        let response = app.clone().oneshot(request).await.unwrap();
+        assert_eq!(
+            response.status(),
+            StatusCode::FORBIDDEN,
+            "readonly must deny {method} {path}"
+        );
+    }
+    let mut injected_cookie = bearer_get(token, "/api/v1/system/bootstrap-status");
+    injected_cookie.headers_mut().insert(
+        header::COOKIE,
+        "__Host-mediaflow_session=invalid".parse().unwrap(),
+    );
+    assert_eq!(
+        app.clone().oneshot(injected_cookie).await.unwrap().status(),
+        StatusCode::FORBIDDEN
+    );
+}
+
+#[tokio::test]
+async fn media_read_only_devices_are_server_enforced_and_self_manageable() {
+    let (_fixture, _db, app) = bootstrapped().await;
+    let enrolled = app
+        .clone()
+        .oneshot(
+            Request::post("/api/v1/devices/enrollment")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    json!({
+                        "administrator_name":"admin", "password":ADMIN_PASSWORD,
+                        "device_name":"Living room TV", "access_mode":"media-read-only"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(enrolled.status(), StatusCode::CREATED);
+    let enrolled = json_body(enrolled).await;
+    assert_eq!(enrolled["device"]["access_mode"], "media-read-only");
+    let token = enrolled["token"].as_str().unwrap();
+    let device = enrolled["device"]["id"].as_str().unwrap();
+    assert_media_read_only_http_policy(&app, token).await;
+    let own = app
+        .clone()
+        .oneshot(bearer_get(token, &format!("/api/v1/devices/{device}")))
+        .await
+        .unwrap();
+    assert_eq!(own.status(), StatusCode::OK);
+    assert_eq!(json_body(own).await["access_mode"], "media-read-only");
+    let other = "00000000-0000-7000-8000-0000000000ff";
+    for method in ["GET", "DELETE"] {
+        let request = Request::builder()
+            .method(method)
+            .uri(format!("/api/v1/devices/{other}"))
+            .header(header::AUTHORIZATION, format!("Bearer {token}"))
+            .body(Body::empty())
+            .unwrap();
+        assert_eq!(
+            app.clone().oneshot(request).await.unwrap().status(),
+            StatusCode::FORBIDDEN
+        );
+    }
+    let rotated = app
+        .clone()
+        .oneshot(
+            Request::post("/api/v1/devices/current/token-rotation")
+                .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(rotated.status(), StatusCode::OK);
+    let rotated = json_body(rotated).await;
+    let new_token = rotated["token"].as_str().unwrap();
+    assert_eq!(
+        app.clone()
+            .oneshot(bearer_get(token, "/api/v1/media-items"))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::UNAUTHORIZED
+    );
+    let restored = app
+        .clone()
+        .oneshot(bearer_get(new_token, &format!("/api/v1/devices/{device}")))
+        .await
+        .unwrap();
+    assert_eq!(restored.status(), StatusCode::OK);
+    assert_eq!(json_body(restored).await["access_mode"], "media-read-only");
+    let revoke = app
+        .clone()
+        .oneshot(
+            Request::delete(format!("/api/v1/devices/{device}"))
+                .header(header::AUTHORIZATION, format!("Bearer {new_token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(revoke.status(), StatusCode::NO_CONTENT);
+    assert_eq!(
+        app.oneshot(bearer_get(new_token, "/api/v1/media-items"))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::UNAUTHORIZED
+    );
+}
+
+#[tokio::test]
+async fn readonly_pairing_and_legacy_default_preserve_distinct_access_modes() {
+    let (_fixture, _db, app) = bootstrapped().await;
+    let (cookie, csrf) = web_login(&app).await;
+    let code = issue_pairing_code(&app, &cookie, &csrf).await;
+    let request = Request::post("/api/v1/devices/enrollment")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            json!({"pairing_code":code,"device_name":"TV paired","access_mode":"media-read-only"})
+                .to_string(),
+        ))
+        .unwrap();
+    let response = app.clone().oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::CREATED);
+    assert_eq!(
+        json_body(response).await["device"]["access_mode"],
+        "media-read-only"
+    );
+    let code = issue_pairing_code(&app, &cookie, &csrf).await;
+    let (status, legacy) = enroll_with_code(&app, &code, "Legacy mobile").await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(legacy["device"]["access_mode"], "administrator");
+    let token = legacy["token"].as_str().unwrap();
+    assert_eq!(
+        app.clone()
+            .oneshot(bearer_get(token, "/api/v1/processing-tasks"))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+    let invalid=app.oneshot(Request::post("/api/v1/devices/enrollment")
+        .header(header::CONTENT_TYPE,"application/json")
+        .body(Body::from(json!({"pairing_code":"INVALID0","device_name":"invalid","access_mode":"unknown"}).to_string())).unwrap()).await.unwrap();
+    assert_eq!(invalid.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
+async fn existing_v37_devices_migrate_to_administrator_without_reenrollment() {
+    let fixture = TestConfigDir::new(RunMode::Development);
+    let all = sqlx::migrate!("./migrations");
+    let baseline = sqlx::migrate::Migrator {
+        migrations: std::borrow::Cow::Owned(
+            all.iter()
+                .filter(|migration| migration.version <= 37)
+                .cloned()
+                .collect(),
+        ),
+        ..sqlx::migrate::Migrator::DEFAULT
+    };
+    let pool = mediaflow_core::platform::db::open_pool(&fixture.database_path())
+        .await
+        .unwrap();
+    baseline.run(&pool).await.unwrap();
+    let account = common::seed_account(&pool).await;
+    let device = uuid::Uuid::now_v7();
+    let token = "legacy-pre-scope-device-token";
+    let now = chrono::Utc::now().timestamp_micros();
+    sqlx::query("INSERT INTO identity_devices(id,account_id,display_name,token_sha256,credential_version,absolute_expires_at_us,created_at_us) VALUES (?,?,'Legacy device',?,1,?,?)")
+        .bind(device.as_bytes().as_slice()).bind(account.as_bytes().as_slice())
+        .bind(mediaflow_core::platform::random::sha256(token.as_bytes()).as_slice())
+        .bind(now+60_000_000).bind(now).execute(&pool).await.unwrap();
+    let legacy_code = "LEGACY27";
+    sqlx::query("INSERT INTO identity_pairing_codes(id,account_id,code_sha256,created_at_us,expires_at_us) VALUES (?,?,?,?,?)")
+        .bind(uuid::Uuid::now_v7().as_bytes().as_slice()).bind(account.as_bytes().as_slice())
+        .bind(mediaflow_core::platform::random::sha256(legacy_code.as_bytes()).as_slice())
+        .bind(now).bind(now+60_000_000).execute(&pool).await.unwrap();
+    pool.close().await;
+    let db = migrate_with_backup(fixture.config()).await.unwrap();
+    let identity = mediaflow_core::identity::IdentityService::new(
+        db.pool().clone(),
+        fixture.config().config_dir.clone(),
+    );
+    let session = identity.authenticate_device(token).await.unwrap();
+    assert_eq!(
+        session.access_mode,
+        mediaflow_core::identity::model::DeviceAccessMode::Administrator
+    );
+    assert_eq!(
+        identity.device(device).await.unwrap().access_mode,
+        session.access_mode
+    );
+    let paired = identity
+        .enroll_with_pairing_code(legacy_code, "Legacy paired", "migration")
+        .await
+        .unwrap();
+    assert_eq!(paired.device.access_mode, session.access_mode);
+    assert_eq!(
+        fixture.manifest_files().len(),
+        1,
+        "forward security migration retains the existing backup boundary"
+    );
+    assert!(
+        matches!(
+            baseline.run(db.pool()).await,
+            Err(sqlx::migrate::MigrateError::VersionMissing(38))
+        ),
+        "an old binary must not ignore the security migration"
+    );
+}
+
+#[tokio::test]
+async fn scoped_pairing_code_cannot_issue_administrator_tokens_or_be_consumed_by_escalation() {
+    let (_fixture, _db, app) = bootstrapped().await;
+    let (cookie, csrf) = web_login(&app).await;
+    let code = app
+        .clone()
+        .oneshot(
+            Request::post("/api/v1/device-pairing-codes/media-read-only")
+                .header(header::COOKIE, &cookie)
+                .header(header::ORIGIN, "http://127.0.0.1:3000")
+                .header("x-csrf-token", &csrf)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(code.status(), StatusCode::CREATED);
+    let code = json_body(code).await;
+    assert_eq!(code["access_mode"], "media-read-only");
+    let code = code["pairing_code"].as_str().unwrap();
+    let request = |mode: &str| {
+        Request::post("/api/v1/devices/enrollment")
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(
+                json!({"pairing_code":code,"device_name":"TV","access_mode":mode}).to_string(),
+            ))
+            .unwrap()
+    };
+    let escalated = app.clone().oneshot(request("administrator")).await.unwrap();
+    assert_eq!(escalated.status(), StatusCode::FORBIDDEN);
+    let approved = app
+        .clone()
+        .oneshot(request("media-read-only"))
+        .await
+        .unwrap();
+    assert_eq!(approved.status(), StatusCode::CREATED);
+    assert_eq!(
+        json_body(approved).await["device"]["access_mode"],
+        "media-read-only"
+    );
+    assert_eq!(
+        app.clone()
+            .oneshot(request("media-read-only"))
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::UNAUTHORIZED
+    );
+    let plain_device = enrolled_device(&app).await;
+    let request = Request::post("/api/v1/device-pairing-codes/media-read-only")
+        .header(header::AUTHORIZATION, format!("Bearer {plain_device}"))
+        .body(Body::empty())
+        .unwrap();
+    assert_eq!(
+        app.oneshot(request).await.unwrap().status(),
+        StatusCode::UNAUTHORIZED
+    );
+}
+
+#[tokio::test]
+async fn scoped_pairing_requires_browser_origin_and_csrf_before_issuing_a_code() {
+    let (_fixture, db, app) = bootstrapped().await;
+    let (cookie, csrf) = web_login(&app).await;
+    for (origin, csrf) in [
+        ("http://127.0.0.1:3000", ""),
+        ("https://evil.invalid", csrf.as_str()),
+    ] {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::post("/api/v1/device-pairing-codes/media-read-only")
+                    .header(header::COOKIE, &cookie)
+                    .header(header::ORIGIN, origin)
+                    .header("x-csrf-token", csrf)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    }
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM identity_pairing_codes")
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
+    assert_eq!(
+        count, 0,
+        "denied browser writes must not create pairing credentials"
+    );
+}

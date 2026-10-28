@@ -26,7 +26,7 @@ function apiError(status: number, code: "auth.invalid_credentials" | "auth.rate_
 function client(overrides: Partial<MediaFlowClient> = {}): MediaFlowClient {
   return {
     getBootstrapStatus: vi.fn(), bootstrap: vi.fn(), createSession: vi.fn(), getSession: vi.fn(),
-    deleteSession: vi.fn(), listDeploymentRoots: vi.fn(), preflightInboxDirectory: vi.fn(),
+    deleteSession: vi.fn(), createMediaReadOnlyDevicePairingCode: vi.fn(), listDeploymentRoots: vi.fn(), preflightInboxDirectory: vi.fn(),
     listInboxDirectories: vi.fn(), createInboxDirectory: vi.fn(), getInboxDirectory: vi.fn(),
     createScanTask: vi.fn(), listScanTasks: vi.fn(), getScanTask: vi.fn(), retryScanTask: vi.fn(),
     cancelScanTask: vi.fn(), listScanTaskFiles: vi.fn(), listScanTaskErrors: vi.fn(),

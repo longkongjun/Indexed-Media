@@ -51,6 +51,39 @@ pub struct CatalogStore {
 }
 
 impl CatalogStore {
+    /// 列出账户内含正式媒体的库；仅投影安全名称，不泄露路径与整理策略。
+    ///
+    /// # Errors
+    /// 数据库或持久化 UUID 无效时返回错误，超过 200 项时拒绝截断结果。
+    pub async fn libraries(
+        &self,
+        account_id: Uuid,
+    ) -> Result<crate::catalog::model::MediaLibraryPage, AppError> {
+        let rows = sqlx::query(
+            "SELECT item.library_id,MAX(target.display_name) AS name,MIN(item.kind) AS kind
+             FROM catalog_media_items item LEFT JOIN organization_targets target
+               ON target.id=item.library_id AND target.account_id=item.account_id
+             WHERE item.account_id=? GROUP BY item.library_id ORDER BY name,item.library_id LIMIT 201",
+        ).bind(account_id.as_bytes().as_slice()).fetch_all(&self.pool).await.map_err(|error| AppError::with_source(ErrorCode::DatabaseInvalid, error))?;
+        ensure_cap(rows.len(), 200, "media libraries")?;
+        let items = rows
+            .iter()
+            .map(|row| {
+                let id = Uuid::from_slice(row.get::<&[u8], _>("library_id"))
+                    .map_err(|_| invalid("library ID"))?;
+                let name = row.get::<Option<String>, _>("name").unwrap_or_else(|| {
+                    match row.get::<&str, _>("kind") {
+                        "movie" => "电影库",
+                        "series" => "剧集库",
+                        _ => "通用视频库",
+                    }
+                    .to_owned()
+                });
+                Ok(crate::catalog::model::MediaLibrary { id, name })
+            })
+            .collect::<Result<Vec<_>, AppError>>()?;
+        Ok(crate::catalog::model::MediaLibraryPage { items })
+    }
     #[must_use]
     /// 使用独立通知器创建存储；事务事件仍会持久化，但不会唤醒其他共享监听者。
     pub fn new(pool: SqlitePool) -> Self {

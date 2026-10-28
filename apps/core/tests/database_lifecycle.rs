@@ -228,7 +228,7 @@ async fn completion_and_reconcile_migration_is_strict_idempotent_and_path_free()
             .fetch_one(db.pool())
             .await
             .unwrap(),
-        37
+        38
     );
 }
 
@@ -293,7 +293,7 @@ async fn local_enhancer_migration_seeds_one_strict_disabled_prompt_free_configur
             .fetch_one(db.pool())
             .await
             .unwrap(),
-        37
+        38
     );
 }
 

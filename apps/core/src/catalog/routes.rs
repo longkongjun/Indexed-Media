@@ -25,6 +25,7 @@ struct CatalogHttpState {
     db: Db,
     identity: IdentityService,
     catalog: CatalogStore,
+    artwork: Option<crate::catalog::artwork::ArtworkService>,
 }
 
 impl CatalogHttpState {
@@ -50,15 +51,88 @@ impl CatalogHttpState {
 
 /// 组装目录列表与详情路由，并复用给定 outbox 通知器传播事务事件。
 pub fn router_with_notifier(config: AppConfig, db: &Db, notifier: OutboxNotifier) -> Router {
+    router_with_artwork_client(
+        config,
+        db,
+        notifier,
+        crate::connectors::tmdb::TmdbClient::production().ok(),
+    )
+}
+
+/// 复用正式路由并显式注入固定生产或loopback客户端，供隔离提供方联调。
+pub fn router_with_artwork_client(
+    config: AppConfig,
+    db: &Db,
+    notifier: OutboxNotifier,
+    client: Option<crate::connectors::tmdb::TmdbClient>,
+) -> Router {
     Router::new()
+        .route("/api/v1/media-libraries", get(list_media_libraries))
         .route("/api/v1/media-items", get(list_media_items))
         .route("/api/v1/media-items/{mediaItemId}", get(get_media_item))
+        .route(
+            "/api/v1/media-items/{mediaItemId}/artwork",
+            get(get_artwork),
+        )
         .with_state(Arc::new(CatalogHttpState {
             identity: IdentityService::new(db.pool().clone(), config.config_dir.clone()),
             catalog: CatalogStore::new_with_notifier(db.pool().clone(), notifier),
+            artwork: client.map(|client| {
+                crate::catalog::artwork::ArtworkService::new(
+                    db.pool().clone(),
+                    config.config_dir.clone(),
+                    client,
+                )
+            }),
             config,
             db: db.clone(),
         }))
+}
+
+async fn get_artwork(
+    State(state): State<Arc<CatalogHttpState>>,
+    headers: HeaderMap,
+    OriginalUri(uri): OriginalUri,
+) -> Result<impl IntoResponse, AppError> {
+    use sha2::Digest as _;
+    let session = state.guard_get(&headers).await?;
+    let value = uri
+        .path()
+        .strip_prefix("/api/v1/media-items/")
+        .and_then(|value| value.strip_suffix("/artwork"))
+        .filter(|value| !value.is_empty() && !value.contains('/'))
+        .ok_or_else(|| validation("invalid media item ID"))?;
+    let media_id = Uuid::parse_str(value).map_err(|_| validation("invalid media item ID"))?;
+    let image = state
+        .artwork
+        .as_ref()
+        .ok_or_else(|| AppError::new(ErrorCode::ProviderUnavailable, "poster client unavailable"))?
+        .poster(session.account.id, media_id)
+        .await?;
+    let etag = format!("\"{}\"", hex::encode(sha2::Sha256::digest(&image.bytes)));
+    Ok((
+        [
+            (
+                axum::http::header::CONTENT_TYPE,
+                image.content_type.to_owned(),
+            ),
+            (
+                axum::http::header::CACHE_CONTROL,
+                "private, max-age=3600".to_owned(),
+            ),
+            (axum::http::header::VARY, "Authorization, Cookie".to_owned()),
+            (axum::http::header::ETAG, etag),
+        ],
+        image.bytes,
+    ))
+}
+
+async fn list_media_libraries(
+    State(state): State<Arc<CatalogHttpState>>,
+    headers: HeaderMap,
+) -> Result<impl IntoResponse, AppError> {
+    let session = state.guard_get(&headers).await?;
+    Ok(Json(state.catalog.libraries(session.account.id).await?))
 }
 
 async fn list_media_items(
