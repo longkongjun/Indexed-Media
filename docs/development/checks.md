@@ -86,3 +86,5 @@ just bench-m2-recovery-timing
 ## CMP Desktop
 
 `just client-check-desktop` 校验固定Design JAR/POM/module的来源指纹、篡改反例以及桌面ktlint/行为测试/编译；已纳入client-check。`just package-desktop`只构建当前宿主自包含目录。桌面CI为独立Mac/Windows矩阵，系统安全存储使用唯一随机测试项与非敏感数据并清理。当前执行证据由Personal Forge change维护；Windows运行、签名、公证、人工体验及真实Core验收不由构建或fixture代签。详见[桌面模块](../../apps/desktop/README.md)。
+
+`just client-test-desktop-core` 是独立本机真实Core回归：先构建当前serve二进制，再在新建临时实例中通过HTTP驱动桌面SDK/Model；普通桌面测试不依赖Rust。它使用明确的最小review/catalog读投影预置，不声明TMDB识别、整理或发布链路通过，也不代签CMP窗口、系统凭据、NAS或人工。Core日志与边界说明在 `apps/desktop/build/reports/real-core/`，JUnit在 `apps/desktop/build/test-results/realCoreTest/`。

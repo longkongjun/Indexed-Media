@@ -33,6 +33,10 @@ just package-desktop
 
 桌面行为测试使用本机 HTTP fixture、真实 SDK/SQLite/事件连接及隔离目录；不代表真实 NAS 或业务权限验收。NativeVaultTest 只创建唯一随机测试服务与非敏感 sentinel，在 finally 删除；系统安全存储不可用时应失败，不降级跳过。非支持 OS 的该测试明确 skipped。
 
+独立真实Core回归入口为 `just client-test-desktop-core`（本机Mac/Linux开发环境，需要Rust、Python3与JDK21）。它先构建当前 `mediaflow-core`，再运行 `:apps:desktop:realCoreTest`；也可显式设置绝对 `MEDIAFLOW_CORE_BINARY` 后直接运行该任务。缺少/无效二进制会失败而不跳过；普通 `:apps:desktop:test` 不需要Rust或后端。Core只启动于新建临时目录和loopback端口，测试注入内存凭据，不使用个人Keychain。
+
+该旅程通过公开HTTP完成bootstrap、配对、inbox/扫描、取消202、审核回执/幂等、冷恢复/撤销和关闭观察。由于无外部TMDB，先停止本次Core，再在本次临时DB事务中补两个review投影和两个partial目录读投影，随后重启真实serve；这不证明TMDB识别、自动创建review、整理或目录发布。分页使用真实SDK的limit=1，不代替默认50项跨页或人工验收；generic只确认接受及当前规划暂停。日志在 `apps/desktop/build/reports/real-core`，JUnit在 `apps/desktop/build/test-results/realCoreTest`；不记录凭据正文，结束关闭本次进程并删除临时DB/密钥。
+
 实际验证见 Personal Forge 当前 change 的 evidence；仓库文档不维护跨会话完成状态。`desktop-ci` 配置覆盖 Mac/Windows，但配置存在不代表远端运行过。人工检查需分别覆盖 IME、Tab/Shift-Tab、Esc/取消焦点、缩放、长内容、读屏、窗口关闭/恢复和真实 Core 登录、审核与播放跳转，不做截图或像素比较。
 
 首版不包含多窗口、托盘驻留、自动更新、完整 Web 管理、离线写入队列或移动 UI 迁移。进程重启后重新查询服务端权威状态；内存幂等键不充当跨进程操作日志。

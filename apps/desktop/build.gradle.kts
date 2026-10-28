@@ -40,3 +40,18 @@ compose.desktop {
         }
     }
 }
+
+// The ordinary JVM suite stays usable without a Rust build or a live backend.
+tasks.test { exclude("**/DesktopRealCoreTest*") }
+tasks.register<Test>("realCoreTest") {
+    group = "verification"
+    description = "Runs the desktop SDK/model against a newly isolated real Core process"
+    testClassesDirs =
+        sourceSets.test
+            .get()
+            .output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    filter { includeTestsMatching("mediaflow.desktop.DesktopRealCoreTest") }
+    outputs.upToDateWhen { false }
+    outputs.cacheIf { false }
+}

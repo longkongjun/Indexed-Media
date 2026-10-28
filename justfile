@@ -614,6 +614,11 @@ client-check-desktop:
     @PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools/desktop -p 'test_*.py'
     @./gradlew :apps:desktop:ktlintCheck :apps:desktop:test :apps:desktop:classes --console=plain
 
+# 使用新建隔离实例运行真实Core与桌面SDK/状态回归；不代签NAS或人工。
+client-test-desktop-core:
+    @cargo build --locked --manifest-path apps/core/Cargo.toml --bin mediaflow-core
+    @MEDIAFLOW_CORE_BINARY="$(cargo metadata --offline --locked --no-deps --format-version 1 --manifest-path apps/core/Cargo.toml | python3 -c 'import json,sys; from pathlib import Path; print(Path(json.load(sys.stdin)["target_directory"])/"debug"/"mediaflow-core")')" ./gradlew :apps:desktop:realCoreTest --console=plain
+
 # 对应宿主的可运行自包含桌面目录；Mac/Windows分别构建、运行和验收。
 package-desktop:
     @python3 tools/desktop/check-vendor.py
