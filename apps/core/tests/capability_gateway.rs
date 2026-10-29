@@ -913,10 +913,8 @@ async fn successful_call_response_matches_the_result_schema() {
 }
 
 #[tokio::test]
-async fn pre_parse_failures_keep_the_nil_request_id_contract() {
-    // 认证失败与信封解析失败发生在解析之前/之时：沿用既有错误契约——全零 request_id
-    // 占位、不伪造调用身份。全零 UUID 不满足结果 Schema 的 uuid pattern（版本位 1-8），
-    // 这是已知的契约张力；本测试钉住"除该占位外无其他 Schema 失败"，契约是否放宽另行协调。
+async fn rejected_envelopes_keep_valid_response_ids_and_match_the_result_schema() {
+    // 有效信封拒绝回显原 ID；残缺信封使用仅关联本响应的 UUID，所有结果符合正式 Schema。
     let harness = harness(b"req-id-pre-parse.mkv").await;
     let validator = result_schema_validator();
 
@@ -966,25 +964,16 @@ async fn pre_parse_failures_keep_the_nil_request_id_contract() {
             .expect("gateway response");
         let body = json_body(response).await;
         assert_eq!(body["status"], "rejected", "{label}");
-        assert_eq!(
-            body["request_id"],
-            Uuid::nil().to_string(),
-            "{label}: pre-parse failures keep the nil placeholder"
-        );
+        let response_id = Uuid::parse_str(body["request_id"].as_str().unwrap()).unwrap();
+        assert!(!response_id.is_nil(), "{label}");
+        if label == "wrong bearer token" {
+            assert_eq!(body["request_id"], valid_envelope["request_id"]);
+        }
         let failures = schema_failures(&validator, &body);
-        assert!(
-            !failures.is_empty(),
-            "{label}: nil uuid must fail the schema"
-        );
-        assert!(
-            failures
-                .iter()
-                .all(|failure| failure.starts_with("/request_id")),
-            "{label}: only the nil request_id placeholder may fail the schema: {failures:?}"
-        );
+        assert!(failures.is_empty(), "{label}: {failures:?}");
     }
 
-    // 网关未配置令牌（provider 拒绝）同样发生在解析之前。
+    // 网关未配置令牌仍回显合法信封的关联 ID，不执行调用。
     let fixture = common::TestConfigDir::new(RunMode::Development);
     let db = migrate_with_backup(fixture.config())
         .await
@@ -993,13 +982,11 @@ async fn pre_parse_failures_keep_the_nil_request_id_contract() {
     let body = post_call(&app, "whatever-token-value-0000", &valid_envelope).await;
     assert_eq!(body["status"], "rejected");
     assert_eq!(body["error"]["category"], "provider");
-    assert_eq!(body["request_id"], Uuid::nil().to_string());
+    assert_eq!(body["request_id"], valid_envelope["request_id"]);
     let failures = schema_failures(&validator, &body);
     assert!(
-        failures
-            .iter()
-            .all(|failure| failure.starts_with("/request_id")),
-        "unconfigured gateway: only the nil placeholder may fail: {failures:?}"
+        failures.is_empty(),
+        "unconfigured gateway response must match the schema: {failures:?}"
     );
 }
 
@@ -1231,4 +1218,87 @@ async fn apply_plan_after_recalculation_awaits_a_fresh_web_receipt() {
         1,
         "v1 回执保留，v2 不得被 AI 授权"
     );
+}
+
+#[tokio::test]
+async fn gateway_responses_preserve_valid_correlation_and_invalid_calls_get_server_ids() {
+    let harness = harness(b"correlation.mkv").await;
+    let success_id = Uuid::now_v7();
+    let rejected_id = Uuid::now_v7();
+    let unauthorized_id = Uuid::now_v7();
+    let success = call_envelope(
+        success_id,
+        "media.task-status",
+        Some(harness.task_id),
+        json!({"task_id":harness.task_id}),
+        None,
+    );
+    let rejected = call_envelope(
+        rejected_id,
+        "media.task-status",
+        Some(harness.task_id),
+        json!({"task_id":harness.task_id}),
+        Some("task.version:999999"),
+    );
+    let unauthorized = call_envelope(
+        unauthorized_id,
+        "media.task-status",
+        Some(harness.task_id),
+        json!({"task_id":harness.task_id}),
+        None,
+    );
+    let invalid_id = call_envelope(Uuid::nil(), "media.task-status", None, json!({}), None);
+    let valid_uuid = regex::Regex::new(
+        r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    )
+    .unwrap();
+    for (payload, token, expected, status) in [
+        (success.to_string(), TOKEN, Some(success_id), "succeeded"),
+        (rejected.to_string(), TOKEN, Some(rejected_id), "rejected"),
+        (
+            unauthorized.to_string(),
+            "wrong-token",
+            Some(unauthorized_id),
+            "rejected",
+        ),
+        ("{".to_owned(), TOKEN, None, "rejected"),
+        (invalid_id.to_string(), TOKEN, None, "rejected"),
+    ] {
+        let response = harness
+            .app
+            .clone()
+            .oneshot(
+                Request::post("/api/capability/v1/calls")
+                    .header(header::AUTHORIZATION, format!("Bearer {token}"))
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(payload))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = json_body(response).await;
+        println!("CAPABILITY_RESPONSE={body}");
+        assert_eq!(body["status"], status);
+        assert!(
+            valid_uuid.is_match(body["request_id"].as_str().unwrap()),
+            "schema-valid UUID required: {body}"
+        );
+        if let Some(expected) = expected {
+            assert_eq!(body["request_id"], expected.to_string());
+        }
+        assert!(body["result"].is_null() || status == "succeeded");
+    }
+    let pool = sqlx::SqlitePool::connect(&format!(
+        "sqlite://{}",
+        harness.fixture.database_path().display()
+    ))
+    .await
+    .unwrap();
+    let persisted: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM capability_calls")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(persisted, 1, "only the successful call may be persisted");
+    pool.close().await;
 }

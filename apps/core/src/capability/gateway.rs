@@ -95,15 +95,21 @@ async fn invoke_capability(
     headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> Response {
+    // 只解析信封以保留关联；任何处理与持久化仍必须在认证之后。
+    let call = serde_json::from_slice::<CapabilityCall>(&body)
+        .ok()
+        .filter(|call| {
+            call.request_id.get_variant() == uuid::Variant::RFC4122
+                && (1..=8).contains(&call.request_id.get_version_num())
+        });
+    let request_id = call.as_ref().map(|call| call.request_id);
     if let Err(error) = authenticate(&state, &headers) {
-        // 认证失败发生在信封解析之前：无可用调用身份，沿用既有 nil 占位契约。
-        return error_response(CapabilityResultStatus::Rejected, Uuid::nil(), None, error);
+        return error_response(CapabilityResultStatus::Rejected, request_id, None, error);
     }
-    let Ok(call) = serde_json::from_slice::<CapabilityCall>(&body) else {
-        // 信封解析失败：无已解析调用身份可回显，不伪造（不从残缺信封提取）。
+    let Some(call) = call else {
         return error_response(
             CapabilityResultStatus::Rejected,
-            Uuid::nil(),
+            None,
             None,
             capability_error(
                 ErrorCode::ValidationFailed,
@@ -122,7 +128,7 @@ async fn invoke_capability(
 fn not_found_rejection(call: &CapabilityCall, message: &'static str) -> Response {
     error_response(
         CapabilityResultStatus::Rejected,
-        call.request_id,
+        Some(call.request_id),
         call.task_id,
         capability_error(ErrorCode::NotFound, CapabilityErrorPhase::Scan, message),
     )
@@ -140,7 +146,7 @@ async fn invoke_inner(
         .store
         .find_call(call.request_id)
         .await
-        .map_err(|error| storage_failure(&error, call.request_id))?
+        .map_err(|error| storage_failure(&error, Some(call.request_id)))?
     {
         return Ok(record.result);
     }
@@ -152,11 +158,11 @@ async fn invoke_inner(
             call.request_id,
         )
         .await
-        .map_err(|error| storage_failure(&error, call.request_id))?
+        .map_err(|error| storage_failure(&error, Some(call.request_id)))?
     {
         return Err(error_response(
             CapabilityResultStatus::Rejected,
-            call.request_id,
+            Some(call.request_id),
             call.task_id,
             capability_error(
                 ErrorCode::RequestConflict,
@@ -194,7 +200,6 @@ async fn invoke_inner(
             ));
         }
     };
-    let now_us = state.clock.now_us();
     let result = match outcome {
         Ok(outcome) => assemble_result(&call, outcome),
         Err(error) => {
@@ -203,7 +208,6 @@ async fn invoke_inner(
             } else {
                 CapabilityResultStatus::Failed
             };
-            let error = app_error_to_capability(&error);
             CapabilityResult {
                 protocol_version: PROTOCOL_VERSION.to_owned(),
                 request_id: call.request_id,
@@ -212,11 +216,11 @@ async fn invoke_inner(
                 result: None,
                 evidence: Vec::new(),
                 next_actions: vec![],
-                error: Some(error),
+                error: Some(app_error_to_capability(&error)),
             }
         }
     };
-    persist(state, &call, &result, now_us).await?;
+    persist(state, &call, &result, state.clock.now_us()).await?;
     Ok(result)
 }
 
@@ -236,7 +240,7 @@ async fn persist(
         .store
         .persist_call(&record, "ai", "dsh", now_us)
         .await
-        .map_err(|error| storage_failure(&error, call.request_id))?;
+        .map_err(|error| storage_failure(&error, Some(call.request_id)))?;
     let event_type = if matches!(
         result.status,
         CapabilityResultStatus::Succeeded | CapabilityResultStatus::NeedsInput
@@ -273,7 +277,7 @@ async fn persist(
         .store
         .append_event(&event)
         .await
-        .map_err(|error| storage_failure(&error, call.request_id))?;
+        .map_err(|error| storage_failure(&error, Some(call.request_id)))?;
     Ok(())
 }
 
@@ -506,7 +510,7 @@ async fn preflight(
     if let Err(error) = registry::validate_input(spec, &call.input) {
         return Err(error_response(
             CapabilityResultStatus::Rejected,
-            call.request_id,
+            Some(call.request_id),
             call.task_id,
             app_error_to_capability(&error),
         ));
@@ -514,7 +518,7 @@ async fn preflight(
     if !spec.allowed_modes.contains(&call.execution.mode) {
         return Err(error_response(
             CapabilityResultStatus::Rejected,
-            call.request_id,
+            Some(call.request_id),
             call.task_id,
             capability_error(
                 ErrorCode::TaskInvalidState,
@@ -533,7 +537,7 @@ async fn preflight(
     {
         return Err(error_response(
             CapabilityResultStatus::Rejected,
-            call.request_id,
+            Some(call.request_id),
             Some(task_id),
             app_error_to_capability(&error),
         ));
@@ -568,8 +572,7 @@ async fn list_events(
     Query(query): Query<EventQuery>,
 ) -> Response {
     if let Err(error) = authenticate(&state, &headers) {
-        // events 端点不承载能力调用，无调用身份可关联。
-        return error_response(CapabilityResultStatus::Rejected, Uuid::nil(), None, error);
+        return error_response(CapabilityResultStatus::Rejected, None, None, error);
     }
     let cursor = query
         .cursor
@@ -584,7 +587,7 @@ async fn list_events(
         Ok(page) => (StatusCode::OK, Json(page)).into_response(),
         Err(_) => error_response(
             CapabilityResultStatus::Failed,
-            Uuid::nil(),
+            None,
             None,
             capability_error(
                 ErrorCode::Internal,
@@ -595,7 +598,7 @@ async fn list_events(
     }
 }
 
-fn storage_failure(error: &AppError, request_id: Uuid) -> Response {
+fn storage_failure(error: &AppError, request_id: Option<Uuid>) -> Response {
     error_response(
         CapabilityResultStatus::Retryable,
         request_id,
@@ -604,17 +607,16 @@ fn storage_failure(error: &AppError, request_id: Uuid) -> Response {
     )
 }
 
-/// 构造结构化错误响应；`request_id` 为 nil 仅限"无已解析调用身份"的场景（认证、
-/// 信封解析失败与 events 端点），已解析调用的拒绝/失败必须回显原值。
+/// 已解析调用回显合法 request_id；无调用身份时生成仅用于本次响应关联的 UUID。
 fn error_response(
     status: CapabilityResultStatus,
-    request_id: Uuid,
+    request_id: Option<Uuid>,
     task_id: Option<Uuid>,
     error: CapabilityError,
 ) -> Response {
     let result = CapabilityResult {
         protocol_version: PROTOCOL_VERSION.to_owned(),
-        request_id,
+        request_id: request_id.unwrap_or_else(Uuid::now_v7),
         task_id: error.task_id.or(task_id),
         status,
         result: None,

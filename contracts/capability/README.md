@@ -13,6 +13,7 @@
 - `protocol_version` 固定为 `media-capability.v1`，不随模型版本隐式变化。
 - 调用必须携带 `request_id`、`execution.mode`、幂等键与 `deadline_ms`；`expected_revision` 防止基于过期事实执行。
 - Core 不信任调用方校验：capability、输入 schema、路径与凭据在 Core 侧再次校验；调用输入不可包含绝对路径、shell、SQL 或凭据。
+- 结果 `request_id`：可解析且带有效 UUID 的调用在成功和拒绝时均返回原 ID（认证失败也不执行或持久化调用）；无法解析或无有效调用 ID 时返回 Core 新生成的 UUID，仅用于本次响应关联，不代表调用已被接受。事件查询错误没有调用信封，同样使用服务端关联 ID。
 - 结果 `status` 与 `next_actions` 是稳定枚举；AI 只能依据结构化状态选择下一步动作。
 - 事件由 Core 排序持久化（`sequence` 单调），断线按 cursor 补发；与 Web SSE（`events/v1`）相互独立。
 - 错误信封提供机器可判断的 `category`、`retryable`、`required_action` 与脱敏 `safe_details`。

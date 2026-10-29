@@ -230,6 +230,18 @@ async fn recalculation_is_receipted_once_and_stale_plan_execution_is_rejected() 
         .unwrap();
     assert_eq!(stale.status(), StatusCode::CONFLICT);
     assert_eq!(json_body(stale).await["error"]["code"], "request.conflict");
+    let receipts: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM organization_plan_authorization_receipts WHERE task_id=?",
+    )
+    .bind(fixture.lease.task.id.as_bytes().as_slice())
+    .fetch_one(fixture.db.pool())
+    .await
+    .unwrap();
+    assert_eq!(receipts, 0, "stale approval must not grant authorization");
+    assert!(
+        !fixture.destination_path().exists(),
+        "stale approval must not write files"
+    );
 }
 
 #[tokio::test]
