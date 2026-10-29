@@ -10,7 +10,7 @@ use mediaflow_core::automation::model::{
 use mediaflow_core::automation::rss::client::{
     FeedClient, FeedClientError, FeedResponse, RssCursor,
 };
-use mediaflow_core::automation::rss::poller::{FeedPollCommitPort, FeedPollSource, FeedPoller};
+use mediaflow_core::automation::rss::poller::{FeedPollCommitPort, FeedPoller};
 use mediaflow_core::automation::source_store::AutomationSourceStore;
 use mediaflow_core::bootstrap::config::RunMode;
 use mediaflow_core::connectors::model::SecretString;
@@ -146,6 +146,114 @@ async fn filtered_pages_bind_the_cursor_to_the_exact_filter() {
 
 #[tokio::test]
 async fn rss_events_deduplicate_and_commit_the_encrypted_cursor_atomically() {
+    let (fixture, db, source_id, store) = rss_storage_fixture().await;
+    let poller = FeedPoller::new(Arc::new(StaticFeed), store.clone());
+    let source = async || claim_for_poll(&store, &db, source_id).await;
+
+    assert_eq!(
+        poller
+            .poll(source().await)
+            .await
+            .unwrap()
+            .accepted_event_count,
+        2
+    );
+    assert_eq!(
+        poller
+            .poll(source().await)
+            .await
+            .unwrap()
+            .accepted_event_count,
+        0
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM automation_events WHERE source_id=?")
+            .bind(source_id.as_bytes().as_slice())
+            .fetch_one(db.pool())
+            .await
+            .unwrap(),
+        2
+    );
+    let cursor_before = sqlx::query_as::<_, (Vec<u8>, Vec<u8>)>(
+        "SELECT cursor_nonce,cursor_ciphertext FROM automation_source_runtime WHERE source_id=?",
+    )
+    .bind(source_id.as_bytes().as_slice())
+    .fetch_one(db.pool())
+    .await
+    .unwrap();
+    sqlx::query(
+        "UPDATE automation_events SET request_sha256=randomblob(32)
+         WHERE id=(SELECT id FROM automation_events WHERE source_id=? ORDER BY id LIMIT 1)",
+    )
+    .bind(source_id.as_bytes().as_slice())
+    .execute(db.pool())
+    .await
+    .unwrap();
+    let conflicting = source().await;
+    let conflicting_token = conflicting.lease_token;
+    assert_eq!(
+        poller.poll(conflicting).await,
+        Err(FeedClientError::CheckpointFailed)
+    );
+    assert_eq!(
+        sqlx::query_as::<_, (Vec<u8>, Vec<u8>)>(
+            "SELECT cursor_nonce,cursor_ciphertext FROM automation_source_runtime WHERE source_id=?",
+        )
+        .bind(source_id.as_bytes().as_slice())
+        .fetch_one(db.pool())
+        .await
+        .unwrap(),
+        cursor_before
+    );
+    FeedPollCommitPort::commit_failure(
+        &*store,
+        source_id,
+        1,
+        conflicting_token,
+        FeedClientError::RateLimited,
+    )
+    .await
+    .unwrap();
+    let runtime = sqlx::query_as::<_, (Vec<u8>, Vec<u8>, i64, i64)>(
+        "SELECT cursor_nonce,cursor_ciphertext,attempt_count,next_poll_at_us
+         FROM automation_source_runtime WHERE source_id=?",
+    )
+    .bind(source_id.as_bytes().as_slice())
+    .fetch_one(db.pool())
+    .await
+    .unwrap();
+    assert_eq!((runtime.0, runtime.1), cursor_before);
+    assert_eq!(runtime.2, 1);
+    assert!(runtime.3 > chrono::Utc::now().timestamp_micros());
+    let raw = sqlx::query_scalar::<_, String>(
+        "SELECT lower(hex(payload_ciphertext)) FROM automation_events WHERE source_id=? LIMIT 1",
+    )
+    .bind(source_id.as_bytes().as_slice())
+    .fetch_one(db.pool())
+    .await
+    .unwrap();
+    assert!(!raw.contains("6d61676e6574"));
+    sqlx::query("UPDATE automation_source_runtime SET next_poll_at_us=0,lease_token=NULL,lease_expires_at_us=NULL WHERE source_id=?")
+        .bind(source_id.as_bytes().as_slice()).execute(db.pool()).await.unwrap();
+    let runtime = mediaflow_core::automation::runtime::AutomationRuntime::with_feed_client(
+        db.pool().clone(),
+        &fixture.config().config_dir,
+        mediaflow_core::platform::outbox::OutboxNotifier::new(),
+        Arc::new(StaticFeed),
+    )
+    .unwrap();
+    assert!(
+        runtime.run_once().await.is_err(),
+        "same-identity payload conflict cannot be acknowledged as handled work"
+    );
+}
+
+async fn rss_storage_fixture() -> (
+    common::TestConfigDir,
+    mediaflow_core::platform::db::Db,
+    uuid::Uuid,
+    Arc<AutomationEventStore>,
+) {
     let fixture = common::TestConfigDir::new(RunMode::Development);
     let db = migrate_with_backup(fixture.config()).await.unwrap();
     common::seed_automation_event(db.pool(), &fixture.config().config_dir).await;
@@ -177,74 +285,22 @@ async fn rss_events_deduplicate_and_commit_the_encrypted_cursor_atomically() {
     let store = Arc::new(
         AutomationEventStore::open(db.pool().clone(), &fixture.config().config_dir).unwrap(),
     );
-    let poller = FeedPoller::new(Arc::new(StaticFeed), store.clone());
-    let source = || FeedPollSource {
-        id: source_id,
-        config_version: 1,
-        downloader_connection_id: downloader_id,
-        feed_url: SecretBytes::new(b"https://feed.example.test/private".to_vec()),
-        cursor: None,
-    };
+    (fixture, db, source_id, store)
+}
 
-    assert_eq!(poller.poll(source()).await.unwrap().accepted_event_count, 2);
-    assert_eq!(poller.poll(source()).await.unwrap().accepted_event_count, 0);
-    assert_eq!(
-        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM automation_events WHERE source_id=?")
-            .bind(source_id.as_bytes().as_slice())
-            .fetch_one(db.pool())
-            .await
-            .unwrap(),
-        2
-    );
-    let cursor_before = sqlx::query_as::<_, (Vec<u8>, Vec<u8>)>(
-        "SELECT cursor_nonce,cursor_ciphertext FROM automation_source_runtime WHERE source_id=?",
-    )
-    .bind(source_id.as_bytes().as_slice())
-    .fetch_one(db.pool())
-    .await
-    .unwrap();
-    sqlx::query(
-        "UPDATE automation_events SET request_sha256=randomblob(32)
-         WHERE id=(SELECT id FROM automation_events WHERE source_id=? ORDER BY id LIMIT 1)",
-    )
-    .bind(source_id.as_bytes().as_slice())
-    .execute(db.pool())
-    .await
-    .unwrap();
-    assert_eq!(
-        poller.poll(source()).await,
-        Err(FeedClientError::InvalidResponse)
-    );
-    assert_eq!(
-        sqlx::query_as::<_, (Vec<u8>, Vec<u8>)>(
-            "SELECT cursor_nonce,cursor_ciphertext FROM automation_source_runtime WHERE source_id=?",
-        )
+async fn claim_for_poll(
+    store: &AutomationEventStore,
+    db: &mediaflow_core::platform::db::Db,
+    source_id: uuid::Uuid,
+) -> mediaflow_core::automation::rss::poller::FeedPollSource {
+    sqlx::query("UPDATE automation_source_runtime SET next_poll_at_us=0 WHERE source_id=?")
         .bind(source_id.as_bytes().as_slice())
-        .fetch_one(db.pool())
-        .await
-        .unwrap(),
-        cursor_before
-    );
-    FeedPollCommitPort::commit_failure(&*store, source_id, 1, FeedClientError::RateLimited)
+        .execute(db.pool())
         .await
         .unwrap();
-    let runtime = sqlx::query_as::<_, (Vec<u8>, Vec<u8>, i64, i64)>(
-        "SELECT cursor_nonce,cursor_ciphertext,attempt_count,next_poll_at_us
-         FROM automation_source_runtime WHERE source_id=?",
-    )
-    .bind(source_id.as_bytes().as_slice())
-    .fetch_one(db.pool())
-    .await
-    .unwrap();
-    assert_eq!((runtime.0, runtime.1), cursor_before);
-    assert_eq!(runtime.2, 1);
-    assert!(runtime.3 > chrono::Utc::now().timestamp_micros());
-    let raw = sqlx::query_scalar::<_, String>(
-        "SELECT lower(hex(payload_ciphertext)) FROM automation_events WHERE source_id=? LIMIT 1",
-    )
-    .bind(source_id.as_bytes().as_slice())
-    .fetch_one(db.pool())
-    .await
-    .unwrap();
-    assert!(!raw.contains("6d61676e6574"));
+    store
+        .claim_due_rss_source(chrono::Utc::now().timestamp_micros(), 30_000_000)
+        .await
+        .unwrap()
+        .unwrap()
 }

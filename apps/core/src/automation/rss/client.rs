@@ -68,6 +68,9 @@ pub enum FeedClientError {
     /// URL, redirect, status, header, or response framing was invalid.
     #[error("feed response is invalid")]
     InvalidResponse,
+    /// Durable checkpoint could not be saved; runtime must surface this separately.
+    #[error("feed checkpoint persistence failed")]
+    CheckpointFailed,
 }
 
 #[derive(Clone, Deserialize, Eq, PartialEq, Serialize)]
@@ -354,6 +357,9 @@ impl FeedClient for FeedHttpClient {
             StatusCode::TOO_MANY_REQUESTS => return Err(FeedClientError::RateLimited),
             status if status.is_server_error() => return Err(FeedClientError::Unavailable),
             StatusCode::NOT_MODIFIED => {
+                if cursor.is_none() {
+                    return Err(FeedClientError::InvalidResponse);
+                }
                 let next = response_cursor(&response)?.or_else(|| cursor.cloned());
                 return Ok(FeedResponse::NotModified { cursor: next });
             }

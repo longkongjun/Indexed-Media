@@ -741,15 +741,16 @@ impl FeedPollCommitPort for AutomationEventStore {
         &self,
         source_id: Uuid,
         expected_config_version: i64,
+        lease_token: Uuid,
         commit: FeedPollCommit,
     ) -> Result<usize, FeedClientError> {
-        self.commit_rss_poll(source_id, expected_config_version, commit)
+        self.commit_rss_poll(source_id, expected_config_version, lease_token, commit)
             .await
             .map_err(|error| match error.code() {
-                ErrorCode::RequestConflict | ErrorCode::ValidationFailed => {
+                ErrorCode::ValidationFailed | ErrorCode::AutomationSourceDisabled => {
                     FeedClientError::InvalidResponse
                 }
-                _ => FeedClientError::Unavailable,
+                _ => FeedClientError::CheckpointFailed,
             })
     }
 
@@ -757,6 +758,7 @@ impl FeedPollCommitPort for AutomationEventStore {
         &self,
         source_id: Uuid,
         expected_config_version: i64,
+        lease_token: Uuid,
         failure: FeedClientError,
     ) -> Result<(), FeedClientError> {
         let (health, code) = match failure {
@@ -766,28 +768,32 @@ impl FeedPollCommitPort for AutomationEventStore {
             FeedClientError::Timeout => ("unavailable", "provider.timeout"),
             FeedClientError::ResponseTooLarge => ("degraded", "provider.response-too-large"),
             FeedClientError::InvalidResponse => ("degraded", "provider.invalid-response"),
+            FeedClientError::CheckpointFailed => return Err(FeedClientError::CheckpointFailed),
         };
-        let now = chrono::Utc::now().timestamp_micros();
         let mut tx = self
             .pool
             .begin_with("BEGIN IMMEDIATE")
             .await
-            .map_err(|_| FeedClientError::Unavailable)?;
+            .map_err(|_| FeedClientError::CheckpointFailed)?;
+        let now = chrono::Utc::now().timestamp_micros();
         let attempt = sqlx::query_scalar::<_, i64>(
             "SELECT runtime.attempt_count FROM automation_source_runtime runtime
              JOIN automation_sources source ON source.id=runtime.source_id
              WHERE source.id=? AND source.kind='rss' AND source.enabled=1
-               AND source.config_version=?",
+               AND source.config_version=? AND runtime.lease_token=?
+               AND runtime.lease_expires_at_us>?",
         )
         .bind(source_id.as_bytes().as_slice())
         .bind(expected_config_version)
+        .bind(lease_token.as_bytes().as_slice())
+        .bind(now)
         .fetch_optional(&mut *tx)
         .await
-        .map_err(|_| FeedClientError::Unavailable)?
+        .map_err(|_| FeedClientError::CheckpointFailed)?
         .ok_or(FeedClientError::InvalidResponse)?;
         let next_attempt = (attempt + 1).min(10);
         let exponent = u32::try_from(next_attempt.saturating_sub(1).min(10))
-            .map_err(|_| FeedClientError::Unavailable)?;
+            .map_err(|_| FeedClientError::CheckpointFailed)?;
         let delay_seconds = 60_i64.saturating_mul(1_i64 << exponent).min(86_400);
         sqlx::query(
             "UPDATE automation_source_runtime SET next_poll_at_us=?,attempt_count=?,
@@ -799,7 +805,7 @@ impl FeedPollCommitPort for AutomationEventStore {
         .bind(source_id.as_bytes().as_slice())
         .execute(&mut *tx)
         .await
-        .map_err(|_| FeedClientError::Unavailable)?;
+        .map_err(|_| FeedClientError::CheckpointFailed)?;
         let rows = sqlx::query(
             "UPDATE automation_sources SET health=?,failure_code=?,checked_at_us=?,
              projection_version=projection_version+1,updated_at_us=?
@@ -813,13 +819,13 @@ impl FeedPollCommitPort for AutomationEventStore {
         .bind(expected_config_version)
         .execute(&mut *tx)
         .await
-        .map_err(|_| FeedClientError::Unavailable)?;
+        .map_err(|_| FeedClientError::CheckpointFailed)?;
         if rows.rows_affected() != 1 {
             return Err(FeedClientError::InvalidResponse);
         }
         tx.commit()
             .await
-            .map_err(|_| FeedClientError::Unavailable)?;
+            .map_err(|_| FeedClientError::CheckpointFailed)?;
         Ok(())
     }
 }
@@ -838,6 +844,9 @@ impl AutomationEventStore {
         now_us: i64,
         lease_duration_us: i64,
     ) -> Result<Option<FeedPollSource>, AppError> {
+        if lease_duration_us <= 0 {
+            return Err(validation("invalid RSS lease duration"));
+        }
         let mut tx = self
             .pool
             .begin_with("BEGIN IMMEDIATE")
@@ -913,10 +922,10 @@ impl AutomationEventStore {
             .map_err(secret_error)?;
 
         let cursor = self.open_rss_cursor(source_id, config_version, &row)?;
-        let _ = lease_token;
         Ok(Some(FeedPollSource {
             id: source_id,
             config_version,
+            lease_token,
             downloader_connection_id: Uuid::from_slice(
                 row.get::<Vec<u8>, _>("downloader_connection_id").as_slice(),
             )
@@ -966,20 +975,25 @@ impl AutomationEventStore {
         &self,
         source_id: Uuid,
         expected_config_version: i64,
+        lease_token: Uuid,
         commit: FeedPollCommit,
     ) -> Result<usize, AppError> {
-        let now = chrono::Utc::now().timestamp_micros();
         let mut tx = self
             .pool
             .begin_with("BEGIN IMMEDIATE")
             .await
             .map_err(database_error)?;
+        let now = chrono::Utc::now().timestamp_micros();
         let source = sqlx::query_as::<_, (String, i64, i64)>(
-            "SELECT display_name,enabled,poll_interval_seconds FROM automation_sources
-             WHERE id=? AND kind='rss' AND config_version=?",
+            "SELECT s.display_name,s.enabled,s.poll_interval_seconds FROM automation_sources s
+             JOIN automation_source_runtime r ON r.source_id=s.id
+             WHERE s.id=? AND s.kind='rss' AND s.config_version=?
+               AND r.lease_token=? AND r.lease_expires_at_us>?",
         )
         .bind(source_id.as_bytes().as_slice())
         .bind(expected_config_version)
+        .bind(lease_token.as_bytes().as_slice())
+        .bind(now)
         .fetch_optional(&mut *tx)
         .await
         .map_err(database_error)?

@@ -254,7 +254,7 @@ fn failed_test(error: FeedClientError, checked_at: String) -> AutomationSourceCo
             IntegrationHealth::RateLimited,
             AutomationFailureCode::IntegrationRateLimited,
         ),
-        FeedClientError::Unavailable => (
+        FeedClientError::Unavailable | FeedClientError::CheckpointFailed => (
             IntegrationHealth::Unavailable,
             AutomationFailureCode::IntegrationUnavailable,
         ),

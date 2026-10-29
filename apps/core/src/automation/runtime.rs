@@ -101,7 +101,12 @@ impl AutomationRuntime {
                 let _ = result;
                 Ok(true)
             }
-            // poller 在 Err 时已通过 commit port 记录失败并释放租约。
+            Err(super::rss::client::FeedClientError::CheckpointFailed) => Err(AppError::new(
+                ErrorCode::Internal,
+                "RSS checkpoint persistence failed",
+            )),
+            // Provider failure was persisted, or a stale/configuration-invalid lease was rejected.
+            // Neither is an acknowledgement that an unsuccessful checkpoint was saved.
             Err(_) => Ok(true),
         }
     }

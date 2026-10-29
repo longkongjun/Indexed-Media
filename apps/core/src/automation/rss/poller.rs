@@ -14,6 +14,8 @@ pub struct FeedPollSource {
     pub id: Uuid,
     /// Expected source configuration version.
     pub config_version: i64,
+    /// Exclusive source-poll lease identity, required for success and failure checkpoints.
+    pub lease_token: Uuid,
     /// Target downloader connection.
     pub downloader_connection_id: Uuid,
     /// Short-lived decrypted feed URL.
@@ -28,6 +30,7 @@ impl std::fmt::Debug for FeedPollSource {
             .debug_struct("FeedPollSource")
             .field("id", &self.id)
             .field("config_version", &self.config_version)
+            .field("lease_token", &"[REDACTED]")
             .field("downloader_connection_id", &self.downloader_connection_id)
             .field("feed_url", &"[REDACTED]")
             .field("cursor", &self.cursor)
@@ -104,6 +107,7 @@ pub trait FeedPollCommitPort: Send + Sync {
         &self,
         source_id: Uuid,
         expected_config_version: i64,
+        lease_token: Uuid,
         commit: FeedPollCommit,
     ) -> Result<usize, FeedClientError>;
 
@@ -112,6 +116,7 @@ pub trait FeedPollCommitPort: Send + Sync {
         &self,
         source_id: Uuid,
         expected_config_version: i64,
+        lease_token: Uuid,
         failure: FeedClientError,
     ) -> Result<(), FeedClientError>;
 }
@@ -165,22 +170,23 @@ impl FeedPoller {
             .await
         {
             Ok(response) => response,
-            Err(error) => {
-                self.commits
-                    .commit_failure(source.id, source.config_version, error)
-                    .await?;
-                return Err(error);
-            }
+            Err(error) => return self.fail_poll(&source, error).await,
         };
         match response {
             FeedResponse::NotModified { cursor } => {
+                if source.cursor.is_none() {
+                    return self
+                        .fail_poll(&source, FeedClientError::InvalidResponse)
+                        .await;
+                }
                 let accepted = self
                     .commits
                     .commit(
                         source.id,
                         source.config_version,
+                        source.lease_token,
                         FeedPollCommit {
-                            cursor,
+                            cursor: cursor.or(source.cursor),
                             format: None,
                             ignored_item_count: 0,
                             drafts: Vec::new(),
@@ -203,10 +209,7 @@ impl FeedPoller {
                             }
                             _ => FeedClientError::InvalidResponse,
                         };
-                        self.commits
-                            .commit_failure(source.id, source.config_version, failure)
-                            .await?;
-                        return Err(failure);
+                        return self.fail_poll(&source, failure).await;
                     }
                 };
                 let ignored_item_count = parsed.ignored_item_count;
@@ -233,6 +236,7 @@ impl FeedPoller {
                     .commit(
                         source.id,
                         source.config_version,
+                        source.lease_token,
                         FeedPollCommit {
                             cursor,
                             format: Some(format),
@@ -248,5 +252,21 @@ impl FeedPoller {
                 })
             }
         }
+    }
+
+    async fn fail_poll(
+        &self,
+        source: &FeedPollSource,
+        failure: FeedClientError,
+    ) -> Result<FeedPollResult, FeedClientError> {
+        self.commits
+            .commit_failure(
+                source.id,
+                source.config_version,
+                source.lease_token,
+                failure,
+            )
+            .await?;
+        Err(failure)
     }
 }

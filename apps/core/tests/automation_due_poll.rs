@@ -41,6 +41,7 @@ impl FeedPollCommitPort for RecordingCommits {
         &self,
         _source_id: Uuid,
         _expected_config_version: i64,
+        _lease_token: Uuid,
         _commit: FeedPollCommit,
     ) -> Result<usize, FeedClientError> {
         Ok(0)
@@ -50,6 +51,7 @@ impl FeedPollCommitPort for RecordingCommits {
         &self,
         _source_id: Uuid,
         _expected_config_version: i64,
+        _lease_token: Uuid,
         _failure: FeedClientError,
     ) -> Result<(), FeedClientError> {
         self.failures
@@ -98,6 +100,7 @@ async fn poller_wires_due_poll_through_commit_port() {
     let source = FeedPollSource {
         id: Uuid::now_v7(),
         config_version: 1,
+        lease_token: Uuid::now_v7(),
         downloader_connection_id: Uuid::now_v7(),
         feed_url: SecretBytes::new(b"https://feeds.example.test/due.xml".to_vec()),
         cursor: None,

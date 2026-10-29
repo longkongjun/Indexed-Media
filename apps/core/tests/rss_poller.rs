@@ -33,6 +33,7 @@ impl FeedPollCommitPort for FakeCommitPort {
         &self,
         source_id: Uuid,
         _expected_config_version: i64,
+        _lease_token: Uuid,
         commit: FeedPollCommit,
     ) -> Result<usize, FeedClientError> {
         if std::mem::take(&mut *self.fail_next.lock().unwrap()) {
@@ -52,6 +53,7 @@ impl FeedPollCommitPort for FakeCommitPort {
         &self,
         _source_id: Uuid,
         _expected_config_version: i64,
+        _lease_token: Uuid,
         _failure: FeedClientError,
     ) -> Result<(), FeedClientError> {
         Ok(())
@@ -220,6 +222,13 @@ async fn http_client_sends_conditionals_rejects_redirect_and_bounds_status_body_
         Ok(FeedResponse::NotModified { .. })
     ));
     assert_eq!(
+        client
+            .fetch(&secret_url(&server, "not-modified"), None)
+            .await,
+        Err(FeedClientError::InvalidResponse),
+        "a 304 without any conditional request must not be accepted",
+    );
+    assert_eq!(
         client.fetch(&secret_url(&server, "redirect"), None).await,
         Err(FeedClientError::InvalidResponse)
     );
@@ -257,6 +266,7 @@ fn source(id: Uuid) -> FeedPollSource {
     FeedPollSource {
         id,
         config_version: 1,
+        lease_token: Uuid::now_v7(),
         downloader_connection_id: Uuid::now_v7(),
         feed_url: SecretBytes::new(b"https://feed.example.test/private?token=private".to_vec()),
         cursor: None,
