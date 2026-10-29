@@ -7,7 +7,7 @@
  * 由本页组合；错误文案与摘要关联保持在视图层，见 docs/development/indexed-design-adoption.md）。
  */
 import { computed, nextTick, onBeforeUnmount, reactive, ref } from "vue";
-import { Input } from "@indexed-design/ui-vue";
+import { IndexedBrandLockup, Input } from "@indexed-design/ui-vue";
 import { useIdentity } from "../features/identity/useIdentity";
 
 type LoginField = "login-administrator-name" | "login-password";
@@ -94,7 +94,7 @@ async function submit(): Promise<void> {
 <template>
   <main class="identity-page">
     <section class="identity-card" aria-labelledby="login-title">
-      <p class="eyebrow">MediaFlow</p>
+      <IndexedBrandLockup symbol="media" name="MediaFlow" />
       <h1 id="login-title">管理员登录</h1>
       <p>登录凭据只发送到此 MediaFlow 实例。</p>
       <div v-if="summaryItems.length" id="login-error" ref="summary" data-error-summary class="error-summary" tabindex="-1" role="alert" aria-live="assertive">

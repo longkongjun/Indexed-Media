@@ -84,3 +84,12 @@ MediaFlow Web 分批接入 `@indexed-design/ui-vue` 设计库。本文件记录�
 
 - `check-budget.mjs`（业务入口 gzip ≤ 180 KiB）：首批后 163.2 KB；第二批 AsyncState 委托后 162.9 KB，Modal+Input（含 Dialog/portal）+13.9 KB → **176.8 KB**。剩余约 7.5 KB 余量：后续引入 Select/Table/Drawer 等重组件大概率超出，需先做路由级分包或预算决策，不能默默调预算。
 - 本文件所述迁移不代表 L0/G1 或全产品验收；真实 Core 服务、读屏、多浏览器与人工外观验收按既有归属分别记录。
+
+
+## MediaFlow Web 品牌接入
+
+正式导航、登录和首次设置直接消费同一 vendored 包的 `IndexedBrandLockup(symbol="media", name="MediaFlow")`；导航使用compact变体，图形继承宿主文字色。账户与系统内的“关于 MediaFlow”采用原生details/summary与同一组件，键盘可展开。图形使用已选media原形，不使用tv业务符号。
+
+浏览器favicon由同源media SVG加现有evergreen浅暗文字色生成，几何不变；入口为`apps/web/index.html`，资产及来源指纹见`vendor/indexed-design/web-brand-provenance.json`。四套新增支持主题仍由设计系统维护，产品三态与evergreen/aurora/sepia皮肤行为保持原样。当前Web没有正式PWA manifest或系统启动画面，本轮不把设计候选或favicon当作安装图标、mask和启动资源已验收。
+
+浏览器行为回归入口为`apps/web/e2e/brand.spec.ts`，覆盖登录/导航/关于、键盘、默认主题保留、暗色及200%字体；浏览器验证不代签读屏、真实设备、安装包和人工视觉。

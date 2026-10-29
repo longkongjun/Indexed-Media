@@ -372,7 +372,7 @@ packages:
     engines: {node: '>=18.18'}
 
   '@indexed-design/ui-vue@file:vendor/indexed-design/indexed-design-ui-vue-0.15.0.tgz':
-    resolution: {integrity: sha512-9CuYj99prqW2b4RQNejByIXywc9BR4k//VCz/JU3w+7MiWGzXgfp0wogY4bOd7ppPY24tEQWz8X3s3B98Bf9JQ==, tarball: file:vendor/indexed-design/indexed-design-ui-vue-0.15.0.tgz}
+    resolution: {integrity: sha512-UGV/qADu7mCwS3/cwUp0TdRknbz5xjtuafpFDOefq2ABeJtFwwrGdIROlNO2tXW/PonJI7n2yqB9e2PafePRfA==, tarball: file:vendor/indexed-design/indexed-design-ui-vue-0.15.0.tgz}
     version: 0.15.0
     peerDependencies:
       vue: ^3.5.0

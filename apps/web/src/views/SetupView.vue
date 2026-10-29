@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { IndexedBrandLockup } from "@indexed-design/ui-vue";
 /**
  * 一次性管理员初始化页面，提供可访问验证并主动清除凭据。
  *
@@ -105,7 +106,7 @@ async function submit(): Promise<void> {
 <template>
   <main class="identity-page">
     <section class="identity-card" aria-labelledby="setup-title">
-      <p class="eyebrow">MediaFlow 本地设置</p>
+      <IndexedBrandLockup symbol="media" name="MediaFlow" />
       <h1 id="setup-title">创建管理员</h1>
       <p>创建此实例唯一的管理员。一次性引导密钥和密码不会保存在浏览器中。</p>
       <div v-if="summaryItems.length" id="setup-error" ref="summary" data-error-summary class="error-summary" tabindex="-1" role="alert" aria-live="assertive">

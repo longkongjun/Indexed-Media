@@ -5,6 +5,7 @@
  * 组件没有 props、发出事件或暴露的实例方法。它读取会话 store，在本地切换账户面板；退出登录会清除会话状态
  * 并导航到登录页。外观偏好经 app/theme 控制器落 data-theme/data-skin 属性与本地记忆。
  */
+import { IndexedBrandLockup } from "@indexed-design/ui-vue";
 import { computed, inject, onMounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import AiSessionPanel from "./AiSessionPanel.vue";
@@ -76,7 +77,7 @@ onMounted(() => {
 <template>
   <div class="app-shell">
     <aside class="sidebar">
-      <a class="brand" href="#main-content">MediaFlow</a>
+      <a class="brand" href="#main-content" aria-label="MediaFlow · 跳到主要内容"><IndexedBrandLockup symbol="media" name="MediaFlow" variant="compact" /></a>
       <nav data-desktop-nav aria-label="主导航">
         <RouterLink to="/tasks">任务中心</RouterLink>
         <RouterLink to="/media">媒体</RouterLink>
@@ -137,6 +138,11 @@ onMounted(() => {
             </label>
           </div>
         </fieldset>
+        <details class="product-about" data-product-about>
+          <summary>关于 MediaFlow</summary>
+          <IndexedBrandLockup symbol="media" name="MediaFlow" variant="endorsed" />
+          <p>MediaFlow 是 Indexed 旗下的媒体管理产品。</p>
+        </details>
         <button type="button" @click="logout">退出登录</button>
       </section>
       <RouterView />
@@ -165,6 +171,9 @@ nav a:focus-visible, nav button:focus-visible { outline: var(--mfd-stroke-focus-
 nav a.router-link-active { box-shadow: inset var(--mfd-stroke-focus-ring) 0 0 var(--mfd-color-border-focus); background: var(--mfd-color-bg-inverse-hover); font-weight: var(--mfd-font-weight-semibold); }
 .content { min-height: 100vh; margin-left: 15rem; box-sizing: border-box; padding: 2rem; }
 .account-panel { margin-bottom: 1.5rem; padding: 1rem; border: 1px solid var(--mfd-color-border-default); border-radius: var(--mfd-radius-lg); background: var(--mfd-color-bg-surface); }
+.product-about { margin-block: 1rem; }
+.product-about summary { cursor: pointer; min-height: 2.75rem; }
+.product-about summary:focus-visible, .brand:focus-visible { outline: 3px solid var(--mfd-color-border-focus); outline-offset: 3px; }
 .account-panel h2 { margin-top: 0; }
 .account-panel button { min-height: 2.75rem; padding: .65rem 1rem; border: 1px solid var(--mfd-color-action-danger); border-radius: .5rem; background: var(--mfd-color-action-secondary-bg); color: var(--mfd-color-action-danger); }
 .account-panel button:focus-visible { outline: 3px solid var(--mfd-color-border-focus); outline-offset: 2px; }

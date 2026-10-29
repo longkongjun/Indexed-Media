@@ -1,0 +1,13 @@
+{
+  "source_commit": "9d0038c16688a4a74058b3b8f0d7899d4aadbbdb",
+  "package": "@indexed-design/ui-vue@0.15.0",
+  "tarball": "indexed-design-ui-vue-0.15.0.tgz",
+  "tarball_sha256": "1770ee5e7b55dc39495c22b2d8dc879e577980298e306e42e12012b2d6873782",
+  "media_source": "assets/brand/symbols/media.svg",
+  "media_source_sha256": "b396d8861c798701599f3bc7be5a7d2f9d02d5ecd5d79a617fffa6fe5756d851",
+  "favicon": "apps/web/public/brand/media.svg",
+  "favicon_sha256": "f168eff3ac2319532fa23a899a5a6871ab546fd93f6d872669293053e837944a",
+  "favicon_transform": "Preserve SVG geometry and currentColor; add prefers-color-scheme style using existing MediaFlow evergreen text tokens light #12231c and dark #e6ede8.",
+  "default_theme": "unchanged: system appearance, evergreen skin",
+  "acceptance": "Web browser checks only; installed PWA, platform mask, devices and manual visual acceptance pending."
+}

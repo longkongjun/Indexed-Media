@@ -1,0 +1,43 @@
+import { expect, test } from "@playwright/test";
+import { m2Fixtures } from "../../../packages/test-fixtures/src/index.ts";
+
+test("product brand stays visible through login, navigation, about and theme changes", async ({ page }) => {
+  let authenticated = false;
+  await page.route("**/api/v1/**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    const json = (body: unknown) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+    if (path === "/api/v1/system/bootstrap-status") return json({ requires_initialization: false, version: "v1" });
+    if (path === "/api/v1/session") return authenticated ? json(m2Fixtures.session) : route.fulfill({ status: 401, body: "" });
+    if (path === "/api/v1/processing-tasks" || path === "/api/v1/capability-events") return json({ items: [], next_cursor: null });
+    if (path === "/api/v1/notifications") return json({ items: [], next_cursor: null, unread_count: 0 });
+    return route.fulfill({ status: 404, body: "" });
+  });
+  await page.goto("/login");
+  await expect(page.getByRole("heading", { name: "管理员登录" })).toBeVisible();
+  await expect(page.locator('.identity-card .id-brand-lockup [data-symbol="media"]')).toBeVisible();
+  await expect(page.locator("html")).not.toHaveAttribute("data-skin");
+  const icon = await page.request.get("/brand/media.svg");
+  expect(icon.ok()).toBe(true);
+  expect(await icon.text()).toContain('viewBox="0 0 96 96"');
+  authenticated = true;
+  await page.goto("/tasks");
+  const brand = page.getByRole("link", { name: "MediaFlow · 跳到主要内容" });
+  await expect(brand.locator('[data-symbol="media"]')).toBeVisible();
+  await brand.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#main-content")).toBeFocused();
+  const narrow = (page.viewportSize()?.width ?? 0) < 768;
+  await page.getByRole("button", { name: narrow ? "更多" : "账户与系统", exact: true }).click();
+  const about = page.locator("[data-product-about]");
+  await about.locator("summary").focus();
+  await page.keyboard.press("Enter");
+  await expect(about.locator('[data-symbol="media"]')).toBeVisible();
+  await expect(about).toContainText("Indexed 旗下");
+  await expect(about.locator('.id-brand-endorsement [data-symbol="indexed"]')).toBeVisible();
+  await page.getByRole("radiogroup", { name: "主题", exact: true }).getByLabel("暗色", { exact: true }).check();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expect(brand.locator('[data-symbol="media"]')).toBeVisible();
+  await page.evaluate(() => { document.documentElement.style.fontSize = "200%"; });
+  await expect(brand).toBeVisible();
+  expect(await brand.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+});
