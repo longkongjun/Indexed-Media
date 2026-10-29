@@ -101,14 +101,30 @@ async fn policy_limits_are_rejected_without_mutating_the_current_version() {
 async fn task_two_database_can_apply_the_lower_numbered_forward_migration_without_downgrade() {
     let fixture = common::TestConfigDir::new(RunMode::Development);
     let baseline_migrations = tempfile::tempdir().unwrap();
+    let discovery_forward_migrations = tempfile::tempdir().unwrap();
     for entry in std::fs::read_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/migrations")).unwrap() {
         let entry = entry.unwrap();
-        if entry.file_name() != "0038_device_access_mode.sql" {
-            std::fs::copy(
-                entry.path(),
-                baseline_migrations.path().join(entry.file_name()),
-            )
+        let name = entry.file_name();
+        let version = name
+            .to_str()
+            .unwrap()
+            .split('_')
+            .next()
+            .unwrap()
+            .parse::<i64>()
             .unwrap();
+        // Migration 32 needs discovery revisions. Freeze a valid legacy fixture before it,
+        // then independently verify that adding migration 9 does not reset version 31.
+        if version > 31 {
+            continue;
+        }
+        std::fs::copy(
+            entry.path(),
+            discovery_forward_migrations.path().join(&name),
+        )
+        .unwrap();
+        if name != "0009_continuous_discovery.sql" {
+            std::fs::copy(entry.path(), baseline_migrations.path().join(&name)).unwrap();
         }
     }
     let baseline = sqlx::migrate::Migrator::new(baseline_migrations.path())
@@ -116,34 +132,49 @@ async fn task_two_database_can_apply_the_lower_numbered_forward_migration_withou
         .unwrap();
     let pool = open_pool(&fixture.database_path()).await.unwrap();
     baseline.run(&pool).await.unwrap();
+    assert_discovery_tables(&pool, 0).await;
     let baseline_user_version = sqlx::query_scalar::<_, i64>("PRAGMA user_version")
         .fetch_one(&pool)
         .await
         .unwrap();
+    assert_eq!(baseline_user_version, 31);
+    let discovery_forward = sqlx::migrate::Migrator::new(discovery_forward_migrations.path())
+        .await
+        .unwrap();
+    discovery_forward.run(&pool).await.unwrap();
+    assert_discovery_tables(&pool, 1).await;
+    let after_discovery: i64 = sqlx::query_scalar("PRAGMA user_version")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        after_discovery, baseline_user_version,
+        "migration 9 must not lower the existing version"
+    );
     pool.close().await;
 
     let upgraded = migrate_with_backup(fixture.config()).await.unwrap();
-    for table in [
-        "discovery_inbox_policies",
-        "discovery_watch_states",
-        "discovery_file_revisions",
-    ] {
-        assert_eq!(
-            sqlx::query_scalar::<_, i64>(
-                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?",
-            )
-            .bind(table)
-            .fetch_one(upgraded.pool())
-            .await
-            .unwrap(),
-            1,
-            "{table}"
-        );
-    }
+    assert_discovery_tables(upgraded.pool(), 1).await;
     // 较低编号迁移在更高版本已应用后补上时不得降级 user_version。
     let upgraded_user_version = sqlx::query_scalar::<_, i64>("PRAGMA user_version")
         .fetch_one(upgraded.pool())
         .await
         .unwrap();
     assert!(upgraded_user_version >= baseline_user_version);
+}
+
+async fn assert_discovery_tables(pool: &sqlx::SqlitePool, expected: i64) {
+    for table in [
+        "discovery_inbox_policies",
+        "discovery_watch_states",
+        "discovery_file_revisions",
+    ] {
+        let count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?")
+                .bind(table)
+                .fetch_one(pool)
+                .await
+                .unwrap();
+        assert_eq!(count, expected, "discovery table: {table}");
+    }
 }
