@@ -8,6 +8,13 @@ import {
 } from "../../components/apiErrors";
 import type { TaskCenterState } from "../processing-tasks/model";
 
+/** 用户打开批准确认时所见的任务、计划及版本；不得由提交时的投影静默替换。 */
+export interface OrganizationPlanApproval {
+  taskId: string;
+  planId: string;
+  planVersion: number;
+}
+
 type OrganizationCommand = "recalculate" | "execute" | "rollback";
 
 /**
@@ -117,15 +124,15 @@ export function useOrganizationTask(
     }
   }
 
-  async function command(kind: OrganizationCommand, confirmedPlanVersion?: number): Promise<void> {
+  async function command(kind: OrganizationCommand, approval?: OrganizationPlanApproval): Promise<void> {
     const before = projection.value;
     if (!isActive() || !before || pendingAction.value) return;
     if (kind === "recalculate" && !canRecalculate.value) return;
     if (kind === "execute" && !canExecute.value) return;
     if (kind === "rollback" && !canRollback.value) return;
-    if (kind === "execute" && confirmedPlanVersion !== undefined && before.plan?.version !== confirmedPlanVersion) {
-      // 陈旧确认：不发送任何请求，新版本必须重新核对后批准（服务端版本冲突仍是最终防线）。
-      setActionError("计划版本已变化，请重新核对最新计划后再批准");
+    if (kind === "execute" && (!approval || approval.taskId !== id || approval.taskId !== before.task_id
+      || approval.planId !== before.plan?.id || approval.planVersion !== before.plan.version)) {
+      setActionError("计划已更新，请重新查看并确认");
       return;
     }
     const key = actionKeys[kind] ?? crypto.randomUUID();
@@ -173,7 +180,7 @@ export function useOrganizationTask(
     canRecalculate, canExecute, canRollback, lastUpdated,
     load,
     recalculate: () => command("recalculate"),
-    execute: (confirmedPlanVersion?: number) => command("execute", confirmedPlanVersion),
+    execute: (approval: OrganizationPlanApproval) => command("execute", approval),
     rollback: () => command("rollback"),
   };
 }

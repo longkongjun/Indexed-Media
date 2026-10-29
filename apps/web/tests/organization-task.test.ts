@@ -94,11 +94,11 @@ describe("organization task recovery", () => {
       executeProcessingTaskOrganization: execute,
     }), taskId);
     await feature.load();
-    await feature.execute();
+    await feature.execute({ taskId, planId, planVersion: 3 });
     expect(get).toHaveBeenCalledTimes(2);
     expect(execute).toHaveBeenCalledTimes(1);
     expect(feature.actionError.value).toContain("同一操作");
-    await feature.execute();
+    await feature.execute({ taskId, planId, planVersion: 3 });
     expect(execute).toHaveBeenCalledTimes(2);
     expect(execute.mock.calls[0]?.[2]).toBe(execute.mock.calls[1]?.[2]);
     expect(feature.projection.value?.plan?.authorization).toBe("one-time");
@@ -118,13 +118,26 @@ describe("organization task recovery", () => {
     await feature.load();
     // 确认打开后投影被推进到 v4（他端重算/SSE 刷新），用户仍确认打开时的 v3。
     await feature.load();
-    await feature.execute(3);
+    await feature.execute({ taskId, planId, planVersion: 3 });
     expect(execute).not.toHaveBeenCalled();
     expect(feature.actionError.value).toContain("重新");
     // 重新审阅 v4 后批准才发请求，且版本绑定 4。
-    await feature.execute(4);
+    await feature.execute({ taskId, planId, planVersion: 4 });
     expect(execute).toHaveBeenCalledTimes(1);
     expect(execute.mock.calls[0]?.[1]).toBe(4);
+  });
+
+  it("rejects stale approval snapshots before issuing any execution", async () => {
+    const api = client();
+    const feature = useOrganizationTask(api, taskId);
+    await feature.load();
+    for (const approval of [
+      { taskId: "another-task", planId, planVersion: 3 },
+      { taskId, planId: "another-plan", planVersion: 3 },
+      { taskId, planId, planVersion: 2 },
+    ]) await feature.execute(approval);
+    expect(api.executeProcessingTaskOrganization).not.toHaveBeenCalled();
+    expect(feature.actionError.value).toContain("请重新查看并确认");
   });
 
   it("keeps partial and manual-review facts offline while disabling every write", async () => {
@@ -265,13 +278,13 @@ it("does not refresh or report an obsolete organization write after scope dispos
     executeProcessingTaskOrganization: execute, getProcessingTaskOrganization: get,
   }), taskId, onFailure))!;
   await feature.load();
-  const action = feature.execute(3);
+  const action = feature.execute({ taskId, planId, planVersion: 3 });
   scope.stop();
   pending.reject?.(new TypeError("response lost"));
   await action;
   expect(onFailure).not.toHaveBeenCalled();
   expect(get).toHaveBeenCalledTimes(1);
-  await feature.execute(3);
+  await feature.execute({ taskId, planId, planVersion: 3 });
   expect(execute).toHaveBeenCalledTimes(1);
 });
 
@@ -287,7 +300,7 @@ it("ignores a late authorization failure from an uncertain write refresh after d
     getProcessingTaskOrganization: get, executeProcessingTaskOrganization: execute,
   }), taskId, onFailure))!;
   await feature.load();
-  const action = feature.execute(3);
+  const action = feature.execute({ taskId, planId, planVersion: 3 });
   await flushPromises();
   expect(get).toHaveBeenCalledTimes(2);
   scope.stop();

@@ -105,7 +105,7 @@ describe("PlanPreview", () => {
     const wrapper = mount(PlanPreview, { props: { projection, canApprove: true, canReject: true, pending: null } });
     await wrapper.get('.plan-preview__approve').trigger("click");
     await documentBody().get('.plan-preview__confirm-go').trigger("click");
-    expect(wrapper.emitted("approve")?.[0]).toEqual([2]);
+    expect(wrapper.emitted("approve")?.[0]).toEqual([{ taskId, planId: plan.id, planVersion: 2 }]);
     wrapper.unmount();
   });
 
@@ -119,7 +119,39 @@ describe("PlanPreview", () => {
     // 重新审阅：在新版本上重新打开确认才允许批准。
     await wrapper.get('.plan-preview__approve').trigger("click");
     await documentBody().get('.plan-preview__confirm-go').trigger("click");
-    expect(wrapper.emitted("approve")?.[0]).toEqual([3]);
+    expect(wrapper.emitted("approve")?.[0]).toEqual([{ taskId, planId: plan.id, planVersion: 3 }]);
+    wrapper.unmount();
+  });
+
+  it("批准回传打开确认时的任务与计划身份", async () => {
+    const wrapper = mount(PlanPreview, { props: { projection, canApprove: true, canReject: true, pending: null } });
+    await wrapper.get(".plan-preview__approve").trigger("click");
+    await documentBody().get(".plan-preview__confirm-go").trigger("click");
+    expect(wrapper.emitted("approve")?.[0]).toEqual([{ taskId, planId: plan.id, planVersion: 2 }]);
+    wrapper.unmount();
+  });
+
+  it.each(["version", "plan", "task"])("确认期间 %s 变化要求重新确认", async (change) => {
+    const wrapper = mount(PlanPreview, { props: { projection, canApprove: true, canReject: true, pending: null } });
+    await wrapper.get(".plan-preview__approve").trigger("click");
+    const next = { ...projection, plan: { ...plan } };
+    if (change === "version") next.plan.version = 3;
+    if (change === "plan") next.plan.id = "replacement-plan";
+    if (change === "task") next.task_id = "replacement-task";
+    await wrapper.setProps({ projection: next, canApprove: change !== "permission", pending: change === "pending" ? "execute" : null });
+    expect(documentBody().find('[role="alertdialog"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain("请重新查看并确认");
+    expect(wrapper.emitted("approve")).toBeUndefined();
+    wrapper.unmount();
+  });
+
+  it.each(["permission", "pending"])("确认期间 %s 变化保留上下文并阻断提交", async (change) => {
+    const wrapper = mount(PlanPreview, { props: { projection, canApprove: true, canReject: true, pending: null } });
+    await wrapper.get(".plan-preview__approve").trigger("click");
+    await wrapper.setProps({ canApprove: change !== "permission", pending: change === "pending" ? "execute" : null });
+    expect(documentBody().get(".plan-preview__confirm-go").attributes("disabled")).toBeDefined();
+    await documentBody().get(".plan-preview__confirm-go").trigger("click");
+    expect(wrapper.emitted("approve")).toBeUndefined();
     wrapper.unmount();
   });
 

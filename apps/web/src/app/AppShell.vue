@@ -145,7 +145,8 @@ onMounted(() => {
         </details>
         <button type="button" @click="logout">退出登录</button>
       </section>
-      <RouterView />
+      <!-- 对象路径变化时重建 feature/SSE；query 筛选变化继续由当前页面处理。 -->
+      <RouterView :key="$route.path" />
     </div>
     <nav data-mobile-nav class="mobile-nav" aria-label="移动主导航">
       <RouterLink to="/tasks">任务</RouterLink>

@@ -8,6 +8,7 @@
  * 且批准只授权打开确认时冻结的计划版本：确认期间版本变化则确认失效，必须重新审阅。
  */
 import type { ProcessingTaskOrganization } from "@mediaflow/api-client-ts";
+import type { OrganizationPlanApproval } from "../features/organization-task/useOrganizationTask";
 import { Button, Modal } from "@indexed-design/ui-vue";
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import {
@@ -19,7 +20,7 @@ import {
 /** 服务端权威的组织投影（含计划与已执行 journal）；canApprove/canReject 由父级传入（写可用性）。 */
 const props = defineProps<{ projection: ProcessingTaskOrganization; canApprove: boolean; canReject: boolean; pending: string | null; actionError?: string; rejectError?: string }>();
 /** 批准（执行打开确认时冻结的计划版本，产生 Web 人工授权回执）/ 拒绝（取消任务，计划作废）。 */
-const emit = defineEmits<{ approve: [planVersion: number]; reject: []; "confirmation-change": [open: boolean] }>();
+const emit = defineEmits<{ approve: [approval: OrganizationPlanApproval]; reject: []; "confirmation-change": [open: boolean] }>();
 
 const approving = ref(false);
 const rejecting = ref(false);
@@ -29,19 +30,22 @@ const preview = ref<HTMLElement | null>(null);
 const submitting = ref(false);
 let dialogOpener: HTMLElement | null = null;
 /** 批准确认打开时冻结的计划版本；确认动作只授权该版本。 */
-const confirmedVersion = ref<number | null>(null);
+const approval = ref<OrganizationPlanApproval | null>(null);
+const confirmedVersion = computed(() => approval.value?.planVersion ?? null);
+const invalidationError = ref("");
 const plan = computed(() => props.projection.plan);
 const operationLabel = computed(() => (plan.value ? ORGANIZATION_OPERATION_LABELS[plan.value.operation] : ""));
 const hasRisks = computed(() => (plan.value?.risk_codes.length ?? 0) > 0);
-const confirmationError = computed(() => rejecting.value ? props.rejectError : props.actionError);
+const confirmationError = computed(() => invalidationError.value || (rejecting.value ? props.rejectError : props.actionError));
 const pendingThis = computed(() => props.pending !== null || submitting.value);
 
 async function openConfirm(event: MouseEvent, approve: boolean): Promise<void> {
-  if (pendingThis.value) return;
+  if (pendingThis.value || !plan.value || !(approve ? props.canApprove : props.canReject)) return;
+  invalidationError.value = "";
+  approval.value = { taskId: props.projection.task_id, planId: plan.value.id, planVersion: plan.value.version };
   dialogOpener = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
   approving.value = approve;
   rejecting.value = !approve;
-  confirmedVersion.value = plan.value?.version ?? null;
   await nextTick();
   document.querySelector<HTMLButtonElement>(".task-plan-confirmation .plan-preview__cancel")?.focus();
 }
@@ -59,17 +63,26 @@ function restoreDialogFocus(): void {
 function closeConfirm(): void {
   approving.value = false;
   rejecting.value = false;
-  confirmedVersion.value = null;
+  approval.value = null;
   restoreDialogFocus();
   void nextTick(restoreDialogFocus);
 }
-// 投影升版使两种确认都失效，不能批准或拒绝尚未审阅的新计划。
-watch(() => plan.value?.version, (version) => {
-  if ((approving.value || rejecting.value) && version !== confirmedVersion.value) {
-    dialogOpener = null;
-    closeConfirm();
-  }
-});
+// 同一版本号也可能属于另一任务或另一计划；在事件派发前再次核对完整快照。
+function confirmationValid(): boolean {
+  const snapshot = approval.value;
+  return Boolean(snapshot && snapshot.taskId === props.projection.task_id
+    && snapshot.planId === plan.value?.id && snapshot.planVersion === plan.value.version
+    && (approving.value ? props.canApprove : props.canReject));
+}
+function invalidateConfirmation(): void {
+  dialogOpener = null;
+  closeConfirm();
+  invalidationError.value = "计划或操作权限已更新，请重新查看并确认";
+}
+watch(() => [props.projection.task_id, plan.value?.id, plan.value?.version], () => {
+  // 自己提交后的权限变化由请求结果/错误恢复处理，不能提前关闭未知回执对话框。
+  if ((approving.value || rejecting.value) && !submitting.value && !confirmationValid()) invalidateConfirmation();
+}, { flush: "sync" });
 watch(() => props.pending, (pending, previous) => {
   if (previous !== null && pending === null) {
     submitting.value = false;
@@ -79,9 +92,10 @@ watch(() => props.pending, (pending, previous) => {
 });
 function confirmAction(): void {
   if (pendingThis.value) return;
-  if (approving.value && confirmedVersion.value !== null && props.canApprove) {
+  if (!confirmationValid()) { invalidateConfirmation(); return; }
+  if (approving.value && approval.value && props.canApprove) {
     submitting.value = true;
-    emit("approve", confirmedVersion.value);
+    emit("approve", { ...approval.value });
   } else if (rejecting.value && props.canReject) {
     submitting.value = true;
     emit("reject");
@@ -131,6 +145,7 @@ function confirmAction(): void {
     <p v-if="hasRisks" class="plan-preview__conflict-note" role="status">计划带有风险提示（见清单 ⚠ 行）；执行授权仍只绑定本计划版本，如需调整可先重新计算计划。</p>
     <p class="plan-preview__auth-note">一次性授权只绑定当前计划版本，不会创建可复用规则，也不能覆盖路径、来源或文件系统冲突。</p>
 
+    <p v-if="invalidationError" role="status">{{ invalidationError }}</p>
     <Modal
       v-if="approving || rejecting"
       :open="approving || rejecting"

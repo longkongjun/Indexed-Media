@@ -1,15 +1,16 @@
 import type { IdentificationDetail, MediaFlowClient, ProcessingTask, ProcessingTaskOrganization, ProcessingTaskPage } from "@mediaflow/api-client-ts";
-import { flushPromises, mount } from "@vue/test-utils";
+import { DOMWrapper, flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { effectScope } from "vue";
 import { describe, expect, it, vi } from "vitest";
 import { createMemoryHistory, createRouter } from "vue-router";
+import AppShell from "../src/app/AppShell.vue";
+import { taskEventSourceFactoryKey, type EventSourceLike } from "../src/features/scan-tasks/useTaskEvents";
 import { identityClientKey } from "../src/app/client";
 import App from "../src/App.vue";
 import { createAppRouter } from "../src/router";
 import { useProcessingTask, useProcessingTasks } from "../src/features/processing-tasks/useProcessingTasks";
 import ProcessingTaskDetailView from "../src/views/ProcessingTaskDetailView.vue";
-import { taskEventSourceFactoryKey, type EventSourceLike } from "../src/features/scan-tasks/useTaskEvents";
 import TaskCenterView from "../src/views/TaskCenterView.vue";
 
 const taskId = "018f0f10-8bc1-7a5e-8e5a-2dc913d23c87";
@@ -379,4 +380,83 @@ it.each(["task", "organization", "identification"] as const)("recovers a final S
     await flushPromises();
     expect(getTask).toHaveBeenCalledTimes(3);
   } finally { wrapper.unmount(); }
+});
+
+
+describe("object navigation in the application shell", () => {
+  it("recreates A→B detail/SSE, isolates late A and binds every B write", async () => {
+    const otherId = "018f0f10-8bc1-7a5e-8e5a-2dc913d23c99";
+    const sources: Array<EventSourceLike & { close: ReturnType<typeof vi.fn>; emit: (id: string) => void }> = [];
+    const factory = () => {
+      const listeners = new Map<string, Set<(event: Event | MessageEvent<string>) => void>>();
+      const source = {
+        addEventListener: (type: string, listener: (event: Event | MessageEvent<string>) => void) => {
+          const group = listeners.get(type) ?? new Set(); group.add(listener); listeners.set(type, group);
+        },
+        removeEventListener: (type: string, listener: (event: Event | MessageEvent<string>) => void) => { listeners.get(type)?.delete(listener); },
+        close: vi.fn(),
+        emit: (id: string) => {
+          const data = JSON.stringify({ id: 14, type: "processing-task.state-changed", schema_version: "1", occurred_at: "2026-10-24T08:00:00Z", task_id: id,
+            payload: { status: "paused", stage: "planning", recovering: false, reason: null } });
+          for (const listener of listeners.get("processing-task.state-changed") ?? []) listener({ data } as MessageEvent<string>);
+        },
+      };
+      sources.push(source); return source;
+    };
+    const projection = (id: string): ProcessingTaskOrganization => ({
+      ...noOrganization(), task_id: id, state: "paused", allowed_actions: ["execute", "rollback", "cancel"],
+      plan: { id: `plan-${id}`, version: 2, target_id: "target", source: { root_id: "incoming", relative_path: `${id}.mkv` }, destination: { root_id: "library", relative_path: `${id}.mkv` }, operation: "copy", naming: "film", authorization: "paused", risk_codes: [], created_at: "2026-10-24T08:00:00Z" },
+      local_result: { id: "result", version: 5, status: "partial-success", nfo_status: "failed", catalog_media_item_id: null, remaining_actions: ["nfo"], updated_at: "2026-10-24T08:00:00Z" },
+    });
+    let lateA: ((value: ProcessingTask) => void) | undefined;
+    const get = vi.fn(async (id: string) => ({ ...task("paused"), id, relative_path: `${id}.mkv` }));
+    const api = client({
+      getProcessingTask: get,
+      getProcessingTaskOrganization: vi.fn(async (id: string) => projection(id)),
+      executeProcessingTaskOrganization: vi.fn(async (id: string) => projection(id)),
+      rollbackProcessingTaskOrganization: vi.fn(async (id: string) => projection(id)),
+      cancelProcessingTask: vi.fn(async (id: string) => ({ ...task("cancelled"), id, relative_path: `${id}.mkv` })),
+      listNotifications: vi.fn(async () => ({ items: [], next_cursor: null, unread_count: 0 })),
+    });
+    const pinia = createPinia(); setActivePinia(pinia);
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: "/", component: AppShell, children: [
+      { path: "tasks/:id", name: "task", component: ProcessingTaskDetailView },
+      { path: "tasks", name: "tasks", component: { template: "<main>tasks</main>" } },
+      { path: "media/:id", name: "media-item", component: { template: "<main>media</main>" } },
+      { path: ":pathMatch(.*)*", component: { template: "<main>other</main>" } },
+    ] }] });
+    await router.push(`/tasks/${taskId}`);
+    const wrapper = mount({ template: "<RouterView />" }, { global: { plugins: [pinia, router], stubs: { AiSessionPanel: true }, provide: { [identityClientKey as symbol]: api, [taskEventSourceFactoryKey as symbol]: factory } } });
+    await flushPromises();
+    const first = wrapper.get("main").element;
+    get.mockImplementationOnce(() => new Promise<ProcessingTask>((resolve) => { lateA = resolve; }));
+    sources[0]!.emit(taskId); await flushPromises();
+    await router.push(`/tasks/${otherId}`); await flushPromises();
+    expect(wrapper.get("main").element).not.toBe(first);
+    expect(sources[0]!.close).toHaveBeenCalledOnce();
+    expect(sources).toHaveLength(2);
+    lateA!({ ...task("paused"), relative_path: "late-A.mkv" }); await flushPromises();
+    expect(wrapper.text()).toContain(`${otherId}.mkv`);
+    expect(wrapper.text()).not.toContain("late-A.mkv");
+    const callsBefore = get.mock.calls.length;
+    sources[1]!.emit(taskId); await flushPromises();
+    expect(get).toHaveBeenCalledTimes(callsBefore);
+    sources[1]!.emit(otherId); await flushPromises();
+    expect(get).toHaveBeenLastCalledWith(otherId);
+    await wrapper.get(".plan-preview__approve").trigger("click");
+    await new DOMWrapper(document.body).get(".plan-preview__confirm-go").trigger("click"); await flushPromises();
+    expect(api.executeProcessingTaskOrganization).toHaveBeenCalledWith(otherId, 2, expect.any(String));
+    await wrapper.get('[data-organization-action="rollback"]').trigger("click");
+    await wrapper.findAll("button").find((button) => button.text() === "确认回滚当前结果版本")!.trigger("click"); await flushPromises();
+    expect(api.rollbackProcessingTaskOrganization).toHaveBeenCalledWith(otherId, 5, expect.any(String));
+    await wrapper.get('nav[aria-label="处理任务操作"] button').trigger("click"); await flushPromises();
+    expect(api.cancelProcessingTask).toHaveBeenCalledWith(otherId, expect.any(String));
+    const current = wrapper.get("main").element;
+    await router.push(`/tasks/${otherId}?plan=2`); await flushPromises();
+    expect(wrapper.get("main").element).toBe(current);
+    await router.push("/tasks"); await flushPromises();
+    expect(wrapper.text()).toContain("tasks");
+    expect(sources[1]!.close).toHaveBeenCalledOnce();
+    wrapper.unmount();
+  });
 });
