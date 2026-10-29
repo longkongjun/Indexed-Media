@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "source_commit": "9d0038c16688a4a74058b3b8f0d7899d4aadbbdb",
+  "symbol": "media",
+  "appearance": "fixed neutral, independent of supported themes and default theme",
+  "background": "#242326",
+  "source_sha256": "b396d8861c798701599f3bc7be5a7d2f9d02d5ecd5d79a617fffa6fe5756d851",
+  "vector_sha256": "dacf6089c4a1e4560c1af6a27b609fa873f240891f706cd99cc8e192fe84d802",
+  "generator_sha256": "3bb31961e31df3a1fc98ed1aa8130d4d9af329e470ee1ba817be01f66bdf4fe1",
+  "files": {
+    "apps/android-tv/src/main/res/drawable-nodpi/brand_banner.png": "c91c8e45c86befcdb1b748abe86fbf4bee6e8f205251deacb2525bd858dd4be1",
+    "apps/android-tv/src/main/res/drawable/brand_background.xml": "d0a0e6b988e87e26e278ae504b7c7da61998e4b86091222a16ff409cf9b43938",
+    "apps/android-tv/src/main/res/drawable/brand_foreground.xml": "dacf6089c4a1e4560c1af6a27b609fa873f240891f706cd99cc8e192fe84d802",
+    "apps/android-tv/src/main/res/drawable/brand_icon.xml": "051781762a07989f562ce7856c62c7646178d5f63f2a2f016d6238e5b2e13cdb",
+    "apps/android-tv/src/main/res/mipmap-anydpi-v26/ic_launcher.xml": "70c7dcf50cf3f4eb5d3eea5aa3e5e5af8a28b6961155b7a8c22178eb5b2e8af5",
+    "apps/android-tv/src/main/res/mipmap-anydpi-v33/ic_launcher.xml": "f378f4f17796d292dcca02430d88394b161e4450ff4ea18ca90be853784010d3",
+    "apps/android/src/main/res/drawable/brand_background.xml": "d0a0e6b988e87e26e278ae504b7c7da61998e4b86091222a16ff409cf9b43938",
+    "apps/android/src/main/res/drawable/brand_foreground.xml": "dacf6089c4a1e4560c1af6a27b609fa873f240891f706cd99cc8e192fe84d802",
+    "apps/android/src/main/res/drawable/brand_icon.xml": "051781762a07989f562ce7856c62c7646178d5f63f2a2f016d6238e5b2e13cdb",
+    "apps/android/src/main/res/mipmap-anydpi-v26/ic_launcher.xml": "70c7dcf50cf3f4eb5d3eea5aa3e5e5af8a28b6961155b7a8c22178eb5b2e8af5",
+    "apps/android/src/main/res/mipmap-anydpi-v33/ic_launcher.xml": "f378f4f17796d292dcca02430d88394b161e4450ff4ea18ca90be853784010d3",
+    "apps/desktop/icons/icon-1024.png": "b10de83718dc40cf064233e1aa0ee313982179c9a6406d2ce6d3d334bb222f72",
+    "apps/desktop/icons/icon.icns": "262d7b12044c19d5811f31d59bc7efe4594d012e0d287bddcac27eda937971ef",
+    "apps/desktop/icons/icon.ico": "49b9023c53a3523a0ab1eb6feebbd63657f214563c16bb27ec696adae262554c",
+    "apps/desktop/src/main/resources/brand/icon.png": "7c50b3b69ee6ed053d41e29984a6889751ce3f5af78418f46927b23c95db3e65"
+  },
+  "limits": [
+    "Platform masks, installed appearance, packaging, remote control and human acceptance pending. Android 12+ uses the launcher icon for its system splash; no custom motion."
+  ]
+}

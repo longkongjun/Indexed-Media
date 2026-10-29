@@ -24,6 +24,10 @@ import androidx.compose.ui.window.Dialog
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
+import dev.indexed.design.tv.IndexedBrandLayout
+import dev.indexed.design.tv.IndexedBrandLockup
+import dev.indexed.design.tv.IndexedBrandVariant
+import dev.indexed.design.tv.IndexedSymbol
 import dev.indexed.design.tv.IndexedTvButton
 
 /** 仅设备本地偏好与当前连接信息；Dialog关闭后恢复原按钮，确认绑定发起身份。 */
@@ -45,6 +49,12 @@ internal fun TvSettings(
         }
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+        IndexedBrandLockup(
+            symbol = IndexedSymbol.Media,
+            name = "MediaFlow",
+            variant = IndexedBrandVariant.Endorsed,
+            layout = IndexedBrandLayout.Vertical,
+        )
         Text("连接与设备", style = MaterialTheme.typography.headlineMedium)
         TvReadableText("设备：${ui.deviceName ?: "Android TV设备"}")
         TvReadableText("服务器：${ui.server}")

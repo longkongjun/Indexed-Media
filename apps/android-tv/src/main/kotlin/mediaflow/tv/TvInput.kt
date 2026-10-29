@@ -26,6 +26,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import dev.indexed.design.tv.IndexedBrandLockup
+import dev.indexed.design.tv.IndexedSymbol
 import dev.indexed.design.tv.IndexedTvButton
 
 @Composable
@@ -44,6 +46,7 @@ internal fun TvConnect(
     LaunchedEffect(Unit) { serverFocus.requestFocus() }
     DisposableEffect(Unit) { onDispose { dialog?.dismiss() } }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(24.dp)) {
+        IndexedBrandLockup(symbol = IndexedSymbol.Media, name = "MediaFlow")
         Text("连接影视库", style = MaterialTheme.typography.headlineLarge)
         Text("先在Web管理端生成一次性配对码。此电视将申请只读访问。")
         IndexedTvButton("服务器：${server.ifBlank { "输入服务器地址" }}", onClick = {

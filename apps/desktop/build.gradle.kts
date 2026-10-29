@@ -35,7 +35,9 @@ compose.desktop {
             macOS {
                 packageVersion = "1.1.0"
                 minimumSystemVersion = "13.0"
+                iconFile.set(project.file("icons/icon.icns"))
             }
+            windows { iconFile.set(project.file("icons/icon.ico")) }
             modules("java.sql", "java.desktop", "java.naming", "jdk.unsupported", "jdk.crypto.ec")
         }
     }

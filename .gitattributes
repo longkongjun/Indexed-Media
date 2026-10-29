@@ -1,2 +1,8 @@
 # Pinned Maven artifacts are verified byte-for-byte; never convert their line endings.
 /vendor/indexed-design/maven/** -text
+
+# Brand resource provenance also verifies raw bytes across hosts.
+/vendor/indexed-design/brand/** -text
+/tools/brand/build-native-assets.py text eol=lf
+/apps/android*/src/main/res/drawable/brand_*.xml text eol=lf
+/apps/android*/src/main/res/mipmap-anydpi-*/ic_launcher.xml text eol=lf

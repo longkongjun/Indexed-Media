@@ -47,6 +47,7 @@ dependencies {
 
     implementation(project(":packages:kmp-sdk"))
     implementation(project(":packages:ui-android"))
+    implementation("dev.indexed.design:compose:0.15.0")
 
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:2.4.21")
     testImplementation(libs.kotlinx.coroutines.test)

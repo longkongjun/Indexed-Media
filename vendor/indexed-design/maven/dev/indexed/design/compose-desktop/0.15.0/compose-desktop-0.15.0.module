@@ -59,11 +59,11 @@
         {
           "name": "compose-desktop-0.15.0.jar",
           "url": "compose-desktop-0.15.0.jar",
-          "size": 15901,
-          "sha512": "86aad56a875517589fcd98970b969239ae00c82c36db3fd0e5406285695719ec176f6708bae0ff5b83039f406fb0d58bb21cbbbe5c64d740bad5181b082301d0",
-          "sha256": "6bea46880f3a1813f04181cb020e6e698142036e9878a6bb41dec937fb8055ba",
-          "sha1": "cb6edd21c6af6bb8cb1afc332a5d8d37db1fe02a",
-          "md5": "16d3d43ab02f3254067ae66fb8313cec"
+          "size": 42803,
+          "sha512": "56bb6c06dad8c6335cb14bf77a3bb430a0572f77818c26165d0f7480fcaefc4927e4d92fe8c577714b86d1735c4f770ac7b2ddcf6b0965f1f9b51a53afb6a003",
+          "sha256": "db136743c7e25f2da94b94db273342c2a4862d6a93a4299faedd4485ceab2677",
+          "sha1": "f81e8b9f8b11e007b57eaffdbb70ce93a7c0b967",
+          "md5": "4300621d974594c157a9454db142bf46"
         }
       ]
     },
@@ -112,11 +112,11 @@
         {
           "name": "compose-desktop-0.15.0.jar",
           "url": "compose-desktop-0.15.0.jar",
-          "size": 15901,
-          "sha512": "86aad56a875517589fcd98970b969239ae00c82c36db3fd0e5406285695719ec176f6708bae0ff5b83039f406fb0d58bb21cbbbe5c64d740bad5181b082301d0",
-          "sha256": "6bea46880f3a1813f04181cb020e6e698142036e9878a6bb41dec937fb8055ba",
-          "sha1": "cb6edd21c6af6bb8cb1afc332a5d8d37db1fe02a",
-          "md5": "16d3d43ab02f3254067ae66fb8313cec"
+          "size": 42803,
+          "sha512": "56bb6c06dad8c6335cb14bf77a3bb430a0572f77818c26165d0f7480fcaefc4927e4d92fe8c577714b86d1735c4f770ac7b2ddcf6b0965f1f9b51a53afb6a003",
+          "sha256": "db136743c7e25f2da94b94db273342c2a4862d6a93a4299faedd4485ceab2677",
+          "sha1": "f81e8b9f8b11e007b57eaffdbb70ce93a7c0b967",
+          "md5": "4300621d974594c157a9454db142bf46"
         }
       ]
     }

@@ -35,10 +35,11 @@ class VendorTest(unittest.TestCase):
             git('checkout-index', '--all', '--force', f'--prefix={checkout.as_posix()}/')
             module.validate(checkout)
             module.validate(checkout, 'tv')
+            module.validate(checkout, 'android')
 
     def test_metadata_line_ending_tampering_is_rejected(self):
         root = Path(__file__).resolve().parents[2]
-        for platform in ('desktop', 'tv'):
+        for platform in ('desktop', 'tv', 'android'):
             with self.subTest(platform=platform), tempfile.TemporaryDirectory() as directory:
                 target = Path(directory)
                 shutil.copytree(root / 'vendor/indexed-design', target / 'vendor/indexed-design')

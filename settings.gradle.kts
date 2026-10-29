@@ -30,6 +30,7 @@ dependencyResolutionManagement {
             filter {
                 includeModule("dev.indexed.design", "compose-desktop")
                 includeModule("dev.indexed.design", "compose-tv")
+                includeModule("dev.indexed.design", "compose")
             }
         }
     }

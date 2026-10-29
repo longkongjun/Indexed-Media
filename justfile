@@ -578,10 +578,13 @@ client-docs-kmp-sdk:
 
 # Android 应用门禁：构建 + 单元测试。
 client-check-android:
+    @python3 tools/desktop/check-vendor.py android
+    @python3 tools/brand/build-native-assets.py --check
     @./gradlew :apps:android:ktlintCheck :apps:android:lintDebug :apps:android:assembleDebug :apps:android:testDebugUnitTest
 
 # TV JVM、lint、应用与遥控测试APK编译；真机执行另行验收。
 client-check-android-tv:
+    @python3 tools/brand/build-native-assets.py --check
     @python3 tools/desktop/check-vendor.py tv
     @PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools/desktop -p 'test_*.py'
     @./gradlew :apps:android-tv:ktlintCheck :apps:android-tv:lintDebug :apps:android-tv:testDebugUnitTest :apps:android-tv:assembleDebug :apps:android-tv:assembleDebugAndroidTest
@@ -616,6 +619,7 @@ client-check:
 
 # 桌面伴侣工程检查；使用仓库内固定Design产物，不依赖邻仓构建目录。
 client-check-desktop:
+    @python3 tools/brand/build-native-assets.py --check
     @python3 tools/desktop/check-vendor.py
     @PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools/desktop -p 'test_*.py'
     @./gradlew :apps:desktop:ktlintCheck :apps:desktop:test :apps:desktop:classes --console=plain

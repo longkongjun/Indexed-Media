@@ -30,6 +30,9 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import dev.indexed.design.tv.IndexedBrandLockup
+import dev.indexed.design.tv.IndexedBrandVariant
+import dev.indexed.design.tv.IndexedSymbol
 import dev.indexed.design.tv.IndexedTvButton
 import dev.indexed.design.tv.IndexedTvTheme
 
@@ -83,7 +86,7 @@ internal fun TvApplication(
                 TvConnect(ui, model)
             } else {
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Text("MediaFlow", style = MaterialTheme.typography.headlineMedium)
+                    IndexedBrandLockup(symbol = IndexedSymbol.Media, name = "MediaFlow", variant = IndexedBrandVariant.Compact)
                     IndexedTvButton("影视墙", onClick = {
                         settings = false
                         model.back()

@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -43,6 +44,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import dev.indexed.design.android.IndexedBrandLayout
+import dev.indexed.design.android.IndexedBrandLockup
+import dev.indexed.design.android.IndexedBrandVariant
+import dev.indexed.design.android.IndexedSymbol
 import kotlinx.coroutines.launch
 import mediaflow.ui.android.MfButton
 import mediaflow.ui.android.MfContentCard
@@ -65,6 +70,7 @@ fun AppRoot(container: SdkContainer) {
     val scope = rememberCoroutineScope()
     val login: LoginViewModel = viewModel(factory = factory)
     val loggedIn by login.loggedIn.collectAsState()
+    var about by remember { mutableStateOf(false) }
     var backStack by remember { mutableStateOf(listOf<Screen>()) }
 
     LaunchedEffect(Unit) {
@@ -79,6 +85,24 @@ fun AppRoot(container: SdkContainer) {
     }
 
     MfTheme {
+        if (about) {
+            AlertDialog(
+                onDismissRequest = { about = false },
+                title = { Text("关于 MediaFlow") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        IndexedBrandLockup(
+                            symbol = IndexedSymbol.Media,
+                            name = "MediaFlow",
+                            variant = IndexedBrandVariant.Endorsed,
+                            layout = IndexedBrandLayout.Vertical,
+                        )
+                        Text("版本 0.1.0 · Indexed 家族的本地数字资源中枢")
+                    }
+                },
+                confirmButton = { OutlinedButton(onClick = { about = false }) { Text("关闭") } },
+            )
+        }
         if (!loggedIn) {
             LoginScreen(login)
             return@MfTheme
@@ -88,13 +112,19 @@ fun AppRoot(container: SdkContainer) {
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text(titleOf(screen)) },
+                    title = {
+                        Column {
+                            IndexedBrandLockup(symbol = IndexedSymbol.Media, name = "MediaFlow", variant = IndexedBrandVariant.Compact)
+                            Text(titleOf(screen), style = MaterialTheme.typography.labelMedium)
+                        }
+                    },
                     navigationIcon = {
                         if (backStack.isNotEmpty()) {
                             OutlinedButton(onClick = { backStack = backStack.dropLast(1) }) { Text("返回") }
                         }
                     },
                     actions = {
+                        OutlinedButton(onClick = { about = true }) { Text("关于") }
                         if (backStack.isEmpty()) {
                             OutlinedButton(onClick = {
                                 scope.launch { container.authRepository.logout() }
@@ -172,7 +202,7 @@ fun LoginScreen(vm: LoginViewModel) {
             .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
     ) {
-        Text("MediaFlow", style = MaterialTheme.typography.headlineMedium)
+        IndexedBrandLockup(symbol = IndexedSymbol.Media, name = "MediaFlow")
         OutlinedTextField(value = baseUrl, onValueChange = { baseUrl = it }, label = { Text("服务器地址") }, modifier = Modifier.fillMaxWidth())
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterChip(selected = pairing, onClick = { pairing = true }, label = { Text("配对码") })

@@ -43,6 +43,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyShortcut
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.liveRegion
@@ -52,6 +53,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.MenuBar
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
+import dev.indexed.design.desktop.IndexedBrandLayout
+import dev.indexed.design.desktop.IndexedBrandLockup
+import dev.indexed.design.desktop.IndexedBrandVariant
+import dev.indexed.design.desktop.IndexedSymbol
 import dev.indexed.design.desktop.IndexedTheme
 import dev.indexed.design.desktop.PageMode
 import dev.indexed.design.desktop.RequestState
@@ -65,7 +70,7 @@ fun main() =
         val model = remember { DesktopModel(appDirectory()) }
         val scope = rememberCoroutineScope()
         var closing by remember { mutableStateOf(false) }
-        Window(title = "MediaFlow", onCloseRequest = {
+        Window(title = "MediaFlow", icon = painterResource("brand/icon.png"), onCloseRequest = {
             if (!closing) {
                 closing = true
                 scope.launch {
@@ -126,6 +131,7 @@ internal fun Companion(model: DesktopModel) {
         }
     var selectedMedia by remember(ui.sessionEpoch) { mutableStateOf<String?>(null) }
     var section by remember { mutableStateOf("媒体") }
+    var about by remember { mutableStateOf(false) }
     var detailOpen by remember { mutableStateOf(false) }
     var localError by remember { mutableStateOf<String?>(null) }
     val cancelFocus = remember { FocusRequester() }
@@ -136,6 +142,7 @@ internal fun Companion(model: DesktopModel) {
             detailOpen = false
         }
     }
+    if (about) AboutMediaFlow { about = false }
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         (localError ?: ui.message)?.let { message ->
             Row(Modifier.fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite }) {
@@ -151,8 +158,9 @@ internal fun Companion(model: DesktopModel) {
             return@Column
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("MediaFlow", style = MaterialTheme.typography.titleLarge)
+            IndexedBrandLockup(symbol = IndexedSymbol.Media, name = "MediaFlow", variant = IndexedBrandVariant.Compact)
             Spacer(Modifier.weight(1f))
+            TextButton(onClick = { about = true }) { Text("关于") }
             TextButton(onClick = model::refresh) { Text("刷新") }
             TextButton(enabled = !ui.writeBusy && !ui.writeUnknown, onClick = {
                 detailOpen = false
@@ -470,7 +478,8 @@ private fun Login(
         server = model.rememberedServer()
     }
     Column(Modifier.widthIn(max = 560.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("连接 MediaFlow", style = MaterialTheme.typography.titleLarge)
+        IndexedBrandLockup(symbol = IndexedSymbol.Media, name = "MediaFlow")
+        Text("连接服务器", style = MaterialTheme.typography.titleMedium)
         OutlinedTextField(server, { server = it }, label = { Text("服务器地址") }, singleLine = true, enabled = !busy)
         Row {
             Switch(pairing, { pairing = it }, enabled = !busy)
@@ -521,4 +530,24 @@ private fun Page(
         if (state == PageState.Empty) emptyMessage else (state as? PageState.Error)?.let { readable(it.error) },
         onRetry,
     ) { Column(Modifier.fillMaxSize(), content = content) }
+}
+
+@Composable
+internal fun AboutMediaFlow(onClose: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text("关于 MediaFlow") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                IndexedBrandLockup(
+                    symbol = IndexedSymbol.Media,
+                    name = "MediaFlow",
+                    variant = IndexedBrandVariant.Endorsed,
+                    layout = IndexedBrandLayout.Vertical,
+                )
+                Text("版本 0.1.0 · Indexed 家族的本地数字资源中枢")
+            }
+        },
+        confirmButton = { TextButton(onClick = { onClose() }) { Text("关闭") } },
+    )
 }

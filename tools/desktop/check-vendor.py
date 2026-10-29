@@ -8,15 +8,16 @@ import sys
 
 
 def validate(root: Path, platform: str = 'desktop') -> None:
-    if platform not in ('desktop', 'tv'):
+    if platform not in ('desktop', 'tv', 'android'):
         raise ValueError('unsupported platform')
     vendor = root / 'vendor/indexed-design'
     manifest = json.loads((vendor / f'{platform}-provenance.json').read_text())
-    if manifest.get('schema_version') != 1 or manifest.get('coordinate') != f'dev.indexed.design:compose-{platform}:0.15.0':
+    module = 'compose' if platform == 'android' else f'compose-{platform}'
+    if manifest.get('schema_version') != 1 or manifest.get('coordinate') != f'dev.indexed.design:{module}:0.15.0':
         raise ValueError('unexpected schema or coordinate')
     if not re.fullmatch(r'[0-9a-f]{40}', manifest['source_commit']):
         raise ValueError('source commit missing')
-    prefix = f'dev/indexed/design/compose-{platform}/0.15.0/compose-{platform}-0.15.0'
+    prefix = f'dev/indexed/design/{module}/0.15.0/{module}-0.15.0'
     suffixes = ('.jar', '.pom', '.module') if platform == 'desktop' else ('.aar', '.pom', '.module', '-sources.jar')
     if set(manifest['files']) != {prefix + suffix for suffix in suffixes}:
         raise ValueError('artifact set changed')
