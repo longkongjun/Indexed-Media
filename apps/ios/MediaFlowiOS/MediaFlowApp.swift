@@ -1,3 +1,4 @@
+import IndexedDesign
 import MediaFlowKit
 import MediaFlowUI
 import SwiftUI
@@ -44,6 +45,7 @@ enum Screen: Hashable {
 /// 根路由与六屏导航（与 Android AppRoot 对齐：Tab + push 栈）。
 struct RootView: View {
     @EnvironmentObject private var model: AppModel
+    @State private var showingAbout = false
 
     var body: some View {
         NavigationStack(path: $model.path) {
@@ -52,6 +54,31 @@ struct RootView: View {
                     TabRootView()
                 } else {
                     LoginView()
+                }
+            }
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    IndexedBrandLockup(.media, name: "MediaFlow", variant: .compact)
+                }
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { showingAbout = true } label: {
+                        Label("关于 MediaFlow", systemImage: "info.circle")
+                    }
+                }
+            }
+            .sheet(isPresented: $showingAbout) {
+                NavigationStack {
+                    List {
+                        IndexedBrandLockup(.media, name: "MediaFlow", variant: .endorsed)
+                        Text("版本 " + (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"))
+                        Text("本地优先的媒体管理与整理。")
+                    }
+                    .navigationTitle("关于 MediaFlow")
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("完成") { showingAbout = false }
+                        }
+                    }
                 }
             }
             .navigationDestination(for: Screen.self) { screen in
@@ -87,6 +114,9 @@ struct LoginView: View {
 
     var body: some View {
         Form {
+            Section {
+                IndexedBrandLockup(.media, name: "MediaFlow")
+            }
             Section {
                 TextField("服务器地址", text: $model.baseUrl)
                     .keyboardType(.URL)

@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "source_commit": "9d0038c16688a4a74058b3b8f0d7899d4aadbbdb",
+  "symbol": "media",
+  "appearance": "fixed neutral #242326/white, independent of default theme",
+  "source_sha256": "b396d8861c798701599f3bc7be5a7d2f9d02d5ecd5d79a617fffa6fe5756d851",
+  "generator_sha256": "8fdb69b8a0bf287b366dc3b256cdc25da3506089ade8ec452093aa01058d1506",
+  "files": {
+    "apps/ios/MediaFlowiOS/Assets.xcassets/Contents.json": "f5fb0e1f3a8142892ed092efb5955c1c2cc537003a89ad7bbdb9dade7fe8985f",
+    "apps/ios/MediaFlowiOS/Assets.xcassets/AppIcon.appiconset/icon-1024.png": "b10de83718dc40cf064233e1aa0ee313982179c9a6406d2ce6d3d334bb222f72",
+    "apps/ios/MediaFlowiOS/Assets.xcassets/AppIcon.appiconset/Contents.json": "3beb183b3f92f3c459433ca755dfea3b867506a6ee2827d7ae6394d31c39c8ae",
+    "apps/ios/MediaFlowiOS/Assets.xcassets/LaunchMark.imageset/media.png": "6614c38bdad3695e77a5f8b28deb0d57658104779c8cda6a3a30a06938196642",
+    "apps/ios/MediaFlowiOS/Assets.xcassets/LaunchMark.imageset/Contents.json": "c4cc034743f2cf1ccfd4cc7b4f6fac1f26614ab7906ca857ae990b621bfc9726"
+  },
+  "limits": [
+    "Source assets and Xcode resource compilation do not establish installed mask, physical device, VoiceOver, Dynamic Type or human visual acceptance."
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "source_repository": "https://github.com/longkongjun/Indexed-Design",
+  "source_commit": "9d0038c16688a4a74058b3b8f0d7899d4aadbbdb",
+  "source_directory": "platforms/apple",
+  "product": "IndexedDesign",
+  "source_version": "0.15.0",
+  "files": {
+    "Package.swift": "f6a3f61d27cff9888d540865438e8fd34556baccc32738635ef9c57cc890a4a1",
+    "Sources/IndexedDesign/Actions.swift": "04edafd9235996ee3e469d33f5435c1dcd9e086e2f9d008165e64b780eb88523",
+    "Sources/IndexedDesign/Brand.swift": "8710af0060c23e075bebc1c319e465ee37a30fe4ecd3207de58c1ddef95f2eee",
+    "Sources/IndexedDesign/Content.swift": "24efe70f4a0300cf32fb3e3262734f71b3fff15f45f4bb2c108b44dfcb915355",
+    "Sources/IndexedDesign/Feedback.swift": "d17c8c677e8046f59f26cf72aa1285b9587a49f2e16ed0fd3dbe079ead12107c",
+    "Sources/IndexedDesign/FormField.swift": "a9d9f0b6e9a8f35da8ea06926140619aaf13d6d9bda8bea22d4b0415383f821b",
+    "Sources/IndexedDesign/NativeBrandThemes.swift": "f400139108541c2862593c9d911cda1de201f905fef7ede7177f052ed6316cbd",
+    "Sources/IndexedDesign/Theme.swift": "19aa5827b03d0084c551f16f290a4df85fff4b2dfd9456d9fa7b09702c3359aa"
+  }
+}

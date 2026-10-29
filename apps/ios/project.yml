@@ -17,6 +17,8 @@ settings:
     CODE_SIGN_IDENTITY: "-"
 
 packages:
+  IndexedDesign:
+    path: ../../vendor/indexed-design/apple
   MediaFlowUI:
     path: ../../packages/ui-swift
 
@@ -32,11 +34,12 @@ targets:
         MARKETING_VERSION: "0.1.0"
         CURRENT_PROJECT_VERSION: "1"
         TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         SWIFT_STRICT_CONCURRENCY: complete
     info:
       path: MediaFlowiOS/Info.plist
       properties:
-        UILaunchScreen: {}
+        UILaunchStoryboardName: LaunchScreen
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true # fixture server 走本机 HTTP（生产部署经用户 HTTPS/VPN）
     preBuildScripts:
@@ -45,6 +48,7 @@ targets:
           cd "$SRCROOT/../.."
           ./gradlew :packages:kmp-sdk:linkDebugFrameworkIosSimulatorArm64 --console=plain
     dependencies:
+      - package: IndexedDesign
       - package: MediaFlowUI
       - framework: ../../packages/kmp-sdk/build/bin/iosSimulatorArm64/debugFramework/MediaFlowKit.framework
         embed: true
