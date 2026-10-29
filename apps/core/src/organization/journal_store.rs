@@ -1290,6 +1290,17 @@ impl JournalStore {
         .execute(&mut *tx)
         .await
         .map_err(database)?;
+        if status == LocalResultStatus::Compensated {
+            crate::notifications::store::NotificationStore::insert_in_transaction(
+                &mut tx,
+                crate::notifications::store::NotificationKind::OrganizationRolledBack,
+                "整理结果已安全回滚",
+                "已完成受支持的补偿操作，请查看任务结果。",
+                Some(task_id),
+                now_us,
+            )
+            .await?;
+        }
         let row = sqlx::query("SELECT * FROM organization_local_results WHERE id=?")
             .bind(&result_id)
             .fetch_one(&mut *tx)

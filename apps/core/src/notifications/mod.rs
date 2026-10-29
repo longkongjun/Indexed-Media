@@ -6,3 +6,10 @@
 pub mod routes;
 pub mod store;
 pub mod webhook;
+
+/// Durable optional notification delivery worker.
+pub mod delivery;
+/// Durable delivery records and lease state.
+pub mod delivery_store;
+/// Restricted public-HTTPS transport.
+pub mod transport;

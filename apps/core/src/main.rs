@@ -96,6 +96,10 @@ async fn serve() -> Result<(), AppError> {
     let processing_runtime_handle = processing_runtime.start();
     let download_runtime_handle = download_runtime.start();
     let automation_runtime_handle = automation_runtime.start();
+    let notification_delivery_handle =
+        mediaflow_core::notifications::delivery::NotificationDeliveryWorker::start(
+            db.pool().clone(),
+        );
     let discovery_runtime_handle = discovery_runtime.start();
     let outbox_runtime_handle = OutboxMaintenanceRuntime::new(db.pool().clone()).start();
     let serve_result = axum::serve(
@@ -110,12 +114,14 @@ async fn serve() -> Result<(), AppError> {
     processing_runtime_handle.abort();
     download_runtime_handle.abort();
     automation_runtime_handle.abort();
+    notification_delivery_handle.abort();
     discovery_runtime_handle.abort();
     outbox_runtime_handle.abort();
     let _ = task_runtime_handle.await;
     let _ = processing_runtime_handle.await;
     let _ = download_runtime_handle.await;
     let _ = automation_runtime_handle.await;
+    let _ = notification_delivery_handle.await;
     let _ = discovery_runtime_handle.await;
     let _ = outbox_runtime_handle.await;
     serve_result

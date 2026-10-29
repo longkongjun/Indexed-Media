@@ -56,8 +56,7 @@ impl WebhookStore {
         enabled: bool,
         now_us: i64,
     ) -> Result<i64, AppError> {
-        if !target_url.starts_with("https://")
-            || target_url.len() > 2048
+        if !super::transport::valid_target(target_url)
             || display_name.is_some_and(|value| value.is_empty() || value.len() > 120)
         {
             return Err(AppError::new(
@@ -90,7 +89,7 @@ impl WebhookStore {
             sqlx::query(
                 "UPDATE notification_webhooks
                  SET target_url=?,display_name=?,enabled=?,config_version=config_version+1,
-                     updated_at_us=?
+                     health='unconfigured',last_delivery_us=NULL,updated_at_us=?
                  WHERE id=? AND config_version=?",
             )
             .bind(target_url)
@@ -126,10 +125,15 @@ impl WebhookStore {
     ///
     /// 不存在、版本不匹配或数据库失败。
     pub async fn delete(&self, id: Uuid, expected_version: i64) -> Result<(), AppError> {
+        let mut tx = self
+            .pool
+            .begin_with("BEGIN IMMEDIATE")
+            .await
+            .map_err(database)?;
         let rows = sqlx::query("DELETE FROM notification_webhooks WHERE id=? AND config_version=?")
             .bind(id.as_bytes().to_vec())
             .bind(expected_version)
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await
             .map_err(database)?;
         if rows.rows_affected() != 1 {
@@ -138,6 +142,13 @@ impl WebhookStore {
                 "webhook config version changed",
             ));
         }
+        // Keep delivery facts terminal even if an internal caller later reuses the UUID/version.
+        sqlx::query("UPDATE notification_deliveries SET status='cancelled',failure_code='configuration-deleted',
+            lease_token=NULL,lease_expires_at_us=NULL,retry_at_us=NULL,updated_at_us=?
+            WHERE webhook_id=? AND status IN ('pending','sending','retry-wait')")
+            .bind(chrono::Utc::now().timestamp_micros()).bind(id.as_bytes().as_slice())
+            .execute(&mut *tx).await.map_err(database)?;
+        tx.commit().await.map_err(database)?;
         Ok(())
     }
 
@@ -193,21 +204,16 @@ fn decode(row: &sqlx::sqlite::SqliteRow) -> Result<WebhookView, AppError> {
 ///
 /// 目标不可达、非 2xx 或响应异常时返回稳定失败码。
 pub async fn test_delivery(target_url: &str) -> Result<(), AppError> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .build()
-        .map_err(|_| AppError::new(ErrorCode::ProviderUnavailable, "webhook client unusable"))?;
-    let response = client
-        .post(target_url)
-        .json(&serde_json::json!({
-            "kind": "system.notice",
-            "title": "MediaFlow Webhook 测试",
-            "body": "这是一条不落盘的出站测试。",
-        }))
-        .send()
-        .await
-        .map_err(|_| AppError::new(ErrorCode::ProviderUnavailable, "webhook target unreachable"))?;
-    if response.status().is_success() {
+    use super::delivery_store::{DeliveryOutcome, DeliveryPayload};
+    use super::transport::{PublicHttpsTransport, WebhookTransport as _};
+    let payload = DeliveryPayload {
+        delivery_id: format!("probe:{}", Uuid::now_v7()),
+        kind: "system.notice".to_owned(),
+        title: "MediaFlow Webhook 测试".to_owned(),
+        body: "这是一条不落盘的出站测试。".to_owned(),
+        task_id: None,
+    };
+    if PublicHttpsTransport.deliver(target_url, &payload).await == DeliveryOutcome::Delivered {
         Ok(())
     } else {
         Err(AppError::new(

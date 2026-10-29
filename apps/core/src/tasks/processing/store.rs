@@ -1791,18 +1791,14 @@ impl ProcessingStore {
             now_us,
         )
         .await?;
-        // 等待人工审核是管理员必须知道的编排事实：通知与状态转换原子提交。
-        if transition.status == ProcessingStatus::WaitingConfirmation {
-            let _ = crate::notifications::store::NotificationStore::insert_in_transaction(
-                &mut tx,
-                crate::notifications::store::NotificationKind::ReviewWaiting,
-                "任务等待人工审核",
-                "识别结果需要管理员确认后才能继续整理。",
-                Some(lease.task.id),
-                now_us,
-            )
-            .await;
-        }
+        insert_transition_notification(
+            &mut tx,
+            lease.task.id,
+            transition.status,
+            transition.stage,
+            now_us,
+        )
+        .await?;
         tx.commit().await.map_err(internal)?;
         self.notifier.notify_after_commit();
         self.get_by_id(lease.task.id).await
@@ -1929,18 +1925,14 @@ impl ProcessingStore {
             now_us,
         )
         .await?;
-        // 等待人工审核是管理员必须知道的编排事实：通知与状态转换原子提交。
-        if transition.status == ProcessingStatus::WaitingConfirmation {
-            let _ = crate::notifications::store::NotificationStore::insert_in_transaction(
-                &mut tx,
-                crate::notifications::store::NotificationKind::ReviewWaiting,
-                "任务等待人工审核",
-                "识别结果需要管理员确认后才能继续整理。",
-                Some(lease.task.id),
-                now_us,
-            )
-            .await;
-        }
+        insert_transition_notification(
+            &mut tx,
+            lease.task.id,
+            transition.status,
+            transition.stage,
+            now_us,
+        )
+        .await?;
         tx.commit().await.map_err(internal)?;
         self.notifier.notify_after_commit();
         self.get_by_id(lease.task.id).await
@@ -2527,4 +2519,34 @@ fn invalid<T>(kind: &str) -> Result<T, AppError> {
 
 fn internal(error: impl std::error::Error) -> AppError {
     AppError::with_source(ErrorCode::Internal, error)
+}
+
+async fn insert_transition_notification(
+    tx: &mut sqlx::Transaction<'_, Sqlite>,
+    task_id: Uuid,
+    status: ProcessingStatus,
+    stage: ProcessingStage,
+    now_us: i64,
+) -> Result<(), AppError> {
+    use crate::notifications::store::{NotificationKind, NotificationStore};
+    let message = if status == ProcessingStatus::WaitingConfirmation {
+        Some((
+            NotificationKind::ReviewWaiting,
+            "任务等待人工审核",
+            "识别结果需要管理员确认后才能继续整理。",
+        ))
+    } else if status == ProcessingStatus::Paused && stage != ProcessingStage::Identification {
+        Some((
+            NotificationKind::OrganizationPaused,
+            "整理任务已安全暂停",
+            "请检查任务状态和恢复动作，确认后再继续整理。",
+        ))
+    } else {
+        None
+    };
+    if let Some((kind, title, body)) = message {
+        NotificationStore::insert_in_transaction(tx, kind, title, body, Some(task_id), now_us)
+            .await?;
+    }
+    Ok(())
 }

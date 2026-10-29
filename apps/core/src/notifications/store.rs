@@ -112,6 +112,18 @@ impl NotificationStore {
         .execute(&mut **transaction)
         .await
         .map_err(database)?;
+        sqlx::query(
+            "INSERT INTO notification_deliveries
+             (id,notification_id,webhook_id,config_version,status,created_at_us,updated_at_us)
+             SELECT lower(hex(?1)) || ':' || lower(hex(id)) || ':' || config_version,
+                    ?1,id,config_version,'pending',?2,?2
+             FROM notification_webhooks WHERE enabled=1",
+        )
+        .bind(id.as_bytes().as_slice())
+        .bind(now_us)
+        .execute(&mut **transaction)
+        .await
+        .map_err(database)?;
         Ok(id)
     }
 
