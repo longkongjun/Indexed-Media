@@ -36,6 +36,23 @@ impl AutomationRuntime {
         config_dir: &Path,
         notifier: OutboxNotifier,
     ) -> Result<Self, AppError> {
+        let feed_client = super::rss::client::FeedHttpClient::production()
+            .map_err(|error| AppError::with_source(ErrorCode::ConfigInvalid, error))?;
+        Self::with_feed_client(pool, config_dir, notifier, Arc::new(feed_client))
+    }
+
+    /// Build the same durable runtime with an explicit bounded feed transport.
+    ///
+    /// # Errors
+    ///
+    /// Returns a configuration error when an encrypted store cannot open.
+    #[allow(clippy::needless_pass_by_value)]
+    pub fn with_feed_client(
+        pool: SqlitePool,
+        config_dir: &Path,
+        notifier: OutboxNotifier,
+        feed_client: Arc<dyn super::rss::client::FeedClient>,
+    ) -> Result<Self, AppError> {
         let downloads =
             DownloadTaskService::open_with_notifier(pool.clone(), config_dir, notifier.clone())?;
         let reconciles = ReconcileRequestService::new(pool.clone(), notifier.clone());
@@ -54,10 +71,8 @@ impl AutomationRuntime {
             config_dir,
             notifier.clone(),
         )?;
-        let feed_client = super::rss::client::FeedHttpClient::production()
-            .map_err(|error| AppError::with_source(ErrorCode::ConfigInvalid, error))?;
         let poller = Arc::new(super::rss::poller::FeedPoller::new(
-            Arc::new(feed_client),
+            feed_client,
             Arc::new(events.clone()),
         ));
         let (failures, _) = watch::channel(None);
@@ -103,24 +118,20 @@ impl AutomationRuntime {
         Ok(events.saturating_add(completions))
     }
 
-    /// Execute at most one due event.
+    /// Give completion signals, durable events, and due feeds one bounded turn each.
     ///
     /// # Errors
     ///
-    /// Returns worker persistence or lease errors.
+    /// Returns persistence or lease errors without treating failed checkpoints as success.
     pub async fn run_once(&self) -> Result<Option<uuid::Uuid>, AppError> {
         let now_us = chrono::Utc::now().timestamp_micros();
-        if let Some(dispatch) = self.completions.run_once(now_us).await? {
-            return Ok(dispatch.event_id.or(Some(dispatch.download_task_id)));
-        }
-        if let Some(event_id) = self.worker.run_once().await? {
-            return Ok(Some(event_id));
-        }
-        // 事件队列空转时检查一个到期 RSS 源；新事件会唤醒循环继续处理。
-        if self.poll_due_rss_source().await? {
-            return Ok(Some(uuid::Uuid::nil()));
-        }
-        Ok(None)
+        let completion = self.completions.run_once(now_us).await?;
+        let event = self.worker.run_once().await?;
+        let polled = self.poll_due_rss_source().await?;
+        Ok(completion
+            .map(|dispatch| dispatch.event_id.unwrap_or(dispatch.download_task_id))
+            .or(event)
+            .or_else(|| polled.then(uuid::Uuid::nil)))
     }
 
     /// Wake an idle runtime after a new event commit.

@@ -108,3 +108,64 @@ async fn poller_wires_due_poll_through_commit_port() {
         "upstream failure must be committed to the source runtime"
     );
 }
+
+#[tokio::test]
+async fn due_feed_is_polled_even_while_events_remain_pending() {
+    use mediaflow_core::automation::model::AutomationSourceInput;
+    use mediaflow_core::automation::runtime::AutomationRuntime;
+    use mediaflow_core::automation::source_store::AutomationSourceStore;
+    use mediaflow_core::connectors::model::SecretString;
+    use mediaflow_core::platform::outbox::OutboxNotifier;
+
+    let fixture = common::TestConfigDir::new(RunMode::Development);
+    let db = migrate_with_backup(fixture.config()).await.unwrap();
+    common::seed_automation_event(db.pool(), &fixture.config().config_dir).await;
+    common::seed_automation_event(db.pool(), &fixture.config().config_dir).await;
+    let downloader =
+        sqlx::query_scalar::<_, Vec<u8>>("SELECT id FROM downloader_connections LIMIT 1")
+            .fetch_one(db.pool())
+            .await
+            .unwrap();
+    let source_id = Uuid::now_v7();
+    AutomationSourceStore::open(db.pool().clone(), &fixture.config().config_dir)
+        .unwrap()
+        .insert(
+            source_id,
+            AutomationSourceInput::Rss {
+                display_name: "Due feed behind event backlog".to_owned(),
+                enabled: true,
+                feed_url: SecretString::new("https://feed.example.test/test.xml".to_owned()),
+                downloader_connection_id: Uuid::from_slice(&downloader).unwrap(),
+                poll_interval_seconds: 60,
+            },
+            None,
+            1,
+        )
+        .await
+        .unwrap();
+    let runtime = AutomationRuntime::with_feed_client(
+        db.pool().clone(),
+        &fixture.config().config_dir,
+        OutboxNotifier::new(),
+        Arc::new(StaticClient),
+    )
+    .unwrap();
+    assert!(runtime.run_once().await.unwrap().is_some());
+    let pending: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM automation_events WHERE status='pending'")
+            .fetch_one(db.pool())
+            .await
+            .unwrap();
+    assert_eq!(pending, 1, "one event per work category per round");
+    let polled: Option<i64> = sqlx::query_scalar(
+        "SELECT next_poll_at_us FROM automation_source_runtime WHERE source_id=?",
+    )
+    .bind(source_id.as_bytes().as_slice())
+    .fetch_one(db.pool())
+    .await
+    .unwrap();
+    assert!(
+        polled.is_some_and(|at| at > 1),
+        "feed failure/backoff must commit despite remaining event backlog"
+    );
+}
