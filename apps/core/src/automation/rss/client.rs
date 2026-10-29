@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Semaphore;
 use url::Url;
 
+use crate::platform::outbound_http::{TargetError, public_https_url, resolve_public};
 use crate::platform::secrets::SecretBytes;
 
 /// Bounded conditional HTTP client options.
@@ -279,6 +280,9 @@ impl FeedHttpClient {
     fn url(&self, secret: &SecretBytes) -> Result<Url, FeedClientError> {
         let text =
             std::str::from_utf8(secret.expose()).map_err(|_| FeedClientError::InvalidResponse)?;
+        if !self.loopback_only {
+            return public_https_url(text, 4096).ok_or(FeedClientError::InvalidResponse);
+        }
         let url = Url::parse(text).map_err(|_| FeedClientError::InvalidResponse)?;
         let loopback = url
             .host_str()
@@ -326,9 +330,8 @@ impl FeedHttpClient {
     }
 }
 
-#[async_trait]
-impl FeedClient for FeedHttpClient {
-    async fn fetch(
+impl FeedHttpClient {
+    async fn fetch_bounded(
         &self,
         feed_url: &SecretBytes,
         cursor: Option<&RssCursor>,
@@ -338,7 +341,17 @@ impl FeedClient for FeedHttpClient {
             .acquire()
             .await
             .map_err(|_| FeedClientError::Unavailable)?;
-        let mut request = self.http.get(self.url(feed_url)?);
+        let url = self.url(feed_url)?;
+        let http = if self.loopback_only {
+            self.http.clone()
+        } else {
+            let addresses = resolve_public(&url).await.map_err(|error| match error {
+                TargetError::Rejected => FeedClientError::InvalidResponse,
+                TargetError::Unavailable => FeedClientError::Unavailable,
+            })?;
+            pinned_http_client(&url, &addresses, self.options)?
+        };
+        let mut request = http.get(url);
         if let Some(value) = cursor.and_then(RssCursor::etag) {
             request = request.header(IF_NONE_MATCH, value);
         }
@@ -376,6 +389,40 @@ impl FeedClient for FeedHttpClient {
     }
 }
 
+#[async_trait]
+impl FeedClient for FeedHttpClient {
+    async fn fetch(
+        &self,
+        feed_url: &SecretBytes,
+        cursor: Option<&RssCursor>,
+    ) -> Result<FeedResponse, FeedClientError> {
+        tokio::time::timeout(
+            self.options.request_timeout,
+            self.fetch_bounded(feed_url, cursor),
+        )
+        .await
+        .unwrap_or(Err(FeedClientError::Timeout))
+    }
+}
+
+fn pinned_http_client(
+    url: &Url,
+    addresses: &[std::net::SocketAddr],
+    options: FeedClientOptions,
+) -> Result<reqwest::Client, FeedClientError> {
+    let host = url.host_str().ok_or(FeedClientError::InvalidResponse)?;
+    // Preserve the URL/TLS host while eliminating a second DNS lookup or proxy route.
+    reqwest::Client::builder()
+        .connect_timeout(options.connect_timeout)
+        .timeout(options.request_timeout)
+        .redirect(reqwest::redirect::Policy::none())
+        .no_proxy()
+        .user_agent("MediaFlow/0.1")
+        .resolve_to_addrs(host, addresses)
+        .build()
+        .map_err(|_| FeedClientError::Unavailable)
+}
+
 fn response_cursor(response: &reqwest::Response) -> Result<Option<RssCursor>, FeedClientError> {
     let etag = optional_header(response, ETAG)?;
     let last_modified = optional_header(response, LAST_MODIFIED)?;
@@ -407,5 +454,55 @@ fn map_transport_error(error: &reqwest::Error) -> FeedClientError {
         FeedClientError::Timeout
     } else {
         FeedClientError::Unavailable
+    }
+}
+
+#[cfg(test)]
+mod outbound_tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+
+    #[tokio::test]
+    async fn pinned_client_keeps_host_and_never_follows_redirects() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let receiver = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut bytes = [0; 4096];
+            let size = stream.read(&mut bytes).await.unwrap();
+            let request = String::from_utf8_lossy(&bytes[..size]).to_lowercase();
+            assert!(request.contains("host: unresolvable.feed.example.test:"));
+            stream.write_all(b"HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:1/private\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").await.unwrap();
+        });
+        // Private helper only: production validates HTTPS/public addresses before this call.
+        let url = Url::parse(&format!(
+            "http://unresolvable.feed.example.test:{}/feed",
+            address.port()
+        ))
+        .unwrap();
+        let response = pinned_http_client(&url, &[address], FeedClientOptions::default())
+            .unwrap()
+            .get(url)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::FOUND);
+        receiver.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn request_budget_includes_waiting_for_the_shared_permit() {
+        let client = FeedHttpClient::for_test_loopback(FeedClientOptions {
+            request_timeout: Duration::from_millis(25),
+            max_concurrency: 1,
+            ..FeedClientOptions::default()
+        })
+        .unwrap();
+        let _held = client.permits.acquire().await.unwrap();
+        let url = SecretBytes::new(b"http://127.0.0.1:1/never-connected".to_vec());
+        assert_eq!(
+            client.fetch(&url, None).await,
+            Err(FeedClientError::Timeout)
+        );
     }
 }

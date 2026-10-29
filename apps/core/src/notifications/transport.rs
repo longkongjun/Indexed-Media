@@ -1,9 +1,10 @@
 //! Restricted optional webhook transport: public HTTPS, pinned DNS, no proxy or redirects.
-use std::net::{IpAddr, SocketAddr};
+use std::net::SocketAddr;
 use std::time::Duration;
 
+use crate::platform::outbound_http::{TargetError, public_https_url, resolve_public};
 use async_trait::async_trait;
-use url::{Host, Url};
+use url::Url;
 
 use super::delivery_store::{DeliveryOutcome, DeliveryPayload};
 
@@ -25,64 +26,7 @@ pub fn valid_target(target: &str) -> bool {
 }
 
 fn target_url(target: &str) -> Option<Url> {
-    let url = Url::parse(target).ok()?;
-    if target.len() > 2048
-        || url.scheme() != "https"
-        || !url.username().is_empty()
-        || url.password().is_some()
-        || url.fragment().is_some()
-        || url.cannot_be_a_base()
-        || url.port() == Some(0)
-    {
-        return None;
-    }
-    match url.host()? {
-        Host::Ipv4(ip) if !public_ip(IpAddr::V4(ip)) => return None,
-        Host::Ipv6(ip) if !public_ip(IpAddr::V6(ip)) => return None,
-        Host::Domain(host) if host.eq_ignore_ascii_case("localhost") || !host.contains('.') => {
-            return None;
-        }
-        _ => {}
-    }
-    Some(url)
-}
-
-fn public_ip(ip: IpAddr) -> bool {
-    match ip {
-        IpAddr::V4(ip) => {
-            let [a, b, c, _] = ip.octets();
-            !(ip.is_private()
-                || ip.is_loopback()
-                || ip.is_link_local()
-                || ip.is_broadcast()
-                || ip.is_documentation()
-                || a == 0
-                || a >= 224
-                || (a == 100 && (64..=127).contains(&b))
-                || (a == 192
-                    && ((b == 0 && c == 0)
-                        || (b == 31 && c == 196)
-                        || (b == 52 && c == 193)
-                        || (b == 88 && c == 99)
-                        || (b == 175 && c == 48)))
-                || (a == 198 && (b == 18 || b == 19)))
-        }
-        IpAddr::V6(ip) => {
-            let segments = ip.segments();
-            // IANA special-purpose registries reviewed 2026-10-29. Conservative public
-            // unicast excludes protocol assignments (including their reachable exceptions),
-            // transition/relay, documentation and service prefixes, not just local addresses.
-            (segments[0] & 0xe000) == 0x2000
-                && !(segments[0] == 0x2001 && (segments[1] < 0x0200 || segments[1] == 0x0db8))
-                && segments[0] != 0x2002
-                && segments[0] != 0x3fff
-                && !(segments[0] == 0x2620 && segments[1] == 0x004f && segments[2] == 0x8000)
-        }
-    }
-}
-
-fn valid_addresses(addresses: &[SocketAddr]) -> bool {
-    !addresses.is_empty() && addresses.len() <= 16 && addresses.iter().all(|a| public_ip(a.ip()))
+    public_https_url(target, 2048)
 }
 
 #[async_trait]
@@ -92,21 +36,11 @@ impl WebhookTransport for PublicHttpsTransport {
             return DeliveryOutcome::Rejected;
         };
         tokio::time::timeout(Duration::from_secs(10), async {
-            let Some(host) = url.host_str() else {
-                return DeliveryOutcome::Rejected;
+            let addresses = match resolve_public(&url).await {
+                Ok(addresses) => addresses,
+                Err(TargetError::Rejected) => return DeliveryOutcome::Rejected,
+                Err(TargetError::Unavailable) => return DeliveryOutcome::Retryable,
             };
-            let port = url.port_or_known_default().unwrap_or(443);
-            let addresses: Vec<_> = match url.host() {
-                Some(Host::Ipv4(ip)) => vec![SocketAddr::new(IpAddr::V4(ip), port)],
-                Some(Host::Ipv6(ip)) => vec![SocketAddr::new(IpAddr::V6(ip), port)],
-                _ => match tokio::net::lookup_host((host, port)).await {
-                    Ok(addresses) => addresses.take(17).collect(),
-                    Err(_) => return DeliveryOutcome::Retryable,
-                },
-            };
-            if !valid_addresses(&addresses) {
-                return DeliveryOutcome::Rejected;
-            }
             // Resolving explicitly to checked addresses prevents a second DNS lookup/rebinding.
             send_pinned(url, &addresses, payload).await
         })
@@ -157,6 +91,7 @@ async fn send_pinned(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::platform::outbound_http::{public_ip, valid_addresses};
     #[test]
     fn rejects_private_reserved_mapped_and_mixed_dns_destinations() {
         for ip in [

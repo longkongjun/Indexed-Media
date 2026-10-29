@@ -10,6 +10,8 @@ pub mod db;
 pub mod http;
 /// 内嵌 Schema 迁移及迁移期间的备份策略。
 pub mod migrations;
+/// 公网出站目标与固定DNS解析边界。
+pub(crate) mod outbound_http;
 /// 事务性任务事件、重放、保留和订阅者通知。
 pub mod outbox;
 /// 经校准的 Argon2id 密码哈希和验证。
