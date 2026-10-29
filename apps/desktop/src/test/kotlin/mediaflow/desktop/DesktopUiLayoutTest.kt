@@ -2,12 +2,15 @@ package mediaflow.desktop
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
@@ -16,6 +19,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import mediaflow.client.core.auth.InMemoryDeviceAuthStore
 import mediaflow.client.core.auth.StoredCredentials
+import mediaflow.client.core.paging.PageState
 import org.junit.Rule
 import org.junit.Test
 import java.net.InetSocketAddress
@@ -60,7 +64,18 @@ class DesktopUiLayoutTest {
             compose.onNodeWithText("流浪地球").assertIsDisplayed()
         }
 
-    private fun withLoggedInCompanion(check: (DesktopModel) -> Unit) {
+    @Test
+    fun mediaTitleRemainsReachableWithLargerSystemFonts() =
+        withLoggedInCompanion(fontScale = 1.5f) {
+            compose.onNodeWithText("沙丘").assertIsDisplayed().performClick()
+            compose.onNodeWithText("返回媒体列表").assertIsDisplayed().performClick()
+            compose.onNodeWithText("沙丘").assertIsDisplayed()
+        }
+
+    private fun withLoggedInCompanion(
+        fontScale: Float? = null,
+        check: (DesktopModel) -> Unit,
+    ) {
         UiFixtureServer().use { server ->
             val directory = Files.createTempDirectory("mediaflow-desktop-layout")
             val store = InMemoryDeviceAuthStore()
@@ -69,13 +84,22 @@ class DesktopUiLayoutTest {
             try {
                 compose.setContent {
                     Box(Modifier.size(1000.dp, 720.dp)) {
-                        IndexedTheme { Companion(model) }
+                        val density = LocalDensity.current
+                        CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale ?: density.fontScale)) {
+                            IndexedTheme { Companion(model) }
+                        }
                     }
                 }
                 compose.runOnIdle { model.login(server.url, true, "", "", "", restore = true) }
                 compose.waitUntil(10_000) {
                     val state = model.state.value
-                    state.loggedIn && state.wall.isNotEmpty() && state.tasks.isNotEmpty() && state.cases.isNotEmpty()
+                    state.loggedIn &&
+                        state.wall.isNotEmpty() &&
+                        state.tasks.isNotEmpty() &&
+                        state.cases.isNotEmpty() &&
+                        state.wallState == PageState.Content &&
+                        state.taskState == PageState.Content &&
+                        state.caseState == PageState.Content
                 }
                 compose.waitForIdle()
                 check(model)
