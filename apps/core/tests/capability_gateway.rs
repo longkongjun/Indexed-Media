@@ -1302,3 +1302,292 @@ async fn gateway_responses_preserve_valid_correlation_and_invalid_calls_get_serv
     assert_eq!(persisted, 1, "only the successful call may be persisted");
     pool.close().await;
 }
+
+#[tokio::test]
+async fn replay_rejects_changed_actor_and_execution_constraints() {
+    let harness = harness(b"replay-fingerprint.mkv").await;
+    let envelope = call_envelope(
+        Uuid::now_v7(),
+        "media.task-status",
+        Some(harness.task_id),
+        json!({"task_id":harness.task_id}),
+        None,
+    );
+    assert_eq!(
+        post_call(&harness.app, TOKEN, &envelope).await["status"],
+        "succeeded"
+    );
+    for altered in ["actor", "deadline", "session", "input"] {
+        let mut changed = envelope.clone();
+        match altered {
+            "actor" => changed["actor"]["id"] = json!("another-declared-actor"),
+            "deadline" => changed["execution"]["deadline_ms"] = json!(1000),
+            "session" => changed["session_id"] = json!(Uuid::now_v7()),
+            _ => changed["input"]["task_id"] = json!(Uuid::now_v7()),
+        }
+        let response = post_call(&harness.app, TOKEN, &changed).await;
+        assert_eq!(response["status"], "rejected", "{altered}: {response}");
+        assert_eq!(response["error"]["category"], "conflict");
+    }
+    assert_eq!(
+        post_call(&harness.app, TOKEN, &envelope).await["status"],
+        "succeeded"
+    );
+}
+
+#[tokio::test]
+async fn completion_event_failure_rolls_back_result_and_blocks_unknown_reexecution() {
+    let harness = harness(b"replay-event-failure.mkv").await;
+    let db = migrate_with_backup(harness.fixture.config()).await.unwrap();
+    sqlx::query("CREATE TRIGGER fail_capability_event BEFORE INSERT ON capability_events BEGIN SELECT RAISE(ABORT,'event persistence probe'); END")
+        .execute(db.pool()).await.unwrap();
+    let envelope = call_envelope(
+        Uuid::now_v7(),
+        "media.task-status",
+        Some(harness.task_id),
+        json!({"task_id":harness.task_id}),
+        None,
+    );
+    let first = post_call(&harness.app, TOKEN, &envelope).await;
+    assert_eq!(first["status"], "retryable");
+    let calls: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM capability_calls")
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
+    assert_eq!(calls, 0, "result must not commit without its event");
+    sqlx::query("DROP TRIGGER fail_capability_event")
+        .execute(db.pool())
+        .await
+        .unwrap();
+    let recovered = build_router(harness.fixture.config().clone(), Some(db.clone()));
+    let retry = post_call(&recovered, TOKEN, &envelope).await;
+    assert_eq!(
+        retry["status"], "rejected",
+        "unknown pending work must not be rerun: {retry}"
+    );
+    assert_eq!(retry["error"]["retryable"], false);
+    let pending: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM capability_request_claims WHERE state='pending'")
+            .fetch_one(db.pool())
+            .await
+            .unwrap();
+    assert_eq!(pending, 1);
+}
+
+#[tokio::test]
+async fn concurrent_request_has_one_completion_and_no_internal_conflict() {
+    let harness = harness(b"replay-concurrent.mkv").await;
+    let envelope = call_envelope(
+        Uuid::now_v7(),
+        "media.task-status",
+        Some(harness.task_id),
+        json!({"task_id":harness.task_id}),
+        None,
+    );
+    let (first, second) = tokio::join!(
+        post_call(&harness.app, TOKEN, &envelope),
+        post_call(&harness.app, TOKEN, &envelope)
+    );
+    for result in [&first, &second] {
+        assert!(
+            result["status"] == "succeeded" || result["status"] == "rejected",
+            "{result}"
+        );
+    }
+    assert!(first["status"] == "succeeded" || second["status"] == "succeeded");
+    let db = migrate_with_backup(harness.fixture.config()).await.unwrap();
+    for table in [
+        "capability_calls",
+        "capability_events",
+        "capability_request_claims",
+    ] {
+        let count: i64 = sqlx::query_scalar(&format!("SELECT COUNT(*) FROM {table}"))
+            .fetch_one(db.pool())
+            .await
+            .unwrap();
+        assert_eq!(count, 1, "{table}");
+    }
+}
+
+#[tokio::test]
+async fn legacy_calls_without_fingerprints_are_not_reexecuted_or_blindly_replayed() {
+    let harness = harness(b"replay-legacy.mkv").await;
+    let envelope = call_envelope(
+        Uuid::now_v7(),
+        "media.task-status",
+        Some(harness.task_id),
+        json!({"task_id":harness.task_id}),
+        None,
+    );
+    assert_eq!(
+        post_call(&harness.app, TOKEN, &envelope).await["status"],
+        "succeeded"
+    );
+    let db = migrate_with_backup(harness.fixture.config()).await.unwrap();
+    sqlx::query("DELETE FROM capability_request_claims")
+        .execute(db.pool())
+        .await
+        .unwrap();
+    assert_eq!(
+        post_call(&harness.app, TOKEN, &envelope).await["status"],
+        "rejected"
+    );
+    let mut changed_id = envelope.clone();
+    changed_id["request_id"] = json!(Uuid::now_v7());
+    assert_eq!(
+        post_call(&harness.app, TOKEN, &changed_id).await["status"],
+        "rejected"
+    );
+    let rows: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM capability_calls")
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
+    assert_eq!(rows, 1);
+}
+
+#[tokio::test]
+async fn reordered_json_keys_and_whitespace_replay_the_same_envelope() {
+    let harness = harness(b"replay-canonical.mkv").await;
+    let envelope = call_envelope(
+        Uuid::now_v7(),
+        "media.task-status",
+        Some(harness.task_id),
+        json!({"task_id":harness.task_id}),
+        None,
+    );
+    let first = post_call(&harness.app, TOKEN, &envelope).await;
+    let fields = envelope
+        .as_object()
+        .unwrap()
+        .iter()
+        .rev()
+        .map(|(key, value)| {
+            format!(
+                "{}: {}",
+                serde_json::to_string(key).unwrap(),
+                serde_json::to_string_pretty(value).unwrap()
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(",\n");
+    let response = harness
+        .app
+        .clone()
+        .oneshot(
+            Request::post("/api/capability/v1/calls")
+                .header(header::AUTHORIZATION, format!("Bearer {TOKEN}"))
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(format!("{{\n{fields}\n}}")))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(first, json_body(response).await);
+}
+
+#[tokio::test]
+async fn concurrent_distinct_ids_cannot_share_one_idempotency_key() {
+    let harness = harness(b"replay-key-owner.mkv").await;
+    let first = call_envelope(
+        Uuid::now_v7(),
+        "media.task-status",
+        Some(harness.task_id),
+        json!({"task_id":harness.task_id}),
+        None,
+    );
+    let mut second = first.clone();
+    second["request_id"] = json!(Uuid::now_v7());
+    let (left, right) = tokio::join!(
+        post_call(&harness.app, TOKEN, &first),
+        post_call(&harness.app, TOKEN, &second)
+    );
+    assert!(
+        (left["status"] == "succeeded" && right["status"] == "rejected")
+            || (right["status"] == "succeeded" && left["status"] == "rejected"),
+        "{left} {right}"
+    );
+    let db = migrate_with_backup(harness.fixture.config()).await.unwrap();
+    let owners: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM capability_request_claims")
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
+    assert_eq!(owners, 1);
+}
+
+#[tokio::test]
+async fn concurrent_authorized_plan_delivery_has_one_domain_attempt_and_no_new_authorization() {
+    for distinct_ids in [false, true] {
+        let harness = authorized_harness().await;
+        let task_id = harness.fixture.lease.task.id;
+        OrganizationPlanStore::new(harness.fixture.db.pool().clone())
+            .authorize_once(
+                harness.fixture.account_id,
+                task_id,
+                harness.fixture.plan.version,
+                "concurrent-web-manual-authorization",
+                90_000_100,
+                AuthorizationGranter::Web(harness.fixture.account_id),
+            )
+            .await
+            .unwrap();
+        let before: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM tasks_processing_attempts WHERE task_id=?")
+                .bind(task_id.as_bytes().as_slice())
+                .fetch_one(harness.fixture.db.pool())
+                .await
+                .unwrap();
+        let first = apply_envelope(Uuid::now_v7(), task_id, "plan.version:1");
+        let mut second = first.clone();
+        if distinct_ids {
+            second["request_id"] = json!(Uuid::now_v7());
+        }
+        let token = format!("{TOKEN}-org");
+        let (left, right) = tokio::join!(
+            post_call(&harness.app, &token, &first),
+            post_call(&harness.app, &token, &second)
+        );
+        assert!(
+            left["status"] == "accepted" || right["status"] == "accepted",
+            "{left} {right}"
+        );
+        for response in [&left, &right] {
+            assert!(
+                response["status"] == "accepted" || response["status"] == "rejected",
+                "{response}"
+            );
+        }
+        let after: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM tasks_processing_attempts WHERE task_id=?")
+                .bind(task_id.as_bytes().as_slice())
+                .fetch_one(harness.fixture.db.pool())
+                .await
+                .unwrap();
+        assert_eq!(after, before + 1, "delivery resumes one domain attempt");
+        let event_type: String = sqlx::query_scalar("SELECT event_type FROM capability_events")
+            .fetch_one(harness.fixture.db.pool())
+            .await
+            .unwrap();
+        assert_eq!(
+            event_type, "task.accepted",
+            "accepted delivery must not emit a failure event"
+        );
+        for (table, expected) in [
+            ("organization_plans", 1),
+            ("organization_plan_authorization_receipts", 1),
+            ("organization_file_operation_journals", 0),
+        ] {
+            let count: i64 =
+                sqlx::query_scalar(&format!("SELECT COUNT(*) FROM {table} WHERE task_id=?"))
+                    .bind(task_id.as_bytes().as_slice())
+                    .fetch_one(harness.fixture.db.pool())
+                    .await
+                    .unwrap();
+            assert_eq!(count, expected, "{table}, distinct IDs={distinct_ids}");
+        }
+        assert_eq!(
+            std::fs::read(harness.fixture.source_path()).unwrap(),
+            b"arrival-media"
+        );
+        assert!(!harness.fixture.destination_path().exists());
+    }
+}

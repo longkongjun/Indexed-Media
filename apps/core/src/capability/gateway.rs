@@ -18,6 +18,7 @@ use subtle::ConstantTimeEq;
 use uuid::Uuid;
 
 use crate::bootstrap::config::AppConfig;
+use crate::capability::claims::ClaimOutcome;
 use crate::capability::handlers::{self, CapabilityOutcome};
 use crate::capability::model::{
     CapabilityCall, CapabilityError, CapabilityErrorCategory, CapabilityErrorPhase,
@@ -142,36 +143,13 @@ async fn invoke_inner(
     let Some(spec) = registry::lookup(call.capability) else {
         return Err(not_found_rejection(&call, "capability is not registered"));
     };
-    if let Some(record) = state
-        .store
-        .find_call(call.request_id)
-        .await
-        .map_err(|error| storage_failure(&error, Some(call.request_id)))?
-    {
-        return Ok(record.result);
-    }
-    if let Some(_owner) = state
-        .store
-        .idempotency_owner(
-            &call.execution.idempotency_key,
-            spec.name.as_str(),
-            call.request_id,
-        )
-        .await
-        .map_err(|error| storage_failure(&error, Some(call.request_id)))?
-    {
-        return Err(error_response(
-            CapabilityResultStatus::Rejected,
-            Some(call.request_id),
-            call.task_id,
-            capability_error(
-                ErrorCode::RequestConflict,
-                CapabilityErrorPhase::Scan,
-                "idempotency key is already bound to another request",
-            ),
-        ));
+    if let Some(result) = claim_outcome(state, &call, false).await? {
+        return Ok(result);
     }
     preflight(state, &call, spec).await?;
+    if let Some(result) = claim_outcome(state, &call, true).await? {
+        return Ok(result);
+    }
     let outcome = match call.capability {
         CapabilityName::MediaTaskStatus => {
             handlers::task_status(state.store.pool(), &call.input).await
@@ -224,6 +202,32 @@ async fn invoke_inner(
     Ok(result)
 }
 
+async fn claim_outcome(
+    state: &Arc<CapabilityHttpState>,
+    call: &CapabilityCall,
+    reserve: bool,
+) -> Result<Option<CapabilityResult>, Response> {
+    match state
+        .store
+        .claim(call, reserve, state.clock.now_us())
+        .await
+        .map_err(|error| storage_failure(&error, Some(call.request_id)))?
+    {
+        ClaimOutcome::Available | ClaimOutcome::Owned => Ok(None),
+        ClaimOutcome::Replay(result) => Ok(Some(*result)),
+        ClaimOutcome::Conflict | ClaimOutcome::Pending => Err(error_response(
+            CapabilityResultStatus::Rejected,
+            Some(call.request_id),
+            call.task_id,
+            capability_error(
+                ErrorCode::RequestConflict,
+                CapabilityErrorPhase::Scan,
+                "request identity changed or execution is unresolved; inspect task facts before any new command",
+            ),
+        )),
+    }
+}
+
 async fn persist(
     state: &Arc<CapabilityHttpState>,
     call: &CapabilityCall,
@@ -236,18 +240,18 @@ async fn persist(
         capability: call.capability.as_str().to_owned(),
         result: result.clone(),
     };
-    state
-        .store
-        .persist_call(&record, "ai", "dsh", now_us)
-        .await
-        .map_err(|error| storage_failure(&error, Some(call.request_id)))?;
-    let event_type = if matches!(
-        result.status,
-        CapabilityResultStatus::Succeeded | CapabilityResultStatus::NeedsInput
-    ) {
-        CapabilityEventType::CapabilityCompleted
-    } else {
-        CapabilityEventType::CapabilityFailed
+    let event_type = match result.status {
+        CapabilityResultStatus::Succeeded | CapabilityResultStatus::Cancelled => {
+            CapabilityEventType::CapabilityCompleted
+        }
+        CapabilityResultStatus::Accepted => CapabilityEventType::TaskAccepted,
+        CapabilityResultStatus::NeedsInput => CapabilityEventType::TaskWaitingInput,
+        CapabilityResultStatus::NeedsApproval => CapabilityEventType::TaskWaitingApproval,
+        CapabilityResultStatus::Retryable => CapabilityEventType::TaskRetryable,
+        CapabilityResultStatus::Paused => CapabilityEventType::TaskPaused,
+        CapabilityResultStatus::Rejected | CapabilityResultStatus::Failed => {
+            CapabilityEventType::CapabilityFailed
+        }
     };
     let event = CapabilityEvent {
         event_id: Uuid::now_v7(),
@@ -275,7 +279,7 @@ async fn persist(
     };
     state
         .store
-        .append_event(&event)
+        .complete_claim(call, &record, &event, now_us)
         .await
         .map_err(|error| storage_failure(&error, Some(call.request_id)))?;
     Ok(())
@@ -607,7 +611,7 @@ fn storage_failure(error: &AppError, request_id: Option<Uuid>) -> Response {
     )
 }
 
-/// 已解析调用回显合法 request_id；无调用身份时生成仅用于本次响应关联的 UUID。
+/// 已解析调用回显合法 `request_id`；无调用身份时生成仅用于本次响应关联的 UUID。
 fn error_response(
     status: CapabilityResultStatus,
     request_id: Option<Uuid>,

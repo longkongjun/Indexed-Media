@@ -5,6 +5,7 @@
 //! 再次校验；AI 不得经由此协议提交任意绝对路径、shell、SQL 或凭据。
 
 pub mod admin_routes;
+mod claims;
 pub mod gateway;
 pub mod handlers;
 pub mod model;
