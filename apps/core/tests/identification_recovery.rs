@@ -131,7 +131,8 @@ async fn stable_file_and_capability_read_nfo_flow_to_external_id_confirmation_wi
     common::seed_account(db.pool()).await;
     let inbox = seed_real_inbox(db.pool()).await;
     let revision =
-        common::seed_stable_revision(db.pool(), inbox, b"movies/dune.2021.mkv", vec![77]).await;
+        common::seed_stable_revision(db.pool(), inbox, b"inbox/movies/dune.2021.mkv", vec![77])
+            .await;
     let notifier = OutboxNotifier::new();
     let connectors = configured_connectors(&fixture, &db, notifier.clone()).await;
     let roots = DeploymentRootSet::load(

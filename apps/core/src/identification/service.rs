@@ -975,7 +975,7 @@ impl ProcessingStageHandler for IdentificationStageHandler {
 struct LocalFileFacts {
     root_id: RootId,
     inbox_relative_path: RelativePath,
-    file_relative_bytes: Vec<u8>,
+    root_relative_file_bytes: Vec<u8>,
 }
 
 async fn append_nfo_evidence(
@@ -991,7 +991,8 @@ async fn append_nfo_evidence(
         .preflight_directory(&facts.root_id, &facts.inbox_relative_path)
         .map_err(capability_error)?
         .into_capability();
-    let components = raw_components(&facts.file_relative_bytes)?;
+    let components =
+        inbox_file_components(&facts.inbox_relative_path, &facts.root_relative_file_bytes)?;
     let (media_name, directories) = components
         .split_last()
         .ok_or_else(|| AppError::new(ErrorCode::PathInvalid, "media path is empty"))?;
@@ -1035,7 +1036,7 @@ async fn append_nfo_evidence(
             }
         }
         Err(_) => evidence.push(nfo_conflict(
-            Sha256::digest(&facts.file_relative_bytes).into(),
+            Sha256::digest(&facts.root_relative_file_bytes).into(),
         )),
     }
     evidence.truncate(128);
@@ -1063,7 +1064,7 @@ async fn load_file_facts(
         root_id: RootId::parse(&row.get::<String, _>("root_id")).map_err(capability_error)?,
         inbox_relative_path: RelativePath::parse(&row.get::<String, _>("relative_path_display"))
             .map_err(capability_error)?,
-        file_relative_bytes: row.get("relative_path_bytes"),
+        root_relative_file_bytes: row.get("relative_path_bytes"),
     })
 }
 
@@ -1272,6 +1273,23 @@ fn nfo_conflict(source_hash: [u8; 32]) -> EvidenceDraft {
         reason: "system.conflict".to_owned(),
         source_hash,
     }
+}
+
+// 扫描事实相对部署根；目录能力已定位到 inbox，只能剥离完整组件前缀后再遍历。
+// 不接受相似前缀或旧夹具中的 inbox-relative 路径，避免读取收件目录外的证据。
+fn inbox_file_components<'a>(
+    inbox: &RelativePath,
+    root_relative_file: &'a [u8],
+) -> Result<Vec<&'a [u8]>, AppError> {
+    let relative = if inbox.as_str() == "." {
+        root_relative_file
+    } else {
+        root_relative_file
+            .strip_prefix(inbox.as_str().as_bytes())
+            .and_then(|suffix| suffix.strip_prefix(b"/"))
+            .ok_or_else(|| AppError::new(ErrorCode::PathEscape, "file is outside its inbox"))?
+    };
+    raw_components(relative)
 }
 
 fn raw_components(path: &[u8]) -> Result<Vec<&[u8]>, AppError> {
@@ -1539,5 +1557,42 @@ const fn provider_kind(kind: MediaKind) -> ProviderMediaKind {
     match kind {
         MediaKind::Movie => ProviderMediaKind::Movie,
         MediaKind::Episode => ProviderMediaKind::Tv,
+    }
+}
+
+#[cfg(test)]
+mod scan_path_tests {
+    use super::*;
+
+    #[test]
+    fn inbox_component_boundary_rejects_other_roots_and_similar_prefixes() {
+        let inbox = RelativePath::parse("incoming/inbox").unwrap();
+        for path in [
+            b"incoming/inbox-other/movie.mkv".as_slice(),
+            b"other/incoming/inbox/movie.mkv",
+            b"incoming/inbox",
+            b"incoming/inbox/",
+            b"incoming/inbox/../private/movie.mkv",
+            b"incoming/inbox//movie.mkv",
+        ] {
+            assert!(inbox_file_components(&inbox, path).is_err());
+        }
+    }
+
+    #[test]
+    fn inbox_path_conversion_preserves_non_utf8_file_bytes() {
+        let inbox = RelativePath::parse("incoming/inbox").unwrap();
+        let parts = inbox_file_components(&inbox, b"incoming/inbox/movies/\xff.mkv").unwrap();
+        assert_eq!(parts, vec![b"movies".as_slice(), b"\xff.mkv"]);
+    }
+
+    #[test]
+    fn root_inbox_still_rejects_parent_traversal() {
+        let inbox = RelativePath::parse(".").unwrap();
+        assert!(inbox_file_components(&inbox, b"../movie.mkv").is_err());
+        assert_eq!(
+            inbox_file_components(&inbox, b"movies/Dune.mkv").unwrap(),
+            vec![b"movies".as_slice(), b"Dune.mkv"]
+        );
     }
 }

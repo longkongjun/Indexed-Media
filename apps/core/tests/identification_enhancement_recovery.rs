@@ -262,7 +262,7 @@ async fn nfo_identity_overrides_conflicting_model_hints_without_touching_files()
     let lease = common::seed_processing_lease(
         db.pool(),
         inbox,
-        b"movies/mystery.mkv",
+        b"inbox/movies/mystery.mkv",
         vec![44],
         "nfo-priority",
     )
