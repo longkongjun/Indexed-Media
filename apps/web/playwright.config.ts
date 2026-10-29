@@ -4,7 +4,7 @@ const outputRoot = process.env.MEDIAFLOW_TEST_OUTPUT_DIR ?? "/tmp/mediaflow-play
 /**
  * 使用专用本地 Vite 服务器串行执行桌面端和移动端 M2 浏览器流程的 Playwright 配置。
  *
- * 产物写入 `MEDIAFLOW_TEST_OUTPUT_DIR`（或 `/tmp/mediaflow-playwright`）下方，仅在失败时保留追踪记录。
+ * 文字结果写入 `MEDIAFLOW_TEST_OUTPUT_DIR`（或 `/tmp/mediaflow-playwright`）下方，不采集截图、视频或 trace。
  */
 export default defineConfig({
   testDir: "./e2e",
@@ -12,7 +12,7 @@ export default defineConfig({
   retries: 0,
   reporter: [["line"]],
   outputDir: `${outputRoot}/artifacts`,
-  use: { baseURL: "http://127.0.0.1:4198", trace: { mode: "retain-on-failure", screenshots: false, snapshots: true }, screenshot: "off", video: "off" },
+  use: { baseURL: "http://127.0.0.1:4198", trace: "off", screenshot: "off", video: "off" },
   projects: [
     { name: "chromium-desktop", use: { ...devices["Desktop Chrome"] } },
     { name: "chromium-mobile", use: { ...devices["Pixel 7"] } },

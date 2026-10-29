@@ -58,17 +58,11 @@ final class RealCoreJourneyUITests: XCTestCase {
             NSPredicate(format: "label CONTAINS '失败' OR label CONTAINS '异常' OR label CONTAINS '过期'")
         ).firstMatch
         let reached = wall.waitForExistence(timeout: 20) || tabs.waitForExistence(timeout: 20)
-        if !reached || errorBanner.exists {
-            print("M5B2-DIAG visible texts:",
-                  app.staticTexts.allElementsBoundByIndex.map { $0.label }.filter { !$0.isEmpty },
-                  "fields:", app.textFields.allElementsBoundByIndex.map { "\($0.label)=\($0.value ?? "")" },
-                  "errorBanner:", errorBanner.exists ? errorBanner.label : "nil")
-        }
         XCTAssertTrue(
             reached,
             "登录后应进入媒体墙（含空态），或至少出现任务入口",
         )
-        XCTAssertFalse(errorBanner.exists, "登录后不应出现错误横幅（实际：\(errorBanner.label)）")
+        XCTAssertFalse(errorBanner.exists, "登录后不应出现错误横幅")
     }
 
     /// fixture server（默认地址 8642）连通性：验证 iOS 真实网络栈本身可用。
@@ -86,12 +80,8 @@ final class RealCoreJourneyUITests: XCTestCase {
         let tabs = app.buttons["任务"]
         let errorBanner = app.staticTexts.matching(NSPredicate(format: "label CONTAINS '错误' OR label CONTAINS '异常'")).firstMatch
         let reached = tabs.waitForExistence(timeout: 20)
-        if !reached || errorBanner.exists {
-            print("M5B2-DIAG-FIXTURE texts:",
-                  app.staticTexts.allElementsBoundByIndex.map { $0.label }.filter { !$0.isEmpty },
-                  "fields:", app.textFields.allElementsBoundByIndex.map { "\($0.label)=\($0.value ?? "")" })
-        }
         XCTAssertTrue(reached, "fixture server 登录应进入媒体墙")
+        XCTAssertFalse(errorBanner.exists, "fixture server 登录后不应出现错误横幅")
     }
 
     func testPairingCodeLoginAgainstRealCore() throws {
@@ -106,15 +96,9 @@ final class RealCoreJourneyUITests: XCTestCase {
         let tabsAfterRelaunch = relaunched.buttons["任务"]
         let loginAfterRelaunch = relaunched.textFields["服务器地址"]
         let restored = tabsAfterRelaunch.waitForExistence(timeout: 15)
-        if restored {
-            print("M5B2-RESTORE: 直接进入媒体墙（Keychain 恢复生效）")
-        } else if loginAfterRelaunch.exists {
-            print("M5B2-RESTORE: 回到登录页（Keychain 恢复未生效——已知问题，登记台账）")
-        }
-        // 退出闭环（若恢复失败则已在登录页，跳过退出）
-        if relaunched.buttons["退出"].exists {
-            try logoutViaToolbar()
-        }
+        XCTAssertTrue(restored, "冷启动必须通过Keychain恢复进入已认证界面")
+        XCTAssertFalse(loginAfterRelaunch.exists, "冷启动恢复后不应回到登录页")
+        try logoutViaToolbar()
     }
 
     /// 验证正式媒体行的push绑定及系统返回；需要已签发配对码和至少一条正式媒体，不用fixture代签真实Core。
@@ -151,7 +135,7 @@ final class RealCoreJourneyUITests: XCTestCase {
         // 管理员名用默认值 admin（typeText 会 append 到默认值造成双拼）
         let name = app.textFields["管理员"]
         XCTAssertTrue(name.waitForExistence(timeout: 5))
-        XCTAssertEqual(name.value as? String, adminName, "管理员默认值应为 admin")
+        XCTAssertTrue((name.value as? String) == adminName, "管理员默认值应匹配测试账户")
         let password = app.secureTextFields["密码"]
         password.tap()
         password.typeText(adminPassword)
@@ -160,12 +144,6 @@ final class RealCoreJourneyUITests: XCTestCase {
         let wall = app.staticTexts["媒体库为空"]
         let tabs = app.buttons["任务"]
         let reached = wall.waitForExistence(timeout: 20) || tabs.waitForExistence(timeout: 20)
-        if !reached {
-            print("M5B2-DIAG-CRED texts:",
-                  app.staticTexts.allElementsBoundByIndex.map { $0.label }.filter { !$0.isEmpty },
-                  "fields:", app.textFields.allElementsBoundByIndex.map { "\($0.label)=\($0.value ?? "")" },
-                  "secure:", app.secureTextFields.allElementsBoundByIndex.map { "\($0.label)=\($0.value ?? "")" })
-        }
         XCTAssertTrue(
             reached,
             "凭据登录后应进入媒体墙",
@@ -186,15 +164,11 @@ final class RealCoreJourneyUITests: XCTestCase {
     }
 
     /// 壁纸工具栏“退出”：设备自吊销 → 回登录页。
-    /// 注：SwiftUI toolbar 按钮在 XCUI 可达性树上偶发不暴露（真实 Core 空库场景
-    /// 观察到）——此时跳过退出步骤并打印标记，核心断言（登录/进墙）不受影响。
+    /// 退出入口缺失属于旅程失败，不能静默跳过后将登录/恢复计为完整通过。
     private func logoutViaToolbar() throws {
         let app = XCUIApplication()
         let logout = app.buttons["退出"]
-        guard logout.waitForExistence(timeout: 10) else {
-            print("M5B2-LOGOUT-SKIP: 退出按钮未在可达性树上暴露")
-            return
-        }
+        XCTAssertTrue(logout.waitForExistence(timeout: 10), "已认证界面必须提供可访问的退出入口")
         logout.tap()
         let address = app.textFields["服务器地址"]
         XCTAssertTrue(address.waitForExistence(timeout: 15), "退出后应回到登录页")
