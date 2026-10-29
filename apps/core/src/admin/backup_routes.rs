@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use axum::extract::{Query, State};
-use axum::http::HeaderMap;
+use axum::http::{HeaderMap, header};
 use axum::routing::get;
 use axum::{Json, Router};
 use serde::Deserialize;
@@ -76,7 +76,12 @@ impl BackupState {
     async fn guard_write(&self, headers: &HeaderMap) -> Result<(), AppError> {
         self.ensure_ready().await?;
         let session = SessionGuard::authenticate_without_sliding(headers, &self.identity).await?;
-        if let Err(error) = validate_same_origin(headers, &self.config.public_origin) {
+        // Cookie 认证优先；附带的 Bearer 头不能把会话写请求变成设备豁免通道。
+        let mut proof_headers = headers.clone();
+        if session.csrf_sha256.is_some() {
+            proof_headers.remove(header::AUTHORIZATION);
+        }
+        if let Err(error) = validate_same_origin(&proof_headers, &self.config.public_origin) {
             self.identity.audit_denial("origin").await?;
             return Err(error);
         }

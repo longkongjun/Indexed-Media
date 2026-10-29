@@ -305,3 +305,96 @@ async fn backup_post_allows_device_token_channel_without_browser_proof() {
     assert_eq!(fixture.manifest_files().len(), 1);
     assert_eq!(fixture.backup_files().len(), 1);
 }
+
+#[tokio::test]
+async fn backup_write_rejects_missing_wrong_or_cross_origin_proof_without_artifacts() {
+    let (fixture, app) = harness().await;
+    for (csrf, origin, bearer, code) in [
+        (None, Some("http://127.0.0.1:3000"), None, "csrf.invalid"),
+        (
+            Some("wrong"),
+            Some("http://127.0.0.1:3000"),
+            None,
+            "csrf.invalid",
+        ),
+        (Some(CSRF), None, None, "origin.untrusted"),
+        (
+            Some(CSRF),
+            Some("https://attacker.example"),
+            None,
+            "origin.untrusted",
+        ),
+        (
+            Some(CSRF),
+            Some("https://attacker.example"),
+            Some("untrusted"),
+            "origin.untrusted",
+        ),
+    ] {
+        let mut request = Request::post("/api/v1/system/backups").header(
+            header::COOKIE,
+            format!("__Host-mediaflow_session={COOKIE_TOKEN}"),
+        );
+        if let Some(csrf) = csrf {
+            request = request.header("x-csrf-token", csrf);
+        }
+        if let Some(origin) = origin {
+            request = request.header(header::ORIGIN, origin);
+        }
+        if let Some(bearer) = bearer {
+            request = request.header(header::AUTHORIZATION, format!("Bearer {bearer}"));
+        }
+        let response = app
+            .clone()
+            .oneshot(request.body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::FORBIDDEN, "{code}");
+        assert_eq!(json_body(response).await["error"]["code"], code);
+        assert!(
+            fixture.manifest_files().is_empty(),
+            "denied requests must not create backup artifacts"
+        );
+    }
+}
+
+#[tokio::test]
+async fn backup_write_accepts_authenticated_device_without_browser_proof() {
+    let (fixture, app) = harness().await;
+    let pool =
+        sqlx::SqlitePool::connect(&format!("sqlite://{}", fixture.database_path().display()))
+            .await
+            .unwrap();
+    let account: Vec<u8> = sqlx::query_scalar("SELECT id FROM identity_accounts")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let service = mediaflow_core::identity::service::IdentityService::new(
+        pool.clone(),
+        fixture.config().config_dir.clone(),
+    );
+    let (pairing, _) = service
+        .issue_pairing_code(Uuid::from_slice(&account).unwrap())
+        .await
+        .unwrap();
+    let device = service
+        .enroll_with_pairing_code(&pairing, "Backup test", "isolated-test")
+        .await
+        .unwrap();
+    let response = app
+        .oneshot(
+            Request::post("/api/v1/system/backups")
+                .header(
+                    header::AUTHORIZATION,
+                    format!("Bearer {}", device.raw_token),
+                )
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(json_body(response).await["created"], true);
+    assert!(!fixture.manifest_files().is_empty());
+    pool.close().await;
+}
