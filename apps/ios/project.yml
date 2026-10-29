@@ -8,13 +8,23 @@ options:
 settings:
   base:
     SWIFT_VERSION: "6.0"
-    # The SDK declares iosSimulatorArm64; no Intel simulator framework is produced.
+    # Each Apple SDK consumes the matching Kotlin/Native binary; Intel simulators are not declared.
+    MEDIAFLOW_KMP_TARGET: unsupported
+    "MEDIAFLOW_KMP_TARGET[sdk=iphoneos*]": iosArm64
+    "MEDIAFLOW_KMP_TARGET[sdk=iphonesimulator*]": iosSimulatorArm64
+    MEDIAFLOW_KMP_FRAMEWORK_DIR: "$(SRCROOT)/../../packages/kmp-sdk/build/bin/$(MEDIAFLOW_KMP_TARGET)/$(MEDIAFLOW_KMP_VARIANT)Framework"
     "ARCHS[sdk=iphonesimulator*]": arm64
     DEVELOPMENT_TEAM: ""
     # 模拟器 ad-hoc 签名：Keychain（SecItemAdd）要求宿主进程带签名派生的
     # access groups，无签名（ALLOWED=NO）会以 -34018 拒绝写入。真机随第二批交付。
     CODE_SIGNING_ALLOWED: "YES"
     CODE_SIGN_IDENTITY: "-"
+
+  configs:
+    Debug:
+      MEDIAFLOW_KMP_VARIANT: debug
+    Release:
+      MEDIAFLOW_KMP_VARIANT: release
 
 packages:
   IndexedDesign:
@@ -46,11 +56,22 @@ targets:
       - name: LinkKotlinFramework
         script: |
           cd "$SRCROOT/../.."
-          ./gradlew :packages:kmp-sdk:linkDebugFrameworkIosSimulatorArm64 --console=plain
+          set -eu
+          case "$SDK_NAME" in
+            iphoneos*) kmp_target=IosArm64 ;;
+            iphonesimulator*) kmp_target=IosSimulatorArm64 ;;
+            *) echo "Unsupported Apple SDK: $SDK_NAME" >&2; exit 2 ;;
+          esac
+          case "$CONFIGURATION" in
+            Debug) kmp_variant=Debug ;;
+            Release) kmp_variant=Release ;;
+            *) echo "Unsupported build configuration: $CONFIGURATION" >&2; exit 2 ;;
+          esac
+          ./gradlew ":packages:kmp-sdk:link${kmp_variant}Framework${kmp_target}" --console=plain
     dependencies:
       - package: IndexedDesign
       - package: MediaFlowUI
-      - framework: ../../packages/kmp-sdk/build/bin/iosSimulatorArm64/debugFramework/MediaFlowKit.framework
+      - framework: $(MEDIAFLOW_KMP_FRAMEWORK_DIR)/MediaFlowKit.framework
         embed: true
         codeSign: false
 
@@ -64,7 +85,7 @@ targets:
         GENERATE_INFOPLIST_FILE: "YES"
     dependencies:
       - target: MediaFlowiOS
-      - framework: ../../packages/kmp-sdk/build/bin/iosSimulatorArm64/debugFramework/MediaFlowKit.framework
+      - framework: $(MEDIAFLOW_KMP_FRAMEWORK_DIR)/MediaFlowKit.framework
         codeSign: false
 
   MediaFlowiOSUITests:

@@ -10,7 +10,7 @@ MediaFlow 的 SwiftUI iPhone 客户端，最低 iOS 16。KMP 只共享业务与�
 
 ## 构建与测试
 
-工程由 `project.yml` 生成。SDK 声明 iosArm64 / iosSimulatorArm64；模拟器构建限定 arm64，与实际提供的 KMP 二进制架构一致。完整 Xcode、匹配 iOS SDK、Java 和仓库 Gradle 为构建前提。
+工程由 `project.yml` 生成。设备 SDK 选择 `iosArm64`，模拟器 SDK 选择 `iosSimulatorArm64`，并按 Debug/Release 链接对应配置的 KMP framework；模拟器限定 arm64，不提供 Intel simulator 二进制。完整 Xcode、匹配 iOS SDK、Java 和仓库 Gradle 为构建前提。
 
 ```bash
 cd apps/ios
@@ -20,6 +20,15 @@ xcodebuild -project MediaFlow.xcodeproj -scheme MediaFlowiOS -destination 'platf
 ```
 
 Xcode27 / iOS27 SDK 完整类型编译、应用及普通 XCTest 目标构建通过；iPhone17 / iOS26.2 模拟器普通 XCTest 3 项通过，覆盖桥导出、五态消息、未登录安全错误。生成工程、缓存和报告不入库。SwiftLint、XcodeGen 与测试的集中入口为 `just client-check-ios`，工具条件与独立日志见[工程检查](../../docs/development/checks.md)。
+
+设备SDK可先做无签名编译与资源/链接检查，不能据此安装或宣称真机已验收：
+
+```bash
+xcodebuild -project MediaFlow.xcodeproj -scheme MediaFlowiOS -configuration Debug \
+  -sdk iphoneos -destination 'generic/platform=iOS' build CODE_SIGNING_ALLOWED=NO
+```
+
+团队与分发凭据由使用者另行配置。固定 SwiftLint 可使用仓库 `tools/selfcheck/install-swiftlint.sh <新的本地目录>` 校验下载，再把该目录仅加入当前命令的 PATH；不需要全局安装，版本与摘要以 `tools/selfcheck/tool-versions.env` 为准。
 
 ## 运行与人工验收
 
