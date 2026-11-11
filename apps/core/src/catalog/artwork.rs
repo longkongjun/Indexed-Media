@@ -59,15 +59,16 @@ impl ArtworkService {
     /// # Errors
     /// 资源不存在/无已确认身份时返回404；存储、提供方或图片校验失败保持局部错误。
     pub async fn poster(&self, account: Uuid, media: Uuid) -> Result<PosterImage, AppError> {
-        let row = sqlx::query(
+        let row = sqlx::query(&format!(
             "SELECT candidate.id,candidate.media_type,candidate.provider_id,candidate.locale
              FROM catalog_media_items item
              JOIN catalog_metadata_values metadata ON metadata.media_item_id=item.id
                AND metadata.field='title' AND metadata.source_type='tmdb'
              JOIN identification_candidates candidate
                ON hex(candidate.id)=upper(replace(metadata.source_id,'-',''))
-             WHERE item.id=? AND item.account_id=?",
-        )
+             WHERE item.id=? AND item.account_id=? AND {}",
+            crate::catalog::store::ACTIVE_MEDIA_PROJECTION,
+        ))
         .bind(media.as_bytes().as_slice())
         .bind(account.as_bytes().as_slice())
         .fetch_optional(&self.pool)

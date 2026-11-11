@@ -27,6 +27,20 @@ const MAX_VERSIONS: usize = 256;
 const MAX_FILE_ASSETS: usize = 256;
 const MAX_FILE_LINKS: usize = 1024;
 
+// apply replaces the entire media projection; its append-only receipt ledger's last
+// rowid identifies the current owner, even when the wall clock moves backwards.
+// Older compensated owners must not hide a newer projection. This read guard also
+// hides pre-fix rollback residue without deleting audit/receipt history.
+pub(crate) const ACTIVE_MEDIA_PROJECTION: &str = "NOT EXISTS (
+    SELECT 1 FROM catalog_applied_local_results applied
+    JOIN organization_local_results local_result ON local_result.id=applied.result_id
+      AND local_result.account_id=applied.account_id
+    WHERE applied.media_item_id=item.id
+      AND applied.rowid=(SELECT MAX(latest.rowid) FROM catalog_applied_local_results latest
+                        WHERE latest.media_item_id=item.id)
+      AND local_result.status IN ('compensated','manual-review')
+)";
+
 #[derive(Deserialize, Serialize)]
 struct CatalogCursor {
     version: u8,
@@ -59,12 +73,17 @@ impl CatalogStore {
         &self,
         account_id: Uuid,
     ) -> Result<crate::catalog::model::MediaLibraryPage, AppError> {
-        let rows = sqlx::query(
+        let rows = sqlx::query(&format!(
             "SELECT item.library_id,MAX(target.display_name) AS name,MIN(item.kind) AS kind
              FROM catalog_media_items item LEFT JOIN organization_targets target
                ON target.id=item.library_id AND target.account_id=item.account_id
-             WHERE item.account_id=? GROUP BY item.library_id ORDER BY name,item.library_id LIMIT 201",
-        ).bind(account_id.as_bytes().as_slice()).fetch_all(&self.pool).await.map_err(|error| AppError::with_source(ErrorCode::DatabaseInvalid, error))?;
+             WHERE item.account_id=? AND {ACTIVE_MEDIA_PROJECTION}
+             GROUP BY item.library_id ORDER BY name,item.library_id LIMIT 201",
+        ))
+        .bind(account_id.as_bytes().as_slice())
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|error| AppError::with_source(ErrorCode::DatabaseInvalid, error))?;
         ensure_cap(rows.len(), 200, "media libraries")?;
         let items = rows
             .iter()
@@ -119,6 +138,35 @@ impl CatalogStore {
             .begin_with("BEGIN IMMEDIATE")
             .await
             .map_err(internal)?;
+
+        // The durable source must still be trusted inside this write transaction,
+        // before even an idempotent receipt replay. Rollback uses the same lock.
+        if let Some(source) = sqlx::query(
+            "SELECT account_id,task_id,status FROM organization_local_results WHERE id=?",
+        )
+        .bind(result.result_id.as_bytes().as_slice())
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(internal)?
+        {
+            if uuid(&source, "account_id")? != account_id
+                || uuid(&source, "task_id")? != result.task_id
+            {
+                return Err(AppError::new(
+                    ErrorCode::NotFound,
+                    "local result is outside task account",
+                ));
+            }
+            if matches!(
+                source.get::<&str, _>("status"),
+                "compensated" | "manual-review"
+            ) {
+                return Err(AppError::new(
+                    ErrorCode::ResourceConflict,
+                    "local result is no longer verified",
+                ));
+            }
+        }
 
         if let Some(row) = sqlx::query(
             "SELECT account_id,media_item_id,request_sha256
@@ -272,6 +320,90 @@ impl CatalogStore {
         Ok(result.media.id)
     }
 
+    /// Withdraw the current result's file projection inside the caller's rollback transaction.
+    /// Media IDs and append-only receipts remain available for task history and idempotency.
+    /// No filesystem operation is performed here.
+    ///
+    /// # Errors
+    /// Returns an error on invalid persisted IDs or database/outbox failure; the caller
+    /// must roll back the same transaction containing its `LocalResult` change.
+    pub async fn withdraw_local_result_in_transaction(
+        tx: &mut sqlx::Transaction<'_, Sqlite>,
+        account_id: Uuid,
+        result_id: Uuid,
+        file_revision_id: Uuid,
+        now_us: i64,
+    ) -> Result<(), AppError> {
+        let media = sqlx::query_scalar::<_, Vec<u8>>(
+            "SELECT applied.media_item_id FROM catalog_applied_local_results applied
+             WHERE applied.result_id=? AND applied.account_id=?
+               AND applied.rowid=(SELECT MAX(latest.rowid) FROM catalog_applied_local_results latest
+                                  WHERE latest.media_item_id=applied.media_item_id)",
+        )
+        .bind(result_id.as_bytes().as_slice())
+        .bind(account_id.as_bytes().as_slice())
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(internal)?;
+        let Some(media) = media else {
+            return Ok(());
+        };
+        sqlx::query(
+            "DELETE FROM catalog_file_assets WHERE account_id=? AND media_item_id=? AND file_revision_id=?",
+        )
+        .bind(account_id.as_bytes().as_slice())
+        .bind(&media)
+        .bind(file_revision_id.as_bytes().as_slice())
+        .execute(&mut **tx)
+        .await
+        .map_err(internal)?;
+        sqlx::query(
+            "DELETE FROM catalog_media_versions WHERE media_item_id=?
+             AND NOT EXISTS (SELECT 1 FROM catalog_version_files link WHERE link.version_id=catalog_media_versions.id)",
+        )
+        .bind(&media)
+        .execute(&mut **tx)
+        .await
+        .map_err(internal)?;
+        sqlx::query(
+            "WITH RECURSIVE live_nodes(id) AS (
+                 SELECT owner_node_id FROM catalog_media_versions
+                 WHERE media_item_id=? AND owner_node_id IS NOT NULL
+                 UNION
+                 SELECT node.parent_id FROM catalog_media_nodes node JOIN live_nodes live ON node.id=live.id
+                 WHERE node.media_item_id=? AND node.parent_id IS NOT NULL
+             ) DELETE FROM catalog_media_nodes WHERE media_item_id=? AND id NOT IN (SELECT id FROM live_nodes)",
+        )
+        .bind(&media).bind(&media).bind(&media)
+        .execute(&mut **tx)
+        .await
+        .map_err(internal)?;
+        let version = sqlx::query_scalar::<_, i64>(
+            "UPDATE catalog_media_items SET projection_version=projection_version+1,updated_at_us=?
+             WHERE id=? AND account_id=? RETURNING projection_version",
+        )
+        .bind(now_us)
+        .bind(&media)
+        .bind(account_id.as_bytes().as_slice())
+        .fetch_one(&mut **tx)
+        .await
+        .map_err(internal)?;
+        let media_item_id = Uuid::from_slice(&media).map_err(internal)?;
+        OutboxWriter::write(
+            tx,
+            CATALOG_MEDIA_CHANGED,
+            media_item_id,
+            &CatalogMediaChangedPayload {
+                media_item_id,
+                projection_version: version,
+                change: CatalogMediaChange::Updated,
+            },
+            now_us,
+        )
+        .await?;
+        Ok(())
+    }
+
     /// 返回一页快照稳定、有界的正式媒体摘要。
     ///
     /// # Errors
@@ -336,6 +468,7 @@ impl CatalogStore {
                       updated_at_us AS snapshot_updated_at_us
                FROM snapshot_media WHERE 1=1",
             );
+        query.push(format!(" AND EXISTS (SELECT 1 FROM catalog_media_items item WHERE item.id=snapshot_media.media_item_id AND {ACTIVE_MEDIA_PROJECTION})"));
         push_filters(&mut query, &filter);
         if let Some(cursor) = &cursor {
             query
@@ -393,15 +526,15 @@ impl CatalogStore {
         account_id: Uuid,
         media_item_id: Uuid,
     ) -> Result<MediaItemDetail, AppError> {
-        let row = sqlx::query(
+        let row = sqlx::query(&format!(
             "SELECT item.id,item.library_id,item.kind,item.title,item.year,item.local_status,
                     item.updated_at_us,art.id AS artwork_id,art.kind AS artwork_kind,
                     art.state AS artwork_state,item.nfo_status
              FROM catalog_media_items item
              LEFT JOIN catalog_artwork_refs art
                ON art.media_item_id=item.id AND art.kind='poster'
-             WHERE item.id=? AND item.account_id=?",
-        )
+             WHERE item.id=? AND item.account_id=? AND {ACTIVE_MEDIA_PROJECTION}",
+        ))
         .bind(media_item_id.as_bytes().as_slice())
         .bind(account_id.as_bytes().as_slice())
         .fetch_optional(&self.pool)

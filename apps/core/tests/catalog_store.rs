@@ -410,3 +410,398 @@ async fn table_count(pool: &sqlx::SqlitePool, table: &str) -> i64 {
         .await
         .unwrap()
 }
+
+#[tokio::test]
+async fn compensated_projection_is_hidden_and_old_payload_cannot_be_reapplied() {
+    let (fixture, executor, local, result) = organized_catalog_fixture().await;
+    let store = CatalogStore::new(fixture.db.pool().clone());
+    store
+        .apply_verified_local_result(fixture.account_id, &result, 10_000)
+        .await
+        .unwrap();
+    executor
+        .rollback(mediaflow_core::organization::executor::RollbackCommand {
+            task_id: fixture.lease.task.id,
+            result_version: local.version,
+            idempotency_key: "catalog-withdraw".to_owned(),
+        })
+        .await
+        .unwrap();
+    assert!(
+        store
+            .list(
+                fixture.account_id,
+                &MediaItemFilter::default(),
+                &PageRequest::new(None, Some(20)).unwrap()
+            )
+            .await
+            .unwrap()
+            .items
+            .is_empty()
+    );
+    assert!(
+        store
+            .libraries(fixture.account_id)
+            .await
+            .unwrap()
+            .items
+            .is_empty()
+    );
+    assert_eq!(
+        store
+            .detail(fixture.account_id, result.media.id)
+            .await
+            .unwrap_err()
+            .code(),
+        ErrorCode::NotFound
+    );
+    assert_eq!(
+        store
+            .apply_verified_local_result(fixture.account_id, &result, 20_000)
+            .await
+            .unwrap_err()
+            .code(),
+        ErrorCode::ResourceConflict
+    );
+    assert_eq!(
+        table_count(fixture.db.pool(), "catalog_file_assets").await,
+        0
+    );
+    assert_eq!(
+        table_count(fixture.db.pool(), "catalog_media_versions").await,
+        0
+    );
+    assert_eq!(
+        table_count(fixture.db.pool(), "catalog_applied_local_results").await,
+        1
+    );
+}
+
+#[tokio::test]
+async fn legacy_withdrawn_results_are_hidden_even_with_assets_and_an_old_cursor() {
+    for status in ["compensated", "manual-review"] {
+        let (fixture, _executor, _local, result) = organized_catalog_fixture().await;
+        let store = CatalogStore::new(fixture.db.pool().clone());
+        store
+            .apply_verified_local_result(fixture.account_id, &result, 10_000)
+            .await
+            .unwrap();
+        let other_lease = common::seed_processing_lease(
+            fixture.db.pool(),
+            fixture.lease.task.inbox_directory_id,
+            b"ready/Other.mkv",
+            vec![9],
+            "other-catalog",
+        )
+        .await;
+        let other = movie_result(&other_lease, Uuid::now_v7());
+        store
+            .apply_verified_local_result(fixture.account_id, &other, 20_000)
+            .await
+            .unwrap();
+        let first = store
+            .list(
+                fixture.account_id,
+                &MediaItemFilter::default(),
+                &PageRequest::new(None, Some(1)).unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(first.items[0].id, other.media.id);
+        let cursor = first
+            .next_cursor
+            .expect("first page must retain an old snapshot cursor");
+        // Reproduce databases written before rollback reconciled Catalog.
+        sqlx::query("UPDATE organization_local_results SET status=? WHERE id=?")
+            .bind(status)
+            .bind(result.result_id.as_bytes().as_slice())
+            .execute(fixture.db.pool())
+            .await
+            .unwrap();
+        assert_eq!(
+            table_count(fixture.db.pool(), "catalog_file_assets").await,
+            2
+        );
+        let rest = store
+            .list(
+                fixture.account_id,
+                &MediaItemFilter::default(),
+                &PageRequest::new(Some(cursor), Some(1)).unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(
+            rest.items.is_empty(),
+            "old cursors must not resurrect withdrawn media"
+        );
+        let fresh = store
+            .list(
+                fixture.account_id,
+                &MediaItemFilter::default(),
+                &PageRequest::new(None, Some(20)).unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            fresh.items.iter().map(|item| item.id).collect::<Vec<_>>(),
+            vec![other.media.id]
+        );
+        assert_eq!(
+            store
+                .libraries(fixture.account_id)
+                .await
+                .unwrap()
+                .items
+                .iter()
+                .map(|library| library.id)
+                .collect::<Vec<_>>(),
+            vec![other.library_id]
+        );
+        assert_eq!(
+            store
+                .detail(fixture.account_id, result.media.id)
+                .await
+                .unwrap_err()
+                .code(),
+            ErrorCode::NotFound
+        );
+        assert_eq!(
+            store
+                .apply_verified_local_result(fixture.account_id, &result, 30_000)
+                .await
+                .unwrap_err()
+                .code(),
+            ErrorCode::ResourceConflict
+        );
+    }
+}
+
+#[tokio::test]
+async fn withdrawing_an_older_result_preserves_a_newer_projection_of_the_same_revision() {
+    let (fixture, executor, local, result) = organized_catalog_fixture().await;
+    let store = CatalogStore::new(fixture.db.pool().clone());
+    store
+        .apply_verified_local_result(fixture.account_id, &result, 20_000)
+        .await
+        .unwrap();
+    let mut newer = movie_result(&fixture.lease, result.library_id);
+    newer.media.id = result.media.id;
+    newer.media.title = "Replacement projection".to_owned();
+    newer.file_assets[0].current_relative_path = "Movies/Replacement.mkv".to_owned();
+    // Append order, not wall clock, owns the replacement projection.
+    store
+        .apply_verified_local_result(fixture.account_id, &newer, 10_000)
+        .await
+        .unwrap();
+    executor
+        .rollback(mediaflow_core::organization::executor::RollbackCommand {
+            task_id: fixture.lease.task.id,
+            result_version: local.version,
+            idempotency_key: "withdraw-old-owner".to_owned(),
+        })
+        .await
+        .unwrap();
+    let detail = store
+        .detail(fixture.account_id, result.media.id)
+        .await
+        .unwrap();
+    assert_eq!(detail.item.title, "Replacement projection");
+    assert_eq!(detail.versions[0].files[0].id, newer.file_assets[0].id);
+    assert_eq!(
+        detail.versions[0].files[0].current_relative_path,
+        "Movies/Replacement.mkv"
+    );
+    assert_eq!(
+        store
+            .list(
+                fixture.account_id,
+                &MediaItemFilter::default(),
+                &PageRequest::new(None, Some(20)).unwrap()
+            )
+            .await
+            .unwrap()
+            .items
+            .len(),
+        1
+    );
+    assert_eq!(
+        table_count(fixture.db.pool(), "catalog_file_assets").await,
+        1
+    );
+    assert_eq!(
+        table_count(fixture.db.pool(), "catalog_applied_local_results").await,
+        2
+    );
+}
+
+#[tokio::test]
+async fn catalog_withdrawal_and_outbox_rollback_with_the_callers_transaction() {
+    let (fixture, _executor, _local, result) = organized_catalog_fixture().await;
+    let store = CatalogStore::new(fixture.db.pool().clone());
+    store
+        .apply_verified_local_result(fixture.account_id, &result, 10_000)
+        .await
+        .unwrap();
+    let events_before = table_count(fixture.db.pool(), "platform_outbox_events").await;
+    let mut tx = fixture
+        .db
+        .pool()
+        .begin_with("BEGIN IMMEDIATE")
+        .await
+        .unwrap();
+    sqlx::query("UPDATE organization_local_results SET status='compensated' WHERE id=?")
+        .bind(result.result_id.as_bytes().as_slice())
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    CatalogStore::withdraw_local_result_in_transaction(
+        &mut tx,
+        fixture.account_id,
+        result.result_id,
+        fixture.lease.task.file_revision_id,
+        20_000,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM catalog_file_assets")
+            .fetch_one(&mut *tx)
+            .await
+            .unwrap(),
+        0
+    );
+    tx.rollback().await.unwrap();
+    assert_eq!(
+        store
+            .detail(fixture.account_id, result.media.id)
+            .await
+            .unwrap()
+            .versions[0]
+            .files
+            .len(),
+        1
+    );
+    assert_eq!(
+        table_count(fixture.db.pool(), "platform_outbox_events").await,
+        events_before
+    );
+    assert_eq!(
+        table_count(fixture.db.pool(), "catalog_file_assets").await,
+        1
+    );
+}
+
+#[tokio::test]
+async fn compensation_before_catalog_application_rejects_late_completion() {
+    let (fixture, executor, local, result) = organized_catalog_fixture().await;
+    let store = CatalogStore::new(fixture.db.pool().clone());
+    executor
+        .rollback(mediaflow_core::organization::executor::RollbackCommand {
+            task_id: fixture.lease.task.id,
+            result_version: local.version,
+            idempotency_key: "withdraw-before-publication".to_owned(),
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        store
+            .apply_verified_local_result(fixture.account_id, &result, 20_000)
+            .await
+            .unwrap_err()
+            .code(),
+        ErrorCode::ResourceConflict
+    );
+    assert_eq!(
+        table_count(fixture.db.pool(), "catalog_applied_local_results").await,
+        0
+    );
+    assert_eq!(
+        table_count(fixture.db.pool(), "catalog_media_items").await,
+        0
+    );
+}
+
+#[tokio::test]
+async fn withdrawal_notifies_even_when_the_current_projection_has_no_matching_asset() {
+    let (fixture, executor, local, result) = organized_catalog_fixture().await;
+    let store = CatalogStore::new(fixture.db.pool().clone());
+    store
+        .apply_verified_local_result(fixture.account_id, &result, 10_000)
+        .await
+        .unwrap();
+    // Legacy/incomplete projection: source visibility still changes even without an asset to delete.
+    sqlx::query("DELETE FROM catalog_file_assets WHERE media_item_id=?")
+        .bind(result.media.id.as_bytes().as_slice())
+        .execute(fixture.db.pool())
+        .await
+        .unwrap();
+    let command = mediaflow_core::organization::executor::RollbackCommand {
+        task_id: fixture.lease.task.id,
+        result_version: local.version,
+        idempotency_key: "withdraw-empty-projection".to_owned(),
+    };
+    executor.rollback(command.clone()).await.unwrap();
+    executor.rollback(command).await.unwrap();
+    let events = OutboxReader::new(fixture.db.pool().clone())
+        .after(0, 200)
+        .await
+        .unwrap();
+    let changes = events
+        .iter()
+        .filter_map(|event| match event {
+            TaskEventEnvelope::CatalogMediaChanged { payload, .. } => Some(payload),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        changes.len(),
+        2,
+        "one create and one withdrawal, with no duplicate on replay"
+    );
+    assert_eq!(changes[1].change, CatalogMediaChange::Updated);
+    assert_eq!(changes[1].projection_version, 2);
+    assert_eq!(
+        table_count(fixture.db.pool(), "catalog_media_versions").await,
+        0
+    );
+    assert_eq!(
+        store
+            .detail(fixture.account_id, result.media.id)
+            .await
+            .unwrap_err()
+            .code(),
+        ErrorCode::NotFound
+    );
+}
+
+async fn organized_catalog_fixture() -> (
+    common::organization::OrganizationFixture,
+    mediaflow_core::organization::executor::OrganizationExecutor,
+    mediaflow_core::organization::journal_store::LocalResultView,
+    VerifiedLocalResult,
+) {
+    use mediaflow_core::organization::executor::{ExecutionOutcome, OrganizationExecutor};
+    use mediaflow_core::organization::fs::ProcessingStopToken;
+    use mediaflow_core::organization::journal_store::JournalStore;
+    use mediaflow_core::organization::model::OrganizationOperation;
+    use mediaflow_core::organization::plan_store::OrganizationPlanStore;
+    use mediaflow_core::platform::task_runtime::ManualTaskClock;
+    let fixture = common::organization::organization_fixture(OrganizationOperation::Copy).await;
+    let executor = OrganizationExecutor::new(
+        fixture.account_id,
+        OrganizationPlanStore::new(fixture.db.pool().clone()),
+        JournalStore::new(fixture.db.pool().clone()),
+        fixture.fs.clone(),
+        std::sync::Arc::new(ManualTaskClock::new(5_000)),
+    );
+    let ExecutionOutcome::Completed(local) = executor
+        .run_next(&fixture.lease, ProcessingStopToken::default())
+        .await
+        .unwrap()
+    else {
+        panic!("fixture must produce verified result")
+    };
+    let mut result = movie_result(&fixture.lease, fixture.plan.draft.target.id);
+    result.result_id = local.id;
+    (fixture, executor, local, result)
+}

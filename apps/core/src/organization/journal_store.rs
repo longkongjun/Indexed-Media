@@ -1269,13 +1269,30 @@ impl JournalStore {
             }
         }
         let result_id = sqlx::query_scalar::<_, Vec<u8>>(
-            "SELECT id FROM organization_local_results WHERE account_id=? AND task_id=?",
+            "SELECT id FROM organization_local_results WHERE account_id=? AND task_id=? AND file_journal_id=?",
         )
         .bind(account_id.as_bytes().as_slice())
         .bind(task_id.as_bytes().as_slice())
+        .bind(journal.id.as_bytes().as_slice())
         .fetch_one(&mut *tx)
         .await
         .map_err(database)?;
+        let file_revision_id = sqlx::query_scalar::<_, Vec<u8>>(
+            "SELECT file_revision_id FROM organization_plans WHERE id=? AND account_id=?",
+        )
+        .bind(journal.plan_id.as_bytes().as_slice())
+        .bind(account_id.as_bytes().as_slice())
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(database)?;
+        crate::catalog::store::CatalogStore::withdraw_local_result_in_transaction(
+            &mut tx,
+            account_id,
+            Uuid::from_slice(&result_id).map_err(invalid)?,
+            Uuid::from_slice(&file_revision_id).map_err(invalid)?,
+            now_us,
+        )
+        .await?;
         sqlx::query(
             "INSERT INTO organization_rollback_receipts
              (account_id,task_id,idempotency_key_sha256,request_digest,result_id,created_at_us)
