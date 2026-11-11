@@ -1,8 +1,8 @@
 {
-  "source_commit": "9d0038c16688a4a74058b3b8f0d7899d4aadbbdb",
+  "source_commit": "735f355cd0d85bac4861a1b097bdd882515b8aa7",
   "package": "@indexed-design/ui-vue@0.15.0",
   "tarball": "indexed-design-ui-vue-0.15.0.tgz",
-  "tarball_sha256": "1770ee5e7b55dc39495c22b2d8dc879e577980298e306e42e12012b2d6873782",
+  "tarball_sha256": "083a74109c67b4643e9bba591d466752b21f91c7a51a0e0ef4442b235348b8bc",
   "media_source": "assets/brand/symbols/media.svg",
   "media_source_sha256": "b396d8861c798701599f3bc7be5a7d2f9d02d5ecd5d79a617fffa6fe5756d851",
   "favicon": "apps/web/public/brand/media.svg",

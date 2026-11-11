@@ -7,9 +7,9 @@
 | 项 | 值 |
 |---|---|
 | 包 | `@indexed-design/ui-vue@0.15.0`（内部依赖 `ant-design-vue@4.2.6`、`@ant-design/icons-vue@7.0.1`，来自公共 registry） |
-| 源 commit | Indexed-Design `9d0038c16688a4a74058b3b8f0d7899d4aadbbdb`（品牌正式API与主题，包版本仍为0.15.0；以完整SHA与tarball字节区分） |
-| 产物 | `indexed-design-ui-vue-0.15.0.tgz`，65239 字节 |
-| SHA-256 | `1770ee5e7b55dc39495c22b2d8dc879e577980298e306e42e12012b2d6873782` |
+| 源 commit | Indexed-Design `735f355cd0d85bac4861a1b097bdd882515b8aa7`（包含主题覆盖修复，包版本仍为0.15.0；以完整SHA与tarball字节区分） |
+| 产物 | `indexed-design-ui-vue-0.15.0.tgz`，65455 字节 |
+| SHA-256 | `083a74109c67b4643e9bba591d466752b21f91c7a51a0e0ef4442b235348b8bc` |
 
 Web品牌来源与favicon转换记录见 `web-brand-provenance.json`。此更新不更改宿主默认主题。
 
@@ -18,7 +18,7 @@ Web品牌来源与favicon转换记录见 `web-brand-provenance.json`。此更新
 当前tarball从上述完整source commit对应、受跟踪文件无修改的Indexed-Design源码重建；未跟踪的`.idea/`不进入npm包。以下是隔离复现方式：
 
 ```sh
-git -C <Indexed-Design> worktree add --detach /tmp/id-baseline 9d0038c16688a4a74058b3b8f0d7899d4aadbbdb
+git -C <Indexed-Design> worktree add --detach /tmp/id-baseline 735f355cd0d85bac4861a1b097bdd882515b8aa7
 cd /tmp/id-baseline && npm ci --ignore-scripts && npm run build:vue
 npm pack -w @indexed-design/ui-vue --pack-destination /tmp
 shasum -a 256 /tmp/indexed-design-ui-vue-0.15.0.tgz
