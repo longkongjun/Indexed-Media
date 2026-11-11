@@ -83,13 +83,21 @@ impl OrganizationInboxProjection {
         let revision_id: Vec<u8> = row.get("file_revision_id");
         let inbox_id: Vec<u8> = row.get("inbox_directory_id");
         let root_id: String = row.get("root_id");
-        let inbox_path: String = row.get("inbox_path");
-        let file_path: String = row.get("file_path");
-        let joined = if inbox_path == "." {
-            file_path
-        } else {
-            format!("{inbox_path}/{file_path}")
-        };
+        let inbox_path = RelativePath::parse(&row.get::<String, _>("inbox_path"))
+            .map_err(|error| AppError::new(ErrorCode::Internal, error.to_string()))?;
+        // scanner 已保存根相对路径；这里只校验完整组件归属，不能再次拼接 inbox。
+        let file_path = RelativePath::parse(&row.get::<String, _>("file_path"))
+            .map_err(|error| AppError::new(ErrorCode::Internal, error.to_string()))?;
+        let inbox_components = inbox_path.components().collect::<Vec<_>>();
+        let file_components = file_path.components().collect::<Vec<_>>();
+        if file_components.len() <= inbox_components.len()
+            || !file_components.starts_with(&inbox_components)
+        {
+            return Err(AppError::new(
+                ErrorCode::ResourceConflict,
+                "organization source is outside its inbox",
+            ));
+        }
         Ok(OrganizationSourceProjection {
             task_id: Uuid::from_slice(&stored_task_id)
                 .map_err(|error| AppError::new(ErrorCode::Internal, error.to_string()))?,
@@ -99,8 +107,7 @@ impl OrganizationInboxProjection {
                 .map_err(|error| AppError::new(ErrorCode::Internal, error.to_string()))?,
             root_id: RootId::parse(&root_id)
                 .map_err(|error| AppError::new(ErrorCode::Internal, error.to_string()))?,
-            relative_path: RelativePath::parse(&joined)
-                .map_err(|error| AppError::new(ErrorCode::Internal, error.to_string()))?,
+            relative_path: file_path,
             identity_snapshot: row.get("identity_snapshot"),
             size_bytes: u64::try_from(row.get::<i64, _>("size_bytes"))
                 .map_err(|error| AppError::new(ErrorCode::Internal, error.to_string()))?,

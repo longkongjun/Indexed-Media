@@ -22,6 +22,64 @@ use mediaflow_core::platform::migrations::migrate_with_backup;
 use mediaflow_core::shared::error::ErrorCode;
 use uuid::Uuid;
 
+#[tokio::test]
+async fn source_projection_preserves_root_relative_paths_for_root_and_nested_inboxes() {
+    for (inbox_path, file_path) in [
+        (".", "ready/Arrival.2016.mkv"),
+        ("ready", "ready/Arrival.2016.mkv"),
+        (
+            "collection/inbox",
+            "collection/inbox/movies/Arrival.2016.mkv",
+        ),
+    ] {
+        let (_fixture, db, account, task) = projection_fixture(inbox_path, file_path).await;
+        let source = OrganizationInboxProjection::new(db.pool().clone())
+            .source_for_task(account, task)
+            .await
+            .unwrap();
+        assert_eq!(source.relative_path.as_str(), file_path);
+    }
+}
+
+#[tokio::test]
+async fn source_projection_rejects_sibling_prefixes_parents_and_the_inbox_itself() {
+    for file_path in [
+        "collection/inbox-other/Arrival.2016.mkv",
+        "collection/outside/Arrival.2016.mkv",
+        "collection/inbox",
+        "collection",
+    ] {
+        let (_fixture, db, account, task) = projection_fixture("collection/inbox", file_path).await;
+        let error = OrganizationInboxProjection::new(db.pool().clone())
+            .source_for_task(account, task)
+            .await
+            .unwrap_err();
+        assert_eq!(error.code(), ErrorCode::ResourceConflict);
+    }
+}
+
+async fn projection_fixture(
+    inbox_path: &str,
+    file_path: &str,
+) -> (TestConfigDir, mediaflow_core::platform::db::Db, Uuid, Uuid) {
+    let fixture = TestConfigDir::new(RunMode::Development);
+    let db = migrate_with_backup(fixture.config()).await.unwrap();
+    let account = common::seed_account(db.pool()).await;
+    let inbox = common::seed_inbox(db.pool()).await;
+    // 仅此投影单测构造持久化输入；HTTP闭环通过实际扫描产生同样的根相对路径。
+    sqlx::query("UPDATE discovery_inbox_directories SET relative_path_bytes=?,relative_path_display=? WHERE id=?")
+        .bind(inbox_path.as_bytes()).bind(inbox_path).bind(inbox.as_bytes().as_slice()).execute(db.pool()).await.unwrap();
+    let lease = common::seed_processing_lease(
+        db.pool(),
+        inbox,
+        file_path.as_bytes(),
+        vec![7],
+        "source-projection",
+    )
+    .await;
+    (fixture, db, account, lease.task.id)
+}
+
 async fn setup() -> (
     TestConfigDir,
     mediaflow_core::platform::db::Db,
